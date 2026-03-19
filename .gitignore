@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node (MCP server)
+node_modules/
+mcp/node_modules/
+package-lock.json
+
+# Test artifacts
+tests/tmp/
+tests/*.log
+
+# Local config overrides
+config/local.yaml

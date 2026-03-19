@@ -1,0 +1,47 @@
+# iez configuration
+# Location: ~/Rudy.Dots/iez/config.yaml
+version: 1
+
+# Backend priority (first available wins)
+backends:
+  ui:
+    - axe
+    - iosef
+    - xcodebuildmcp
+  build:
+    - flutter
+    - xcodebuild
+    - xcodebuildmcp
+  verify:
+    - peekaboo
+  flow:
+    - maestro
+  debug:
+    - xcodebuildmcp
+
+# Default simulator (auto-detected if omitted)
+simulator:
+  device: "iPhone 16 Pro"
+  # udid: auto
+
+# Default app
+app:
+  bundle_id: ""
+  platform: ios
+
+# Output preferences
+output:
+  json: true
+  compact: false
+  color: true
+
+# Peekaboo AI provider for verify commands
+verify:
+  provider: "anthropic/claude-sonnet-4.5"
+
+# Timeouts (seconds)
+timeouts:
+  tap_wait: 5
+  build: 300
+  screenshot: 10
+  verify: 30

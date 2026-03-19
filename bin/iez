@@ -1,0 +1,368 @@
+#!/usr/bin/env bash
+# iez — Unified iOS Simulator Automation CLI
+# https://github.com/rodolfo-arg/i_ez
+set -uo pipefail
+
+# =============================================================================
+# Resolve IEZ_ROOT (directory containing bin/iez)
+# =============================================================================
+
+_iez_resolve_root() {
+    local source="${BASH_SOURCE[0]}"
+    while [[ -L "$source" ]]; do
+        local dir
+        dir=$(cd -P "$(dirname "$source")" && pwd)
+        source=$(readlink "$source")
+        [[ "$source" != /* ]] && source="$dir/$source"
+    done
+    cd -P "$(dirname "$source")/.." && pwd
+}
+
+export IEZ_ROOT
+IEZ_ROOT=$(_iez_resolve_root)
+
+# =============================================================================
+# Source libraries
+# =============================================================================
+
+source "$IEZ_ROOT/lib/core.sh"
+source "$IEZ_ROOT/lib/config.sh"
+source "$IEZ_ROOT/lib/resolve.sh"
+source "$IEZ_ROOT/lib/doctor.sh"
+
+# Source command modules (loaded on demand)
+_iez_load_module() {
+    local mod="$1"
+    local path="$IEZ_ROOT/lib/${mod}.sh"
+    if [[ -f "$path" ]]; then
+        source "$path"
+        return 0
+    fi
+    return 1
+}
+
+# =============================================================================
+# Global Flag Parsing
+# =============================================================================
+
+_iez_parse_globals() {
+    local args=()
+    local seen_group=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --version|-v)
+                echo "iez v${IEZ_VERSION}"
+                exit 0
+                ;;
+            --help|-h)
+                if ! $seen_group; then
+                    _iez_show_help
+                    exit 0
+                fi
+                args+=("$1")
+                shift
+                continue
+                ;;
+            --json)
+                IEZ_JSON=true
+                shift
+                ;;
+            --no-json)
+                IEZ_JSON=false
+                shift
+                ;;
+            --verbose)
+                IEZ_VERBOSE=true
+                shift
+                ;;
+            --no-color)
+                IEZ_COLOR=false
+                shift
+                ;;
+            --udid)
+                IEZ_UDID="${2:-}"
+                shift 2
+                ;;
+            *)
+                seen_group=true
+                args+=("$1")
+                shift
+                ;;
+        esac
+    done
+    _IEZ_ARGS=("${args[@]}")
+}
+
+# =============================================================================
+# Help
+# =============================================================================
+
+_iez_show_help() {
+    cat <<'EOF'
+iez — Unified iOS Simulator Automation CLI
+
+Usage: iez [global-flags] <group> <command> [flags]
+
+Groups:
+  sim        Simulator lifecycle (boot, shutdown, list, configure)
+  app        App build, deploy, launch, test
+  ui         UI automation (tap, type, swipe, screenshot, tree)
+  verify     AI-powered visual verification
+  debug      LLDB debugging
+  project    Project discovery & code coverage
+  session    Session defaults management
+  flow       Declarative test flows (Maestro)
+  config     Configuration management
+  doctor     Check backend dependencies
+
+Global Flags:
+  --help, -h       Show this help
+  --version, -v    Show version
+  --json           Force JSON output (default)
+  --no-json        Human-readable output
+  --verbose        Enable debug logging
+  --no-color       Disable colored stderr
+  --udid UUID      Target specific simulator
+
+Examples:
+  iez doctor                          Check all dependencies
+  iez sim boot                        Boot default simulator
+  iez app build-run                   Build and launch app
+  iez ui tree                         Dump accessibility tree
+  iez ui tap --label "Login"          Tap element by label
+  iez ui type "hello"                 Type text
+  iez ui screenshot --out snap.png    Take screenshot
+  iez verify "is login visible?"      AI visual check
+
+Pipe-friendly:
+  iez ui tree | jq '.data.elements[] | select(.role == "button")'
+  iez sim list | jq '.data.simulators[].name'
+
+Docs: https://github.com/rodolfo-arg/i_ez
+EOF
+}
+
+_iez_show_group_help() {
+    local group="$1"
+    case "$group" in
+        sim)
+            cat <<'EOF'
+iez sim — Simulator Lifecycle
+
+Commands:
+  list                              List available simulators
+  boot [--device NAME|--udid UUID]  Boot a simulator
+  shutdown [--udid UUID]            Shutdown simulator
+  open                              Open Simulator.app
+  erase --udid UUID                 Erase content (destructive)
+  status                            Current booted sim info
+  location set --lat N --lon N      Set GPS location
+  location reset                    Reset GPS location
+  appearance [dark|light]           Set appearance mode
+  statusbar --network NETWORK       Set status bar indicator
+  privacy [grant|revoke] SVC BUNDLE Privacy permissions
+  push --bundle-id ID FILE          Send push notification
+  openurl URL                       Open URL in simulator
+  clipboard [get|set TEXT]          Clipboard access
+  keychain reset                    Reset keychain
+  addmedia FILE [FILE...]          Add photos/videos
+EOF
+            ;;
+        app)
+            cat <<'EOF'
+iez app — App Build/Deploy/Lifecycle
+
+Commands:
+  build [--platform ios|web|macos]  Build the app
+  build-run [--scheme S]            Build + install + launch
+  install [--path APP_PATH]         Install .app to sim
+  launch [--bundle-id ID]           Launch app
+  launch-logs [--bundle-id ID]      Launch with log capture
+  stop [--bundle-id ID]             Stop running app
+  logs start [--bundle-id ID]       Start log capture
+  logs stop --session ID            Stop + return logs
+  path [--scheme S]                 Get built .app path
+  bundle-id [--path APP]            Extract bundle ID
+  test [--scheme S]                 Run tests
+EOF
+            ;;
+        ui)
+            cat <<'EOF'
+iez ui — UI Automation
+
+Inspection:
+  tree [--compact] [--depth N]      Full accessibility tree
+  tree --point X,Y                  Hit-test at coordinates
+  find --label|--id|--role VALUE    Search elements
+
+Interaction:
+  tap --label|--id|--coords TARGET  Tap element
+  type TEXT [--label FIELD]         Type text
+  swipe [up|down|left|right]        Swipe gesture
+  scroll [up|down|left|right]       Scroll gesture
+  gesture PRESET                    Named gesture preset
+  long-press --coords X,Y           Long press
+  touch [--down] [--up] --coords    Low-level touch
+  key KEYCODE                       HID key press
+  key-sequence CODES                Multiple keys
+  key-combo --modifiers M --key K   Key combination
+  button [home|lock|siri|...]       Hardware button
+
+Capture:
+  screenshot [--out FILE]           PNG screenshot
+  record start [--fps N]            Start recording
+  record stop                       Stop recording
+  stream [--fps N]                  Live video stream
+
+Batch & Assertions:
+  batch --steps 'cmd1; cmd2'        Multi-step execution
+  batch --file STEPS.txt            Batch from file
+  wait --label|--id TARGET          Wait for element
+  exists --label|--id TARGET        Check element exists
+  text --label|--id TARGET          Get element text
+EOF
+            ;;
+        verify)
+            cat <<'EOF'
+iez verify — AI Visual Verification
+
+Usage:
+  iez verify "question?"                         Screenshot + AI analysis
+  iez verify --screenshot FILE "question?"        Analyze existing image
+  iez verify --app Simulator "question?"          Target app window
+EOF
+            ;;
+        debug)
+            cat <<'EOF'
+iez debug — LLDB Debugging
+
+Commands:
+  attach [--bundle-id ID|--pid PID] Attach debugger
+  breakpoint add --file F --line N  Set breakpoint
+  breakpoint add --function FUNC    Set breakpoint by function
+  breakpoint remove --id N          Remove breakpoint
+  continue                          Resume execution
+  detach                            Disconnect debugger
+  command "LLDB_CMD"                Run LLDB command
+  stack [--thread N]                Show backtrace
+  variables [--frame N]             Show frame variables
+EOF
+            ;;
+        config)
+            cat <<'EOF'
+iez config — Configuration
+
+Commands:
+  show                              Show current config
+  set KEY VALUE                     Update config value
+  backends                          List available backends
+EOF
+            ;;
+        *)
+            iez_log error "Unknown group: $group"
+            _iez_show_help
+            return $EXIT_USAGE
+            ;;
+    esac
+}
+
+# =============================================================================
+# Command Router
+# =============================================================================
+
+_iez_route() {
+    local group="${1:-}"
+    shift 2>/dev/null || true
+
+    if [[ -z "$group" ]]; then
+        _iez_show_help
+        return $EXIT_USAGE
+    fi
+
+    # Check for group-level help
+    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        _iez_show_group_help "$group"
+        return $EXIT_OK
+    fi
+
+    local command="${1:-}"
+    shift 2>/dev/null || true
+
+    case "$group" in
+        doctor)
+            cmd_doctor
+            ;;
+        config)
+            case "$command" in
+                show|"")  cmd_config_show ;;
+                set)      cmd_config_set "$@" ;;
+                backends) cmd_config_backends ;;
+                *)        _iez_show_group_help config; return $EXIT_USAGE ;;
+            esac
+            ;;
+        sim)
+            _iez_load_module "sim" || { iez_error "sim" "MODULE_NOT_FOUND" "sim module not yet implemented" ""; return $EXIT_FAIL; }
+            _iez_route_sim "$command" "$@"
+            ;;
+        app)
+            _iez_load_module "app" || { iez_error "app" "MODULE_NOT_FOUND" "app module not yet implemented" ""; return $EXIT_FAIL; }
+            _iez_route_app "$command" "$@"
+            ;;
+        ui)
+            _iez_load_module "ui" || { iez_error "ui" "MODULE_NOT_FOUND" "ui module not yet implemented" ""; return $EXIT_FAIL; }
+            _iez_route_ui "$command" "$@"
+            ;;
+        verify)
+            _iez_load_module "verify" || { iez_error "verify" "MODULE_NOT_FOUND" "verify module not yet implemented" ""; return $EXIT_FAIL; }
+            cmd_verify "$@"
+            ;;
+        debug)
+            _iez_load_module "debug" || { iez_error "debug" "MODULE_NOT_FOUND" "debug module not yet implemented" ""; return $EXIT_FAIL; }
+            _iez_route_debug "$command" "$@"
+            ;;
+        project)
+            _iez_load_module "project" || { iez_error "project" "MODULE_NOT_FOUND" "project module not yet implemented" ""; return $EXIT_FAIL; }
+            _iez_route_project "$command" "$@"
+            ;;
+        session)
+            _iez_load_module "session" || { iez_error "session" "MODULE_NOT_FOUND" "session module not yet implemented" ""; return $EXIT_FAIL; }
+            _iez_route_session "$command" "$@"
+            ;;
+        flow)
+            _iez_load_module "flow" || { iez_error "flow" "MODULE_NOT_FOUND" "flow module not yet implemented" ""; return $EXIT_FAIL; }
+            _iez_route_flow "$command" "$@"
+            ;;
+        mcp)
+            _iez_load_module "mcp" || { iez_error "mcp" "MODULE_NOT_FOUND" "mcp module not yet implemented" ""; return $EXIT_FAIL; }
+            cmd_mcp_serve "$@"
+            ;;
+        *)
+            iez_log error "Unknown group: $group"
+            _iez_show_help
+            return $EXIT_USAGE
+            ;;
+    esac
+}
+
+# =============================================================================
+# Main
+# =============================================================================
+
+main() {
+    # Check jq first
+    iez_require_jq
+
+    # Discover config
+    iez_config_discover
+
+    # Parse global flags
+    _iez_parse_globals "$@"
+
+    # Start timer
+    iez_timer_start
+
+    # Route command
+    _iez_route "${_IEZ_ARGS[@]}"
+}
+
+main "$@"
