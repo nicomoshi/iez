@@ -290,7 +290,7 @@ _iez_route() {
 
     case "$group" in
         doctor)
-            cmd_doctor
+            cmd_doctor "$command" "$@"
             ;;
         config)
             case "$command" in

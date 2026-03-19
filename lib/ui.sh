@@ -95,13 +95,13 @@ cmd_ui_tree() {
             # Normalize AXe output — it already outputs JSON
             local result
             if [[ "$compact" == "true" ]]; then
-                result=$(echo "$raw" | jq '{elements: [.. | objects | select(.AXLabel or .AXUniqueId) | {
+                result=$(echo "$raw" | jq '{elements: [.. | objects | select(.AXLabel != null and .AXLabel != "" and .role != null) | {
                     id: .AXUniqueId,
                     label: .AXLabel,
-                    role: .AXRole,
+                    role: .role,
                     value: .AXValue,
-                    frame: .AXFrame
-                }], format: "compact"}' 2>/dev/null || echo "$raw")
+                    frame: .frame
+                }] | unique_by(.label + (.id // "")), format: "compact"}' 2>/dev/null || echo "$raw")
             else
                 result=$(echo "$raw" | jq '{tree: ., format: "full"}' 2>/dev/null || echo "{\"tree\": $raw, \"format\": \"full\"}")
             fi
