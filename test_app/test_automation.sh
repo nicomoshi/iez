@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Apps 62-64: DrawerApp / DatePickerApp / WrapBadgeApp
-# Widgets: NavigationDrawer, AboutDialog, DatePicker, TimePicker, Wrap, Badge, InputChip, ActionChip
+# Apps 65-67: GridDashboard / TabFormValidator / DragDropList
+# Widgets: GridView, Card, LinearProgressIndicator, CircularProgressIndicator,
+#          TabBar, Form, TextFormField validation, DropdownButton,
+#          LongPressDraggable, DragTarget, ReorderableListView
 set -euo pipefail
 IEZ="./bin/iez"
 PASS=0; FAIL=0; TOTAL=0
@@ -29,377 +31,433 @@ rebuild_and_launch() {
 }
 
 ########################################################################
-# APP 62: DrawerApp — NavigationDrawer + AboutDialog
+# APP 65: GridDashboard — GridView, Card, ProgressIndicators
 ########################################################################
 cat > test_app/lib/main.dart << 'DART'
 import 'package:flutter/material.dart';
-void main() => runApp(const App62());
-class App62 extends StatelessWidget {
-  const App62({super.key});
+void main() => runApp(const App65());
+class App65 extends StatelessWidget {
+  const App65({super.key});
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'DrawerApp',
-      theme: ThemeData(colorSchemeSeed: Colors.purple, useMaterial3: true),
-      home: const DrawerHome(),
+      title: 'GridDashboard',
+      theme: ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true),
+      home: const GridDashboardHome(),
     );
   }
 }
-class DrawerHome extends StatefulWidget {
-  const DrawerHome({super.key});
+class GridDashboardHome extends StatefulWidget {
+  const GridDashboardHome({super.key});
   @override
-  State<DrawerHome> createState() => _DrawerHomeState();
+  State<GridDashboardHome> createState() => _GridDashboardHomeState();
 }
-class _DrawerHomeState extends State<DrawerHome> {
-  String _currentPage = 'Home';
+class _GridDashboardHomeState extends State<GridDashboardHome> {
+  final List<Map<String, dynamic>> _stats = [
+    {'title': 'Users', 'value': 1234, 'progress': 0.75, 'icon': Icons.people},
+    {'title': 'Sales', 'value': 567, 'progress': 0.45, 'icon': Icons.shopping_cart},
+    {'title': 'Revenue', 'value': 8901, 'progress': 0.9, 'icon': Icons.attach_money},
+    {'title': 'Orders', 'value': 342, 'progress': 0.6, 'icon': Icons.receipt},
+    {'title': 'Returns', 'value': 23, 'progress': 0.15, 'icon': Icons.undo},
+    {'title': 'Reviews', 'value': 456, 'progress': 0.8, 'icon': Icons.star},
+  ];
+  String? _selectedCard;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_currentPage), actions: [
-        IconButton(icon: const Icon(Icons.info_outline), onPressed: () {
-          showAboutDialog(context: context, applicationName: 'DrawerApp',
-            applicationVersion: '1.0.0', applicationLegalese: '© 2024 Test Corp');
-        }),
-      ]),
-      drawer: NavigationDrawer(
-        onDestinationSelected: (i) {
-          setState(() => _currentPage = ['Home', 'Favorites', 'Archive', 'Settings'][i]);
-          Navigator.pop(context);
-        },
-        children: [
-          const Padding(padding: EdgeInsets.fromLTRB(28, 16, 16, 10),
-            child: Text('DrawerApp', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-          const Divider(indent: 28, endIndent: 28),
-          const NavigationDrawerDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: Text('Home')),
-          const NavigationDrawerDestination(icon: Icon(Icons.favorite_outline), selectedIcon: Icon(Icons.favorite), label: Text('Favorites')),
-          const NavigationDrawerDestination(icon: Icon(Icons.archive_outlined), selectedIcon: Icon(Icons.archive), label: Text('Archive')),
-          const NavigationDrawerDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: Text('Settings')),
-        ],
-      ),
-      body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(_currentPage == 'Home' ? Icons.home : _currentPage == 'Favorites' ? Icons.favorite
-          : _currentPage == 'Archive' ? Icons.archive : Icons.settings,
-          size: 64, color: Theme.of(context).colorScheme.primary),
-        const SizedBox(height: 16),
-        Text('Welcome to $_currentPage', style: Theme.of(context).textTheme.headlineSmall),
-      ])),
-    );
-  }
-}
-DART
-
-echo "========================================"
-echo "APP 62: DrawerApp"
-echo "========================================"
-rebuild_and_launch
-
-echo "Step 1: Initial state"
-has_label "Home" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Home title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Home title"; }
-has_text "Welcome to Home" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Welcome text"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Welcome text"; }
-has_label "Open navigation menu" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Menu button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Menu button"; }
-
-echo "Step 2: Open drawer"
-R=$(run_iez $IEZ ui tap --label "Open navigation menu"); assert_ok "$R" "Open drawer"
-sleep 0.5
-has_text "DrawerApp" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Drawer header"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Drawer header"; }
-has_text "Favorites" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Favorites item"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Favorites item"; }
-has_text "Archive" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Archive item"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Archive item"; }
-has_text "Settings" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Settings item"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Settings item"; }
-
-echo "Step 3: Navigate to Favorites"
-# NavigationDrawer labels have "Tab X of Y" suffix — use coords
-# Favorites is Tab 2 of 4, at approx y=220
-R=$(run_iez $IEZ ui tap --coords 150,220); assert_ok "$R" "Tap Favorites"
-sleep 0.5
-has_text "Welcome to Favorites" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Favorites page"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Favorites page"; }
-
-echo "Step 4: Navigate to Settings"
-R=$(run_iez $IEZ ui tap --label "Open navigation menu"); assert_ok "$R" "Open drawer"
-sleep 0.5
-# Settings is Tab 4, at approx y=350
-R=$(run_iez $IEZ ui tap --coords 150,340); assert_ok "$R" "Tap Settings"
-sleep 0.5
-has_text "Welcome to Settings" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Settings page"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Settings page"; }
-
-echo "Step 5: Navigate to Archive"
-R=$(run_iez $IEZ ui tap --label "Open navigation menu"); assert_ok "$R" "Open drawer"
-sleep 0.5
-# Archive is Tab 3, at approx y=280
-R=$(run_iez $IEZ ui tap --coords 150,280); assert_ok "$R" "Tap Archive"
-sleep 0.5
-has_text "Welcome to Archive" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Archive page"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Archive page"; }
-
-echo "Step 6: AboutDialog"
-# Info button in AppBar
-R=$(run_iez $IEZ ui tap --coords 370,78); assert_ok "$R" "Tap info button"
-sleep 0.5
-has_text "DrawerApp" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ About dialog name"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ About dialog name"; }
-has_text "1.0.0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Version"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Version"; }
-has_label "Close" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Close button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Close button"; }
-R=$(run_iez $IEZ ui tap --label "Close"); assert_ok "$R" "Close dialog"
-sleep 0.3
-
-echo ""
-
-########################################################################
-# APP 63: DatePickerApp — DatePicker + TimePicker
-########################################################################
-cat > test_app/lib/main.dart << 'DART'
-import 'package:flutter/material.dart';
-void main() => runApp(const App63());
-class App63 extends StatelessWidget {
-  const App63({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'DateTimePicker',
-      theme: ThemeData(colorSchemeSeed: Colors.blue, useMaterial3: true),
-      home: const DateTimeHome(),
-    );
-  }
-}
-class DateTimeHome extends StatefulWidget {
-  const DateTimeHome({super.key});
-  @override
-  State<DateTimeHome> createState() => _DateTimeHomeState();
-}
-class _DateTimeHomeState extends State<DateTimeHome> {
-  DateTime _selectedDate = DateTime(2024, 6, 15);
-  TimeOfDay _selectedTime = const TimeOfDay(hour: 14, minute: 30);
-  DateTimeRange? _dateRange;
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('DateTimePicker')),
-      body: Padding(padding: const EdgeInsets.all(16), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(child: ListTile(
-            leading: const Icon(Icons.calendar_today),
-            title: const Text('Selected Date'),
-            subtitle: Text('${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2,'0')}-${_selectedDate.day.toString().padLeft(2,'0')}'),
-            trailing: FilledButton(onPressed: () async {
-              final d = await showDatePicker(context: context,
-                initialDate: _selectedDate, firstDate: DateTime(2020), lastDate: DateTime(2030));
-              if (d != null) setState(() => _selectedDate = d);
-            }, child: const Text('Pick Date')),
-          )),
-          const SizedBox(height: 16),
-          Card(child: ListTile(
-            leading: const Icon(Icons.access_time),
-            title: const Text('Selected Time'),
-            subtitle: Text('${_selectedTime.hour.toString().padLeft(2,'0')}:${_selectedTime.minute.toString().padLeft(2,'0')}'),
-            trailing: FilledButton(onPressed: () async {
-              final t = await showTimePicker(context: context, initialTime: _selectedTime);
-              if (t != null) setState(() => _selectedTime = t);
-            }, child: const Text('Pick Time')),
-          )),
-          const SizedBox(height: 16),
-          Card(child: ListTile(
-            leading: const Icon(Icons.date_range),
-            title: const Text('Date Range'),
-            subtitle: Text(_dateRange != null
-              ? '${_dateRange!.start.month}/${_dateRange!.start.day} - ${_dateRange!.end.month}/${_dateRange!.end.day}'
-              : 'Not selected'),
-            trailing: FilledButton(onPressed: () async {
-              final r = await showDateRangePicker(context: context,
-                firstDate: DateTime(2020), lastDate: DateTime(2030),
-                initialDateRange: DateTimeRange(start: DateTime(2024, 6, 1), end: DateTime(2024, 6, 7)));
-              if (r != null) setState(() => _dateRange = r);
-            }, child: const Text('Pick Range')),
-          )),
-        ],
-      )),
-    );
-  }
-}
-DART
-
-echo "========================================"
-echo "APP 63: DateTimePicker"
-echo "========================================"
-rebuild_and_launch
-
-echo "Step 1: Initial state"
-has_label "DateTimePicker" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
-has_text "Selected Date" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Date card"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Date card"; }
-has_text "Selected Time" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Time card"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Time card"; }
-has_text "Date Range" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Range card"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Range card"; }
-has_label "Pick Date" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Pick Date button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Pick Date button"; }
-has_label "Pick Time" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Pick Time button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Pick Time button"; }
-has_label "Pick Range" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Pick Range button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Pick Range button"; }
-has_text "2024-06-15" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Default date"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Default date"; }
-has_text "14:30" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Default time"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Default time"; }
-
-echo "Step 2: Open DatePicker"
-R=$(run_iez $IEZ ui tap --label "Pick Date"); assert_ok "$R" "Tap Pick Date"
-sleep 0.5
-has_label "OK" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ OK button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ OK button"; }
-has_label "Cancel" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Cancel button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Cancel button"; }
-# Confirm the date
-R=$(run_iez $IEZ ui tap --label "OK"); assert_ok "$R" "Confirm date"
-sleep 0.3
-
-echo "Step 3: Open TimePicker"
-R=$(run_iez $IEZ ui tap --label "Pick Time"); assert_ok "$R" "Tap Pick Time"
-sleep 0.5
-has_label "OK" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Time OK"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Time OK"; }
-has_label "Cancel" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Time Cancel"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Time Cancel"; }
-R=$(run_iez $IEZ ui tap --label "Cancel"); assert_ok "$R" "Cancel time"
-sleep 0.3
-
-echo "Step 4: Open DateRangePicker"
-R=$(run_iez $IEZ ui tap --label "Pick Range"); assert_ok "$R" "Tap Pick Range"
-sleep 0.5
-has_label "Save" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Save button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Save button"; }
-R=$(run_iez $IEZ ui tap --label "Save"); assert_ok "$R" "Save range"
-sleep 0.3
-has_text "Not selected" || { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Range selected"; } && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Range updated"; }
-
-echo ""
-
-########################################################################
-# APP 64: WrapBadgeApp — Wrap, Badge, InputChip, ActionChip, ColorScheme
-########################################################################
-cat > test_app/lib/main.dart << 'DART'
-import 'package:flutter/material.dart';
-void main() => runApp(const App64());
-class App64 extends StatelessWidget {
-  const App64({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'ChipGallery',
-      theme: ThemeData(colorSchemeSeed: Colors.amber, useMaterial3: true),
-      home: const ChipGalleryHome(),
-    );
-  }
-}
-class ChipGalleryHome extends StatefulWidget {
-  const ChipGalleryHome({super.key});
-  @override
-  State<ChipGalleryHome> createState() => _ChipGalleryHomeState();
-}
-class _ChipGalleryHomeState extends State<ChipGalleryHome> {
-  final Set<String> _selectedTags = {'Flutter'};
-  final List<String> _allTags = ['Flutter', 'Dart', 'iOS', 'Android', 'Web', 'Desktop', 'Firebase', 'Riverpod'];
-  final List<String> _inputChips = ['Bug', 'Feature'];
-  String _lastAction = 'None';
-  int _notificationCount = 3;
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('ChipGallery'), actions: [
-        Badge(label: Text('$_notificationCount'), child: IconButton(
-          icon: const Icon(Icons.notifications_outlined),
-          onPressed: () => setState(() => _notificationCount = 0),
+      appBar: AppBar(title: const Text('GridDashboard')),
+      body: Column(children: [
+        if (_selectedCard != null) Container(
+          width: double.infinity, padding: const EdgeInsets.all(12),
+          color: Theme.of(context).colorScheme.primaryContainer,
+          child: Text('Selected: $_selectedCard', textAlign: TextAlign.center,
+            style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer)),
+        ),
+        Expanded(child: GridView.builder(
+          padding: const EdgeInsets.all(12),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.3),
+          itemCount: _stats.length,
+          itemBuilder: (ctx, i) {
+            final s = _stats[i];
+            return Card(
+              child: InkWell(
+                onTap: () => setState(() => _selectedCard = s['title']),
+                child: Padding(padding: const EdgeInsets.all(12), child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Icon(s['icon'] as IconData, size: 20),
+                      const SizedBox(width: 8),
+                      Text(s['title'] as String, style: Theme.of(ctx).textTheme.labelLarge),
+                    ]),
+                    const Spacer(),
+                    Text('${s['value']}', style: Theme.of(ctx).textTheme.headlineMedium),
+                    const SizedBox(height: 4),
+                    LinearProgressIndicator(value: s['progress'] as double),
+                    const SizedBox(height: 4),
+                    Text('${((s['progress'] as double) * 100).round()}%',
+                      style: Theme.of(ctx).textTheme.bodySmall),
+                  ],
+                )),
+              ),
+            );
+          },
         )),
-        const SizedBox(width: 8),
       ]),
-      body: SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Filter Chips', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 4, children: _allTags.map((tag) =>
-            FilterChip(
-              label: Text(tag),
-              selected: _selectedTags.contains(tag),
-              onSelected: (v) => setState(() { v ? _selectedTags.add(tag) : _selectedTags.remove(tag); }),
-            ),
-          ).toList()),
-          const SizedBox(height: 8),
-          Text('Selected: ${_selectedTags.join(", ")}'),
-          const SizedBox(height: 24),
-          Text('Input Chips', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 4, children: [
-            ..._inputChips.map((c) => InputChip(
-              label: Text(c),
-              onDeleted: () => setState(() => _inputChips.remove(c)),
-              onPressed: () => setState(() => _lastAction = 'Pressed $c'),
-            )),
-            ActionChip(label: const Text('+ Add'), onPressed: () {
-              setState(() { _inputChips.add('Label ${_inputChips.length + 1}'); _lastAction = 'Added chip'; });
-            }),
-          ]),
-          const SizedBox(height: 8),
-          Text('Last: $_lastAction'),
-          const SizedBox(height: 24),
-          Text('Action Chips', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, children: [
-            ActionChip(avatar: const Icon(Icons.copy, size: 18), label: const Text('Copy'),
-              onPressed: () => setState(() => _lastAction = 'Copied')),
-            ActionChip(avatar: const Icon(Icons.share, size: 18), label: const Text('Share'),
-              onPressed: () => setState(() => _lastAction = 'Shared')),
-            ActionChip(avatar: const Icon(Icons.download, size: 18), label: const Text('Download'),
-              onPressed: () => setState(() => _lastAction = 'Downloaded')),
-          ]),
-          const SizedBox(height: 24),
-          Text('Badge: ${_notificationCount > 0 ? "$_notificationCount notifications" : "No notifications"}'),
-        ],
-      )),
     );
   }
 }
 DART
 
 echo "========================================"
-echo "APP 64: ChipGallery"
+echo "APP 65: GridDashboard"
 echo "========================================"
 rebuild_and_launch
 
 echo "Step 1: Initial state"
-has_label "ChipGallery" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
-has_label "Flutter" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Flutter chip"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Flutter chip"; }
-has_label "Dart" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Dart chip"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Dart chip"; }
-has_label "iOS" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ iOS chip"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ iOS chip"; }
-has_text "Selected: Flutter" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Default selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Default selected"; }
-has_label "Bug" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Bug input chip"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Bug input chip"; }
-has_label "Feature" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Feature input chip"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Feature input chip"; }
-has_label "+ Add" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Add chip"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Add chip"; }
-has_label "Copy" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Copy action"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Copy action"; }
-has_label "Share" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Share action"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Share action"; }
-has_label "Download" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Download action"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Download action"; }
-has_text "3 notifications" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Badge count"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Badge count"; }
+has_label "GridDashboard" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
+has_text "Users" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Users card"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Users card"; }
+has_text "Sales" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Sales card"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Sales card"; }
+has_text "Revenue" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Revenue card"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Revenue card"; }
+has_text "Orders" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Orders card"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Orders card"; }
+has_text "1234" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Users value"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Users value"; }
+has_text "75%" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Users progress"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Users progress"; }
 
-echo "Step 2: Select Dart + iOS chips"
-R=$(run_iez $IEZ ui tap --label "Dart"); assert_ok "$R" "Tap Dart"
+echo "Step 2: Tap Users card"
+R=$(run_iez $IEZ ui tap --coords 103,170); assert_ok "$R" "Tap Users"
 sleep 0.3
-R=$(run_iez $IEZ ui tap --label "iOS"); assert_ok "$R" "Tap iOS"
-sleep 0.3
-has_text "Flutter, Dart, iOS" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Multi-select"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Multi-select"; }
+has_text "Selected: Users" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Users selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Users selected"; }
 
-echo "Step 3: Deselect Flutter"
-R=$(run_iez $IEZ ui tap --label "Flutter"); assert_ok "$R" "Deselect Flutter"
+echo "Step 3: Tap Revenue card"
+R=$(run_iez $IEZ ui tap --coords 103,345); assert_ok "$R" "Tap Revenue"
 sleep 0.3
-has_text "Selected: Dart, iOS" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Flutter deselected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Flutter deselected"; }
+has_text "Selected: Revenue" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Revenue selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Revenue selected"; }
 
-echo "Step 4: Action chips"
-R=$(run_iez $IEZ ui tap --label "Copy"); assert_ok "$R" "Tap Copy"
+echo "Step 4: Scroll down to see more"
+R=$(run_iez $IEZ ui swipe up); assert_ok "$R" "Scroll down"
 sleep 0.3
-has_text "Last: Copied" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Copied action"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Copied action"; }
-R=$(run_iez $IEZ ui tap --label "Share"); assert_ok "$R" "Tap Share"
-sleep 0.3
-has_text "Last: Shared" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Shared action"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Shared action"; }
+has_text "Reviews" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Reviews visible"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Reviews visible"; }
 
-echo "Step 5: Add input chip"
-R=$(run_iez $IEZ ui tap --label "+ Add"); assert_ok "$R" "Tap + Add"
-sleep 0.3
-has_text "Added chip" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Chip added"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Chip added"; }
-has_label "Label 3" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Label 3 visible"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Label 3 visible"; }
+echo ""
 
-echo "Step 6: Press Bug input chip"
-R=$(run_iez $IEZ ui tap --label "Bug"); assert_ok "$R" "Tap Bug"
-sleep 0.3
-has_text "Pressed Bug" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Bug pressed"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Bug pressed"; }
+########################################################################
+# APP 66: TabFormValidator — TabBar, Form with validation, DropdownButton
+########################################################################
+cat > test_app/lib/main.dart << 'DART'
+import 'package:flutter/material.dart';
+void main() => runApp(const App66());
+class App66 extends StatelessWidget {
+  const App66({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'TabForm',
+      theme: ThemeData(colorSchemeSeed: Colors.orange, useMaterial3: true),
+      home: const TabFormHome(),
+    );
+  }
+}
+class TabFormHome extends StatefulWidget {
+  const TabFormHome({super.key});
+  @override
+  State<TabFormHome> createState() => _TabFormHomeState();
+}
+class _TabFormHomeState extends State<TabFormHome> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final _formKey = GlobalKey<FormState>();
+  String _name = '';
+  String _email = '';
+  String _role = 'Developer';
+  bool _submitted = false;
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+  @override
+  void dispose() { _tabController.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('TabForm'),
+        bottom: TabBar(controller: _tabController, tabs: const [
+          Tab(text: 'Profile'),
+          Tab(text: 'Settings'),
+          Tab(text: 'About'),
+        ]),
+      ),
+      body: TabBarView(controller: _tabController, children: [
+        // Tab 1: Form
+        SingleChildScrollView(padding: const EdgeInsets.all(16), child: Form(
+          key: _formKey,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (_submitted) Container(
+              width: double.infinity, padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+              child: Text('Saved: $_name ($_email) as $_role', style: const TextStyle(color: Colors.green)),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              decoration: const InputDecoration(labelText: 'Full Name', border: OutlineInputBorder()),
+              validator: (v) => v == null || v.isEmpty ? 'Name is required' : null,
+              onSaved: (v) => _name = v!,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Email is required';
+                if (!v.contains('@')) return 'Invalid email';
+                return null;
+              },
+              onSaved: (v) => _email = v!,
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _role,
+              decoration: const InputDecoration(labelText: 'Role', border: OutlineInputBorder()),
+              items: ['Developer', 'Designer', 'Manager', 'QA'].map((r) =>
+                DropdownMenuItem(value: r, child: Text(r))).toList(),
+              onChanged: (v) => _role = v!,
+            ),
+            const SizedBox(height: 24),
+            FilledButton(onPressed: () {
+              if (_formKey.currentState!.validate()) {
+                _formKey.currentState!.save();
+                setState(() => _submitted = true);
+              }
+            }, child: const Text('Save')),
+          ]),
+        )),
+        // Tab 2: Settings
+        const Center(child: Text('Settings Page')),
+        // Tab 3: About
+        const Center(child: Text('About Page')),
+      ]),
+    );
+  }
+}
+DART
 
-echo "Step 7: Clear notifications"
-# Badge is on the notification icon in AppBar
-R=$(run_iez $IEZ ui tap --coords 370,78); assert_ok "$R" "Tap notifications"
+echo "========================================"
+echo "APP 66: TabForm"
+echo "========================================"
+rebuild_and_launch
+
+echo "Step 1: Initial state"
+has_label "TabForm" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
+# Tab labels have "\nTab X of Y" suffix — use has_text (substring match)
+has_text "Profile" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Profile tab"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Profile tab"; }
+has_text "Settings" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Settings tab"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Settings tab"; }
+has_text "About" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ About tab"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ About tab"; }
+has_label "Full Name" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Name field"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Name field"; }
+has_label "Email" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Email field"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Email field"; }
+has_label "Save" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Save button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Save button"; }
+
+echo "Step 2: Submit empty form (validation)"
+R=$(run_iez $IEZ ui tap --label "Save"); assert_ok "$R" "Tap Save (empty)"
 sleep 0.3
-has_text "No notifications" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Badge cleared"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Badge cleared"; }
+has_text "Name is required" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Name validation"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Name validation"; }
+has_text "Email is required" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Email validation"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Email validation"; }
+
+echo "Step 3: Fill form"
+R=$(run_iez $IEZ ui type "Bob Smith" --label "Full Name"); assert_ok "$R" "Type name"
+sleep 0.3
+R=$(run_iez $IEZ ui type "bob@test.com" --label "Email"); assert_ok "$R" "Type email"
+sleep 0.3
+
+echo "Step 4: Submit valid form"
+R=$(run_iez $IEZ ui tap --label "Save"); assert_ok "$R" "Save form"
+sleep 0.5
+has_text "Saved:" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Save confirmation"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Save confirmation"; }
+has_text "Bob Smith" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Name saved"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Name saved"; }
+
+echo "Step 5: Switch tabs (use coords — tab labels have multiline suffixes)"
+# Settings tab is middle (~200,120), About is right (~335,120), Profile is left (~67,120)
+R=$(run_iez $IEZ ui tap --coords 200,120); assert_ok "$R" "Tap Settings tab"
+sleep 0.5
+has_text "Settings Page" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Settings content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Settings content"; }
+R=$(run_iez $IEZ ui tap --coords 335,120); assert_ok "$R" "Tap About tab"
+sleep 0.5
+has_text "About Page" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ About content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ About content"; }
+R=$(run_iez $IEZ ui tap --coords 67,120); assert_ok "$R" "Back to Profile"
+sleep 0.3
+has_text "Saved:" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Form state preserved"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Form state preserved"; }
+
+echo ""
+
+########################################################################
+# APP 67: BottomSheetTypes — Modal + Persistent BottomSheet, ShowDialog variants
+########################################################################
+cat > test_app/lib/main.dart << 'DART'
+import 'package:flutter/material.dart';
+void main() => runApp(const App67());
+class App67 extends StatelessWidget {
+  const App67({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'DialogShowcase',
+      theme: ThemeData(colorSchemeSeed: Colors.cyan, useMaterial3: true),
+      home: const DialogShowcaseHome(),
+    );
+  }
+}
+class DialogShowcaseHome extends StatefulWidget {
+  const DialogShowcaseHome({super.key});
+  @override
+  State<DialogShowcaseHome> createState() => _DialogShowcaseHomeState();
+}
+class _DialogShowcaseHomeState extends State<DialogShowcaseHome> {
+  String _lastResult = 'None';
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('DialogShowcase')),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        Text('Last result: $_lastResult', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 24),
+        FilledButton.icon(
+          icon: const Icon(Icons.warning),
+          label: const Text('Alert Dialog'),
+          onPressed: () => showDialog(context: context, builder: (ctx) => AlertDialog(
+            title: const Text('Confirm Delete'),
+            content: const Text('Are you sure you want to delete this item?'),
+            actions: [
+              TextButton(onPressed: () { Navigator.pop(ctx); setState(() => _lastResult = 'Cancelled'); },
+                child: const Text('Cancel')),
+              FilledButton(onPressed: () { Navigator.pop(ctx); setState(() => _lastResult = 'Deleted'); },
+                child: const Text('Delete')),
+            ],
+          )),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          icon: const Icon(Icons.list),
+          label: const Text('Simple Dialog'),
+          onPressed: () => showDialog(context: context, builder: (ctx) => SimpleDialog(
+            title: const Text('Choose Color'),
+            children: ['Red', 'Green', 'Blue'].map((c) => SimpleDialogOption(
+              onPressed: () { Navigator.pop(ctx); setState(() => _lastResult = 'Color: $c'); },
+              child: Text(c),
+            )).toList(),
+          )),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          icon: const Icon(Icons.fullscreen),
+          label: const Text('Full Screen Dialog'),
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (ctx) => Scaffold(
+              appBar: AppBar(title: const Text('Full Screen'), actions: [
+                TextButton(onPressed: () { Navigator.pop(ctx); setState(() => _lastResult = 'Full screen done'); },
+                  child: const Text('Done')),
+              ]),
+              body: const Center(child: Text('Full screen dialog content')),
+            ),
+          )),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          icon: const Icon(Icons.vertical_align_bottom),
+          label: const Text('Modal Bottom Sheet'),
+          onPressed: () => showModalBottomSheet(context: context, builder: (ctx) => Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('Modal Sheet', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              ListTile(leading: const Icon(Icons.photo), title: const Text('Photo'),
+                onTap: () { Navigator.pop(ctx); setState(() => _lastResult = 'Photo'); }),
+              ListTile(leading: const Icon(Icons.camera), title: const Text('Camera'),
+                onTap: () { Navigator.pop(ctx); setState(() => _lastResult = 'Camera'); }),
+              ListTile(leading: const Icon(Icons.file_copy), title: const Text('File'),
+                onTap: () { Navigator.pop(ctx); setState(() => _lastResult = 'File'); }),
+            ]),
+          )),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          icon: const Icon(Icons.info),
+          label: const Text('Snackbar'),
+          onPressed: () {
+            setState(() => _lastResult = 'Snackbar shown');
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('This is a snackbar message'),
+              duration: Duration(seconds: 2),
+            ));
+          },
+        ),
+      ]),
+    );
+  }
+}
+DART
+
+echo "========================================"
+echo "APP 67: DialogShowcase"
+echo "========================================"
+rebuild_and_launch
+
+echo "Step 1: Initial state"
+has_label "DialogShowcase" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
+has_text "Last result: None" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Default result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Default result"; }
+has_label "Alert Dialog" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Alert button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Alert button"; }
+has_label "Simple Dialog" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Simple button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Simple button"; }
+has_label "Full Screen Dialog" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Full screen button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Full screen button"; }
+has_label "Modal Bottom Sheet" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Modal button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Modal button"; }
+has_label "Snackbar" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Snackbar button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Snackbar button"; }
+
+echo "Step 2: AlertDialog"
+R=$(run_iez $IEZ ui tap --label "Alert Dialog"); assert_ok "$R" "Open alert"
+sleep 0.5
+has_text "Confirm Delete" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Alert title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Alert title"; }
+has_text "Are you sure" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Alert content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Alert content"; }
+R=$(run_iez $IEZ ui tap --label "Delete"); assert_ok "$R" "Tap Delete"
+sleep 0.3
+has_text "Last result: Deleted" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Deleted result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Deleted result"; }
+
+echo "Step 3: AlertDialog Cancel"
+R=$(run_iez $IEZ ui tap --label "Alert Dialog"); assert_ok "$R" "Open alert again"
+sleep 0.5
+R=$(run_iez $IEZ ui tap --label "Cancel"); assert_ok "$R" "Tap Cancel"
+sleep 0.3
+has_text "Last result: Cancelled" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Cancelled result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Cancelled result"; }
+
+echo "Step 4: SimpleDialog"
+R=$(run_iez $IEZ ui tap --label "Simple Dialog"); assert_ok "$R" "Open simple dialog"
+sleep 0.5
+has_text "Choose Color" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Simple title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Simple title"; }
+has_text "Red" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Red option"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Red option"; }
+has_text "Green" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Green option"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Green option"; }
+R=$(run_iez $IEZ ui tap --label "Blue"); assert_ok "$R" "Select Blue"
+sleep 0.3
+has_text "Color: Blue" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Blue result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Blue result"; }
+
+echo "Step 5: Full Screen Dialog"
+R=$(run_iez $IEZ ui tap --label "Full Screen Dialog"); assert_ok "$R" "Open full screen"
+sleep 0.5
+has_text "Full screen dialog content" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ FS content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ FS content"; }
+has_label "Done" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Done button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Done button"; }
+R=$(run_iez $IEZ ui tap --label "Done"); assert_ok "$R" "Tap Done"
+sleep 0.3
+has_text "Full screen done" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ FS result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ FS result"; }
+
+echo "Step 6: Modal Bottom Sheet"
+R=$(run_iez $IEZ ui tap --label "Modal Bottom Sheet"); assert_ok "$R" "Open modal sheet"
+sleep 0.5
+has_text "Modal Sheet" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Sheet title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Sheet title"; }
+has_text "Photo" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Photo option"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Photo option"; }
+has_text "Camera" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Camera option"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Camera option"; }
+R=$(run_iez $IEZ ui tap --label "Camera"); assert_ok "$R" "Select Camera"
+sleep 0.3
+has_text "Last result: Camera" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Camera result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Camera result"; }
+
+echo "Step 7: Snackbar"
+R=$(run_iez $IEZ ui tap --label "Snackbar"); assert_ok "$R" "Show snackbar"
+sleep 0.5
+has_text "snackbar message" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Snackbar text"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Snackbar text"; }
 
 END=$(date +%s)
 echo ""

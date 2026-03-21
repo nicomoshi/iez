@@ -1,81 +1,102 @@
 import 'package:flutter/material.dart';
-void main() => runApp(const App64());
-class App64 extends StatelessWidget {
-  const App64({super.key});
+void main() => runApp(const App67());
+class App67 extends StatelessWidget {
+  const App67({super.key});
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ChipGallery',
-      theme: ThemeData(colorSchemeSeed: Colors.amber, useMaterial3: true),
-      home: const ChipGalleryHome(),
+      title: 'DialogShowcase',
+      theme: ThemeData(colorSchemeSeed: Colors.cyan, useMaterial3: true),
+      home: const DialogShowcaseHome(),
     );
   }
 }
-class ChipGalleryHome extends StatefulWidget {
-  const ChipGalleryHome({super.key});
+class DialogShowcaseHome extends StatefulWidget {
+  const DialogShowcaseHome({super.key});
   @override
-  State<ChipGalleryHome> createState() => _ChipGalleryHomeState();
+  State<DialogShowcaseHome> createState() => _DialogShowcaseHomeState();
 }
-class _ChipGalleryHomeState extends State<ChipGalleryHome> {
-  final Set<String> _selectedTags = {'Flutter'};
-  final List<String> _allTags = ['Flutter', 'Dart', 'iOS', 'Android', 'Web', 'Desktop', 'Firebase', 'Riverpod'];
-  final List<String> _inputChips = ['Bug', 'Feature'];
-  String _lastAction = 'None';
-  int _notificationCount = 3;
+class _DialogShowcaseHomeState extends State<DialogShowcaseHome> {
+  String _lastResult = 'None';
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('ChipGallery'), actions: [
-        Badge(label: Text('$_notificationCount'), child: IconButton(
-          icon: const Icon(Icons.notifications_outlined),
-          onPressed: () => setState(() => _notificationCount = 0),
-        )),
-        const SizedBox(width: 8),
-      ]),
-      body: SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Filter Chips', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 4, children: _allTags.map((tag) =>
-            FilterChip(
-              label: Text(tag),
-              selected: _selectedTags.contains(tag),
-              onSelected: (v) => setState(() { v ? _selectedTags.add(tag) : _selectedTags.remove(tag); }),
+      appBar: AppBar(title: const Text('DialogShowcase')),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        Text('Last result: $_lastResult', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 24),
+        FilledButton.icon(
+          icon: const Icon(Icons.warning),
+          label: const Text('Alert Dialog'),
+          onPressed: () => showDialog(context: context, builder: (ctx) => AlertDialog(
+            title: const Text('Confirm Delete'),
+            content: const Text('Are you sure you want to delete this item?'),
+            actions: [
+              TextButton(onPressed: () { Navigator.pop(ctx); setState(() => _lastResult = 'Cancelled'); },
+                child: const Text('Cancel')),
+              FilledButton(onPressed: () { Navigator.pop(ctx); setState(() => _lastResult = 'Deleted'); },
+                child: const Text('Delete')),
+            ],
+          )),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          icon: const Icon(Icons.list),
+          label: const Text('Simple Dialog'),
+          onPressed: () => showDialog(context: context, builder: (ctx) => SimpleDialog(
+            title: const Text('Choose Color'),
+            children: ['Red', 'Green', 'Blue'].map((c) => SimpleDialogOption(
+              onPressed: () { Navigator.pop(ctx); setState(() => _lastResult = 'Color: $c'); },
+              child: Text(c),
+            )).toList(),
+          )),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          icon: const Icon(Icons.fullscreen),
+          label: const Text('Full Screen Dialog'),
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (ctx) => Scaffold(
+              appBar: AppBar(title: const Text('Full Screen'), actions: [
+                TextButton(onPressed: () { Navigator.pop(ctx); setState(() => _lastResult = 'Full screen done'); },
+                  child: const Text('Done')),
+              ]),
+              body: const Center(child: Text('Full screen dialog content')),
             ),
-          ).toList()),
-          const SizedBox(height: 8),
-          Text('Selected: ${_selectedTags.join(", ")}'),
-          const SizedBox(height: 24),
-          Text('Input Chips', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 4, children: [
-            ..._inputChips.map((c) => InputChip(
-              label: Text(c),
-              onDeleted: () => setState(() => _inputChips.remove(c)),
-              onPressed: () => setState(() => _lastAction = 'Pressed $c'),
-            )),
-            ActionChip(label: const Text('+ Add'), onPressed: () {
-              setState(() { _inputChips.add('Label ${_inputChips.length + 1}'); _lastAction = 'Added chip'; });
-            }),
-          ]),
-          const SizedBox(height: 8),
-          Text('Last: $_lastAction'),
-          const SizedBox(height: 24),
-          Text('Action Chips', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, children: [
-            ActionChip(avatar: const Icon(Icons.copy, size: 18), label: const Text('Copy'),
-              onPressed: () => setState(() => _lastAction = 'Copied')),
-            ActionChip(avatar: const Icon(Icons.share, size: 18), label: const Text('Share'),
-              onPressed: () => setState(() => _lastAction = 'Shared')),
-            ActionChip(avatar: const Icon(Icons.download, size: 18), label: const Text('Download'),
-              onPressed: () => setState(() => _lastAction = 'Downloaded')),
-          ]),
-          const SizedBox(height: 24),
-          Text('Badge: ${_notificationCount > 0 ? "$_notificationCount notifications" : "No notifications"}'),
-        ],
-      )),
+          )),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          icon: const Icon(Icons.vertical_align_bottom),
+          label: const Text('Modal Bottom Sheet'),
+          onPressed: () => showModalBottomSheet(context: context, builder: (ctx) => Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('Modal Sheet', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              ListTile(leading: const Icon(Icons.photo), title: const Text('Photo'),
+                onTap: () { Navigator.pop(ctx); setState(() => _lastResult = 'Photo'); }),
+              ListTile(leading: const Icon(Icons.camera), title: const Text('Camera'),
+                onTap: () { Navigator.pop(ctx); setState(() => _lastResult = 'Camera'); }),
+              ListTile(leading: const Icon(Icons.file_copy), title: const Text('File'),
+                onTap: () { Navigator.pop(ctx); setState(() => _lastResult = 'File'); }),
+            ]),
+          )),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          icon: const Icon(Icons.info),
+          label: const Text('Snackbar'),
+          onPressed: () {
+            setState(() => _lastResult = 'Snackbar shown');
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('This is a snackbar message'),
+              duration: Duration(seconds: 2),
+            ));
+          },
+        ),
+      ]),
     );
   }
 }
