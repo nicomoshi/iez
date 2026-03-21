@@ -257,7 +257,20 @@ iez is continuously tested against real-world open-source Flutter apps to valida
 | 57 | Weather Dashboard | custom | PageView/TabBar/Alerts | 11 | 32 | **100%** | 18s | TabBar (2 tabs), PageView.builder with page indicators (3 cities), ExpansionTile alerts, SwitchListTile Celsius toggle, DropdownButton city, Slider refresh interval, coord swipe PageView |
 | 58 | Contacts | custom | Drawer/Detail/About | 11 | 35 | **100%** | 19s | ListView.separated, CircleAvatar initials, Drawer groups filter, InheritedNotifier state, PopupMenuButton overflow, AboutDialog, ContactDetail with Call/Message/Email IconButtons, AlertDialog delete, TextFormField validation |
 
-**Summary:** 58 apps, 631 steps, 1999 assertions, **100% pass rate**
+| 59 | Recipe Book | custom | GridView/Checkbox/Chips | 8 | 21 | **100%** | 12s | NavigationBar (2 tabs), GridView.count recipe cards, CheckboxListTile ingredients, ChoiceChip tags, DropdownButton difficulty (coords), Wrap, CircleAvatar numbered instructions, duplicate-label avoidance |
+| 60 | Task Board | custom | PageView/Kanban/Settings | 10 | 26 | **100%** | 22s | PageView (3 Kanban columns, coord swipe), Card task items, Chip priority, status-change AlertDialog, ModalBottomSheet settings, SwitchListTile toggle, RadioListTile sort, Scrim dismiss |
+| 61 | Music Player | custom | TabBar/Slider/Playlists | 9 | 21 | **100%** | 13s | TabBar+TabBarView (3 tabs, coords), song ListView multiline labels, now-playing bar, Slider seek with Semantics, IconButton play/pause/skip, star rating, ReorderableListView playlists |
+
+| 62 | Shopping Cart | custom | Segmented/Badge/Checkout | 8 | 21 | **100%** | 13s | SegmentedButton category filter, Badge cart count (multiline label), ListTile products, unique Add tooltips, quantity +/- buttons, Dismissible, checkout AlertDialog, SnackBar |
+| 63 | Survey Form | custom | Stepper/Validation/Submit | 10 | 21 | **100%** | 19s | Stepper (3 steps), TextFormField validation (required, email format), RadioListTile satisfaction, SwitchListTile newsletter, review summary, submit + reset flow |
+| 64 | File Manager | custom | ExpansionTile/Drawer/Star | 8 | 22 | **100%** | 13s | ExpansionTile folder tree, PopupMenuButton sort, Drawer filter (All/Folder/Document/Image/Starred), star/unstar toggle, delete AlertDialog, DrawerHeader |
+| 65 | Dashboard Analytics | custom | TabBar/DataTable/Export | 6 | 20 | **100%** | 10s | TabBar+TabBarView (2 tabs, coords), SegmentedButton time period (Day/Week/Month), KPI cards with change%, DataTable columns, export AlertDialog (PDF/CSV) |
+
+| 66 | Fitness Tracker | custom | Progress/Workout/History | 7 | 18 | **100%** | 13s | CircularProgressIndicator stats, OutlinedButton step counter, ModalBottomSheet workout log, TextField+DropdownButton, ListView.separated history, push/pop navigation |
+| 67 | Chat App | custom | Messages/Send/PopupMenu | 7 | 19 | **100%** | 15s | ListView.separated conversations, CircleAvatar+Badge multiline labels, chat detail with message bubbles, TextField+Send, PopupMenuButton (Mute/Clear Chat), AlertDialog clear confirm, search dialog |
+| 68 | Bookmark Manager | custom | FilterChip/Search/FAB | 8 | 21 | **100%** | 19s | FilterChip category filter (All/Dev/Social/Reference), TextField search, favorite/unfavorite toggle, delete AlertDialog, FAB add dialog with TextField+DropdownButton, bookmark count label |
+
+**Summary:** 68 apps, 712 steps, 2264 assertions, **100% pass rate**
 
 **T-100% = Time from first app launch to 100% pass rate** (— = not measured for early apps)
 
