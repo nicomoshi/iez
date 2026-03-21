@@ -1,0 +1,131 @@
+=== App 122: MusicLibrary ===
+com.test.musicLibrary: 58014
+  ✔ Music Library is in foreground
+--- Songs Tab (Home) ---
+  ✓ App title
+  ✓ Bohemian Rhapsody
+  ✓ Billie Jean
+  ✓ Hotel California
+  ✓ Imagine
+  ✓ Smells Like Teen Spirit
+  ✓ Sweet Child O Mine
+  ✓ Songs tab
+  ✓ Albums tab
+  ✓ Playlists tab
+--- Tap song for detail ---
+  ✓ Tap Bohemian Rhapsody
+  ✓ Song title
+  ✓ Artist
+  ✓ Album
+  ✓ Add to Playlist
+  ✓ Back from song detail
+--- Switch to Albums tab (coords — BottomNavigationBar) ---
+  ✓ Tap Albums tab
+  ✓ A Night at the Opera
+  ✓ Thriller
+  ✓ Nevermind
+--- Tap album for detail ---
+  ✓ Tap album
+  ✓ Album detail
+  ✓ Back from album detail
+--- Switch to Playlists tab (coords) ---
+  ✓ Tap Playlists tab
+  ✓ Road Trip playlist
+  ✓ Workout playlist
+--- Navigate to Equalizer ---
+  ✓ Tap overflow menu
+  ✓ Tap Equalizer
+  ✓ Equalizer heading
+  ✓ Flat preset
+  ✓ Rock preset
+  ✓ Jazz preset
+  ✓ Back from Equalizer
+  ✓ Screenshot MusicLibrary
+
+=== App 123: JobTracker ===
+com.test.jobTracker: 58808
+  ✔ Job Tracker is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ All filter
+  ✓ Applied filter
+  ✓ Interview filter
+  ✓ Offer filter
+  ✓ Rejected filter
+  ✓ Google
+  ✓ Apple
+  ✓ Meta
+  ✓ Netflix
+  ✓ Spotify
+  ✓ Add FAB
+--- Filter by Interview ---
+  ✓ Tap Interview filter
+  ✓ Apple interview
+--- Filter back to All ---
+  ✓ Tap All filter
+--- Tap application for detail ---
+  ✓ Tap Google
+  ✓ Company
+  ✓ Position
+  ✓ Salary
+  ✓ Update Status
+  ✓ Edit button
+  ✓ Back from detail
+--- Navigate to Analytics ---
+  ✓ Tap overflow menu
+  ✓ Tap Analytics
+  ✓ Analytics heading
+  ✓ Total Applications
+  ✓ Back from Analytics
+--- Add new application ---
+  ✓ Tap Add
+  ✓ Add heading
+  ✓ Company field
+  ✓ Position field
+  ✓ Save button
+  ✓ Type company
+  ✓ Type position
+  ✓ Tap Save Application
+  ✓ Back on home
+  ✓ New application
+  ✓ Screenshot JobTracker
+
+=== App 124: HomeManager ===
+com.test.homeManager: 59766
+  ✔ Home Manager is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ Living Room
+  ✓ Bedroom
+  ✓ Kitchen
+  ✓ Garage
+  ✓ Device counts
+  ✓ Add Room FAB
+--- Tap room for detail ---
+  ✓ Tap Living Room
+  ✓ Room title
+  ✓ Smart Light
+  ✓ Smart TV
+  ✓ Thermostat
+  ✓ Back from room detail
+--- Navigate to Settings ---
+  ✓ Tap overflow menu
+  ✓ Tap Settings
+  ✓ Settings heading
+  ✓ Temperature Unit
+  ✓ Notifications
+  ✓ Back from Settings
+--- Add new room ---
+  ✓ Tap Add Room
+  ✓ Add heading
+  ✓ Room Name field
+  ✓ Save button
+  ✓ Type room name
+  ✓ Tap Save Room
+  ✓ Back on home
+  ✓ New room visible
+  ✓ Screenshot HomeManager
+
+=========================================
+  RESULTS: 100/100 passed, 0 failed
+=========================================
