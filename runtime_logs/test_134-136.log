@@ -1,0 +1,143 @@
+=== App 134: GroceryList ===
+com.test.groceryList: 80719
+  ✔ Grocery List is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ All filter
+  ✓ Produce filter
+  ✓ Dairy filter
+  ✓ Meat filter
+  ✓ Pantry filter
+  ✓ Bananas
+  ✓ Whole Milk
+  ✓ Chicken Breast
+  ✓ Ice Cream
+  ✓ Eggs
+  ✓ Pasta (checked)
+  ✓ Bread (checked)
+  ✓ Broccoli
+  ✓ Add Item FAB
+--- Filter by Produce ---
+  ✓ Tap Produce filter
+  ✓ Bananas filtered
+  ✓ Broccoli filtered
+--- Filter back to All ---
+  ✓ Tap All filter
+--- Tap item for detail (long press or use coords past checkbox) ---
+  ✓ Home screenshot
+--- Navigate to Meal Plans ---
+  ✓ Tap overflow menu
+  ✓ Tap Meal Plans
+  ✓ Meal Plans heading
+  ✓ Monday
+  ✓ Back from Meal Plans
+--- Add new item ---
+  ✓ Tap Add Item
+  ✓ Add heading
+  ✓ Item Name field
+  ✓ Quantity field
+  ✓ Save button
+  ✓ Type item name
+  ✓ Type quantity
+  ✓ Tap Save Item
+  ✓ Back on home
+  ✓ New item
+  ✓ Screenshot GroceryList
+
+=== App 135: ProjectTimer ===
+com.test.projectTimer: 81536
+  ✔ Project Timer is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ Summary card
+  ✓ Hours Today
+  ✓ Hours This Week
+  ✓ Website Redesign
+  ✓ Mobile App
+  ✓ Logo Design
+  ✓ API Integration
+  ✓ Active status
+  ✓ Completed status
+  ✓ Paused status
+  ✓ Add Project FAB
+--- Tap project for detail ---
+  ✓ Tap Website Redesign
+  ✓ Project title
+  ✓ Client
+  ✓ Timer button
+  ✓ Edit button
+  ✓ Back from detail
+--- Navigate to Reports ---
+  ✓ Tap overflow menu
+  ✓ Tap Reports
+  ✓ Reports heading
+  ✓ Total Earnings
+  ✓ Back from Reports
+--- Add new project ---
+  ✓ Tap Add Project
+  ✓ Add heading
+  ✓ Project Name field
+  ✓ Client field
+  ✓ Save button
+  ✓ Type project name
+  ✓ Type client
+  ✓ Tap Save Project
+  ✓ Back on home
+  ✓ New project
+  ✓ Screenshot ProjectTimer
+
+=== App 136: WineJournal ===
+com.test.wineJournal: 82373
+  ✔ Wine Journal is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ All filter
+  ✓ Red filter
+  ✓ White filter
+  ✓ Sparkling filter
+  ✓ Chateau Margaux
+  ✓ Cloudy Bay
+  ✓ Dom Perignon
+  ✓ Whispering Angel
+  ✓ Opus One
+  ✓ Chablis Premier
+  ✓ Add Wine FAB
+--- Filter by Red ---
+  ✓ Tap Red filter
+  ✓ Chateau Margaux red
+  ✓ Opus One red
+--- Filter back to All ---
+  ✓ Tap All filter
+--- Tap wine for detail ---
+  ✓ Tap Chateau Margaux
+  ✓ Wine name
+  ✓ Vintage
+  ✓ Rating
+  ✓ Edit button
+  ✓ Price
+  ✓ Back from detail
+--- Navigate to Regions ---
+  ✓ Tap overflow menu
+  ✓ Tap Regions
+  ✓ Regions heading
+  ✓ Bordeaux
+  ✓ Napa Valley
+  ✓ Burgundy
+  ✓ Marlborough
+  ✓ Back from Regions
+--- Add new wine ---
+  ✓ Tap Add Wine
+  ✓ Add heading
+  ✓ Wine Name field
+  ✓ Winery field
+  ✓ Save button
+  ✓ Type wine name
+  ✓ Type winery
+  ✓ Tap Save Wine
+  ✓ Back on home
+  ✓ New wine
+  ✓ Screenshot WineJournal
+
+=========================================
+  RESULTS: 112/112 passed, 0 failed
+=========================================
