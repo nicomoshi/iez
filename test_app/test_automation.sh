@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Apps 65-67: GridDashboard / TabFormValidator / DragDropList
-# Widgets: GridView, Card, LinearProgressIndicator, CircularProgressIndicator,
-#          TabBar, Form, TextFormField validation, DropdownButton,
-#          LongPressDraggable, DragTarget, ReorderableListView
+# Apps 68-70: SliverAppBar / NestedNav / AnimatedWidgets
 set -euo pipefail
 IEZ="./bin/iez"
 PASS=0; FAIL=0; TOTAL=0
@@ -31,433 +28,408 @@ rebuild_and_launch() {
 }
 
 ########################################################################
-# APP 65: GridDashboard — GridView, Card, ProgressIndicators
+# APP 68: SliverAppBar — CollapsibleAppBar + SliverList + FloatingActionButton
 ########################################################################
 cat > test_app/lib/main.dart << 'DART'
 import 'package:flutter/material.dart';
-void main() => runApp(const App65());
-class App65 extends StatelessWidget {
-  const App65({super.key});
+void main() => runApp(const App68());
+class App68 extends StatelessWidget {
+  const App68({super.key});
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'GridDashboard',
-      theme: ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true),
-      home: const GridDashboardHome(),
+      title: 'SliverApp',
+      theme: ThemeData(colorSchemeSeed: Colors.red, useMaterial3: true),
+      home: const SliverHome(),
     );
   }
 }
-class GridDashboardHome extends StatefulWidget {
-  const GridDashboardHome({super.key});
+class SliverHome extends StatefulWidget {
+  const SliverHome({super.key});
   @override
-  State<GridDashboardHome> createState() => _GridDashboardHomeState();
+  State<SliverHome> createState() => _SliverHomeState();
 }
-class _GridDashboardHomeState extends State<GridDashboardHome> {
-  final List<Map<String, dynamic>> _stats = [
-    {'title': 'Users', 'value': 1234, 'progress': 0.75, 'icon': Icons.people},
-    {'title': 'Sales', 'value': 567, 'progress': 0.45, 'icon': Icons.shopping_cart},
-    {'title': 'Revenue', 'value': 8901, 'progress': 0.9, 'icon': Icons.attach_money},
-    {'title': 'Orders', 'value': 342, 'progress': 0.6, 'icon': Icons.receipt},
-    {'title': 'Returns', 'value': 23, 'progress': 0.15, 'icon': Icons.undo},
-    {'title': 'Reviews', 'value': 456, 'progress': 0.8, 'icon': Icons.star},
-  ];
-  String? _selectedCard;
+class _SliverHomeState extends State<SliverHome> {
+  final List<String> _items = List.generate(20, (i) => 'Item ${i + 1}');
+  String _selected = 'None';
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('GridDashboard')),
-      body: Column(children: [
-        if (_selectedCard != null) Container(
-          width: double.infinity, padding: const EdgeInsets.all(12),
-          color: Theme.of(context).colorScheme.primaryContainer,
-          child: Text('Selected: $_selectedCard', textAlign: TextAlign.center,
-            style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer)),
+      body: CustomScrollView(slivers: [
+        SliverAppBar(
+          expandedHeight: 200,
+          pinned: true,
+          flexibleSpace: FlexibleSpaceBar(
+            title: const Text('SliverApp'),
+            background: Container(color: Theme.of(context).colorScheme.primaryContainer),
+          ),
+          actions: [
+            IconButton(icon: const Icon(Icons.search), onPressed: () {
+              setState(() => _selected = 'Search tapped');
+            }),
+          ],
         ),
-        Expanded(child: GridView.builder(
-          padding: const EdgeInsets.all(12),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.3),
-          itemCount: _stats.length,
-          itemBuilder: (ctx, i) {
-            final s = _stats[i];
-            return Card(
-              child: InkWell(
-                onTap: () => setState(() => _selectedCard = s['title']),
-                child: Padding(padding: const EdgeInsets.all(12), child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      Icon(s['icon'] as IconData, size: 20),
-                      const SizedBox(width: 8),
-                      Text(s['title'] as String, style: Theme.of(ctx).textTheme.labelLarge),
-                    ]),
-                    const Spacer(),
-                    Text('${s['value']}', style: Theme.of(ctx).textTheme.headlineMedium),
-                    const SizedBox(height: 4),
-                    LinearProgressIndicator(value: s['progress'] as double),
-                    const SizedBox(height: 4),
-                    Text('${((s['progress'] as double) * 100).round()}%',
-                      style: Theme.of(ctx).textTheme.bodySmall),
-                  ],
-                )),
-              ),
-            );
-          },
+        SliverToBoxAdapter(child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text('Selected: $_selected', style: Theme.of(context).textTheme.titleMedium),
+        )),
+        SliverList(delegate: SliverChildBuilderDelegate(
+          (ctx, i) => ListTile(
+            leading: CircleAvatar(child: Text('${i + 1}')),
+            title: Text(_items[i]),
+            subtitle: Text('Description for item ${i + 1}'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => setState(() => _selected = _items[i]),
+          ),
+          childCount: _items.length,
         )),
       ]),
-    );
-  }
-}
-DART
-
-echo "========================================"
-echo "APP 65: GridDashboard"
-echo "========================================"
-rebuild_and_launch
-
-echo "Step 1: Initial state"
-has_label "GridDashboard" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
-has_text "Users" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Users card"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Users card"; }
-has_text "Sales" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Sales card"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Sales card"; }
-has_text "Revenue" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Revenue card"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Revenue card"; }
-has_text "Orders" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Orders card"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Orders card"; }
-has_text "1234" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Users value"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Users value"; }
-has_text "75%" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Users progress"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Users progress"; }
-
-echo "Step 2: Tap Users card"
-R=$(run_iez $IEZ ui tap --coords 103,170); assert_ok "$R" "Tap Users"
-sleep 0.3
-has_text "Selected: Users" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Users selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Users selected"; }
-
-echo "Step 3: Tap Revenue card"
-R=$(run_iez $IEZ ui tap --coords 103,345); assert_ok "$R" "Tap Revenue"
-sleep 0.3
-has_text "Selected: Revenue" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Revenue selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Revenue selected"; }
-
-echo "Step 4: Scroll down to see more"
-R=$(run_iez $IEZ ui swipe up); assert_ok "$R" "Scroll down"
-sleep 0.3
-has_text "Reviews" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Reviews visible"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Reviews visible"; }
-
-echo ""
-
-########################################################################
-# APP 66: TabFormValidator — TabBar, Form with validation, DropdownButton
-########################################################################
-cat > test_app/lib/main.dart << 'DART'
-import 'package:flutter/material.dart';
-void main() => runApp(const App66());
-class App66 extends StatelessWidget {
-  const App66({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'TabForm',
-      theme: ThemeData(colorSchemeSeed: Colors.orange, useMaterial3: true),
-      home: const TabFormHome(),
-    );
-  }
-}
-class TabFormHome extends StatefulWidget {
-  const TabFormHome({super.key});
-  @override
-  State<TabFormHome> createState() => _TabFormHomeState();
-}
-class _TabFormHomeState extends State<TabFormHome> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  final _formKey = GlobalKey<FormState>();
-  String _name = '';
-  String _email = '';
-  String _role = 'Developer';
-  bool _submitted = false;
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-  }
-  @override
-  void dispose() { _tabController.dispose(); super.dispose(); }
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('TabForm'),
-        bottom: TabBar(controller: _tabController, tabs: const [
-          Tab(text: 'Profile'),
-          Tab(text: 'Settings'),
-          Tab(text: 'About'),
-        ]),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => setState(() => _selected = 'FAB tapped'),
+        icon: const Icon(Icons.add),
+        label: const Text('Add'),
       ),
-      body: TabBarView(controller: _tabController, children: [
-        // Tab 1: Form
-        SingleChildScrollView(padding: const EdgeInsets.all(16), child: Form(
-          key: _formKey,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (_submitted) Container(
-              width: double.infinity, padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
-              child: Text('Saved: $_name ($_email) as $_role', style: const TextStyle(color: Colors.green)),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              decoration: const InputDecoration(labelText: 'Full Name', border: OutlineInputBorder()),
-              validator: (v) => v == null || v.isEmpty ? 'Name is required' : null,
-              onSaved: (v) => _name = v!,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Email is required';
-                if (!v.contains('@')) return 'Invalid email';
-                return null;
-              },
-              onSaved: (v) => _email = v!,
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _role,
-              decoration: const InputDecoration(labelText: 'Role', border: OutlineInputBorder()),
-              items: ['Developer', 'Designer', 'Manager', 'QA'].map((r) =>
-                DropdownMenuItem(value: r, child: Text(r))).toList(),
-              onChanged: (v) => _role = v!,
-            ),
-            const SizedBox(height: 24),
-            FilledButton(onPressed: () {
-              if (_formKey.currentState!.validate()) {
-                _formKey.currentState!.save();
-                setState(() => _submitted = true);
-              }
-            }, child: const Text('Save')),
-          ]),
-        )),
-        // Tab 2: Settings
-        const Center(child: Text('Settings Page')),
-        // Tab 3: About
-        const Center(child: Text('About Page')),
-      ]),
     );
   }
 }
 DART
 
 echo "========================================"
-echo "APP 66: TabForm"
+echo "APP 68: SliverApp"
 echo "========================================"
 rebuild_and_launch
 
 echo "Step 1: Initial state"
-has_label "TabForm" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
-# Tab labels have "\nTab X of Y" suffix — use has_text (substring match)
-has_text "Profile" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Profile tab"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Profile tab"; }
-has_text "Settings" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Settings tab"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Settings tab"; }
-has_text "About" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ About tab"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ About tab"; }
-has_label "Full Name" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Name field"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Name field"; }
-has_label "Email" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Email field"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Email field"; }
-has_label "Save" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Save button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Save button"; }
+has_text "SliverApp" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
+has_text "Selected: None" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Default selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Default selected"; }
+has_text "Item 1" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Item 1"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Item 1"; }
+has_text "Item 2" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Item 2"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Item 2"; }
+has_label "Add" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ FAB"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ FAB"; }
 
-echo "Step 2: Submit empty form (validation)"
-R=$(run_iez $IEZ ui tap --label "Save"); assert_ok "$R" "Tap Save (empty)"
+echo "Step 2: Tap Item 1"
+# ListTile labels are multiline "1\nItem 1\nDescription..." — use coords
+R=$(run_iez $IEZ ui tap --coords 200,354); assert_ok "$R" "Tap Item 1"
 sleep 0.3
-has_text "Name is required" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Name validation"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Name validation"; }
-has_text "Email is required" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Email validation"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Email validation"; }
+has_text "Selected: Item 1" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Item 1 selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Item 1 selected"; }
 
-echo "Step 3: Fill form"
-R=$(run_iez $IEZ ui type "Bob Smith" --label "Full Name"); assert_ok "$R" "Type name"
+echo "Step 3: Tap FAB"
+R=$(run_iez $IEZ ui tap --label "Add"); assert_ok "$R" "Tap Add FAB"
 sleep 0.3
-R=$(run_iez $IEZ ui type "bob@test.com" --label "Email"); assert_ok "$R" "Type email"
-sleep 0.3
+has_text "FAB tapped" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ FAB result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ FAB result"; }
 
-echo "Step 4: Submit valid form"
-R=$(run_iez $IEZ ui tap --label "Save"); assert_ok "$R" "Save form"
+echo "Step 4: Scroll down"
+R=$(run_iez $IEZ ui swipe up); assert_ok "$R" "Scroll down"
 sleep 0.5
-has_text "Saved:" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Save confirmation"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Save confirmation"; }
-has_text "Bob Smith" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Name saved"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Name saved"; }
-
-echo "Step 5: Switch tabs (use coords — tab labels have multiline suffixes)"
-# Settings tab is middle (~200,120), About is right (~335,120), Profile is left (~67,120)
-R=$(run_iez $IEZ ui tap --coords 200,120); assert_ok "$R" "Tap Settings tab"
-sleep 0.5
-has_text "Settings Page" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Settings content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Settings content"; }
-R=$(run_iez $IEZ ui tap --coords 335,120); assert_ok "$R" "Tap About tab"
-sleep 0.5
-has_text "About Page" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ About content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ About content"; }
-R=$(run_iez $IEZ ui tap --coords 67,120); assert_ok "$R" "Back to Profile"
+R=$(run_iez $IEZ ui swipe up); assert_ok "$R" "Scroll more"
 sleep 0.3
-has_text "Saved:" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Form state preserved"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Form state preserved"; }
+has_text "Item 10" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Item 10 visible"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Item 10 visible"; }
+
+echo "Step 5: Scroll back up"
+R=$(run_iez $IEZ ui swipe down); assert_ok "$R" "Scroll up"
+sleep 0.3
+R=$(run_iez $IEZ ui swipe down); assert_ok "$R" "Scroll up more"
+sleep 0.3
+has_text "Item 1" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Back to top"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Back to top"; }
 
 echo ""
 
 ########################################################################
-# APP 67: BottomSheetTypes — Modal + Persistent BottomSheet, ShowDialog variants
+# APP 69: NestedNav — Bottom tabs + push navigation within tabs
 ########################################################################
 cat > test_app/lib/main.dart << 'DART'
 import 'package:flutter/material.dart';
-void main() => runApp(const App67());
-class App67 extends StatelessWidget {
-  const App67({super.key});
+void main() => runApp(const App69());
+class App69 extends StatelessWidget {
+  const App69({super.key});
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'DialogShowcase',
-      theme: ThemeData(colorSchemeSeed: Colors.cyan, useMaterial3: true),
-      home: const DialogShowcaseHome(),
+      title: 'NestedNav',
+      theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
+      home: const NestedNavHome(),
     );
   }
 }
-class DialogShowcaseHome extends StatefulWidget {
-  const DialogShowcaseHome({super.key});
+class NestedNavHome extends StatefulWidget {
+  const NestedNavHome({super.key});
   @override
-  State<DialogShowcaseHome> createState() => _DialogShowcaseHomeState();
+  State<NestedNavHome> createState() => _NestedNavHomeState();
 }
-class _DialogShowcaseHomeState extends State<DialogShowcaseHome> {
-  String _lastResult = 'None';
+class _NestedNavHomeState extends State<NestedNavHome> {
+  int _tabIndex = 0;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('DialogShowcase')),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        Text('Last result: $_lastResult', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 24),
-        FilledButton.icon(
-          icon: const Icon(Icons.warning),
-          label: const Text('Alert Dialog'),
-          onPressed: () => showDialog(context: context, builder: (ctx) => AlertDialog(
-            title: const Text('Confirm Delete'),
-            content: const Text('Are you sure you want to delete this item?'),
-            actions: [
-              TextButton(onPressed: () { Navigator.pop(ctx); setState(() => _lastResult = 'Cancelled'); },
-                child: const Text('Cancel')),
-              FilledButton(onPressed: () { Navigator.pop(ctx); setState(() => _lastResult = 'Deleted'); },
-                child: const Text('Delete')),
-            ],
-          )),
-        ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          icon: const Icon(Icons.list),
-          label: const Text('Simple Dialog'),
-          onPressed: () => showDialog(context: context, builder: (ctx) => SimpleDialog(
-            title: const Text('Choose Color'),
-            children: ['Red', 'Green', 'Blue'].map((c) => SimpleDialogOption(
-              onPressed: () { Navigator.pop(ctx); setState(() => _lastResult = 'Color: $c'); },
-              child: Text(c),
-            )).toList(),
-          )),
-        ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          icon: const Icon(Icons.fullscreen),
-          label: const Text('Full Screen Dialog'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            fullscreenDialog: true,
-            builder: (ctx) => Scaffold(
-              appBar: AppBar(title: const Text('Full Screen'), actions: [
-                TextButton(onPressed: () { Navigator.pop(ctx); setState(() => _lastResult = 'Full screen done'); },
-                  child: const Text('Done')),
-              ]),
-              body: const Center(child: Text('Full screen dialog content')),
-            ),
-          )),
-        ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          icon: const Icon(Icons.vertical_align_bottom),
-          label: const Text('Modal Bottom Sheet'),
-          onPressed: () => showModalBottomSheet(context: context, builder: (ctx) => Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Text('Modal Sheet', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
-              ListTile(leading: const Icon(Icons.photo), title: const Text('Photo'),
-                onTap: () { Navigator.pop(ctx); setState(() => _lastResult = 'Photo'); }),
-              ListTile(leading: const Icon(Icons.camera), title: const Text('Camera'),
-                onTap: () { Navigator.pop(ctx); setState(() => _lastResult = 'Camera'); }),
-              ListTile(leading: const Icon(Icons.file_copy), title: const Text('File'),
-                onTap: () { Navigator.pop(ctx); setState(() => _lastResult = 'File'); }),
-            ]),
-          )),
-        ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          icon: const Icon(Icons.info),
-          label: const Text('Snackbar'),
-          onPressed: () {
-            setState(() => _lastResult = 'Snackbar shown');
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('This is a snackbar message'),
-              duration: Duration(seconds: 2),
-            ));
-          },
-        ),
+      body: IndexedStack(index: _tabIndex, children: [
+        Navigator(onGenerateRoute: (_) => MaterialPageRoute(
+          builder: (_) => _TabPage(tabName: 'Feed', onPush: (ctx) {
+            Navigator.of(ctx).push(MaterialPageRoute(
+              builder: (_) => const _DetailPage(title: 'Post Detail', content: 'Full post content here')));
+          }),
+        )),
+        Navigator(onGenerateRoute: (_) => MaterialPageRoute(
+          builder: (_) => _TabPage(tabName: 'Explore', onPush: (ctx) {
+            Navigator.of(ctx).push(MaterialPageRoute(
+              builder: (_) => const _DetailPage(title: 'Category Detail', content: 'Category items here')));
+          }),
+        )),
+        Navigator(onGenerateRoute: (_) => MaterialPageRoute(
+          builder: (_) => _TabPage(tabName: 'Profile', onPush: (ctx) {
+            Navigator.of(ctx).push(MaterialPageRoute(
+              builder: (_) => const _DetailPage(title: 'Edit Profile', content: 'Profile edit form')));
+          }),
+        )),
       ]),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tabIndex,
+        onDestinationSelected: (i) => setState(() => _tabIndex = i),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.feed), label: 'Feed'),
+          NavigationDestination(icon: Icon(Icons.explore), label: 'Explore'),
+          NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+        ],
+      ),
+    );
+  }
+}
+class _TabPage extends StatelessWidget {
+  final String tabName;
+  final void Function(BuildContext) onPush;
+  const _TabPage({required this.tabName, required this.onPush});
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(tabName)),
+      body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('$tabName Screen', style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: 16),
+        FilledButton(onPressed: () => onPush(context), child: Text('Open $tabName Detail')),
+      ])),
+    );
+  }
+}
+class _DetailPage extends StatelessWidget {
+  final String title;
+  final String content;
+  const _DetailPage({required this.title, required this.content});
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(content, style: Theme.of(context).textTheme.bodyLarge),
+        const SizedBox(height: 16),
+        OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Go Back')),
+      ])),
     );
   }
 }
 DART
 
 echo "========================================"
-echo "APP 67: DialogShowcase"
+echo "APP 69: NestedNav"
+echo "========================================"
+rebuild_and_launch
+
+echo "Step 1: Initial state (Feed tab)"
+has_label "Feed" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Feed title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Feed title"; }
+has_text "Feed Screen" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Feed content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Feed content"; }
+has_label "Open Feed Detail" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Detail button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Detail button"; }
+
+echo "Step 2: Push detail within Feed tab"
+R=$(run_iez $IEZ ui tap --label "Open Feed Detail"); assert_ok "$R" "Push detail"
+sleep 0.5
+has_text "Post Detail" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Detail title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Detail title"; }
+has_text "Full post content" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Detail content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Detail content"; }
+has_label "Go Back" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Go Back button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Go Back button"; }
+
+echo "Step 3: Go back"
+R=$(run_iez $IEZ ui tap --label "Go Back"); assert_ok "$R" "Go back"
+sleep 0.3
+has_text "Feed Screen" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Back to Feed"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Back to Feed"; }
+
+echo "Step 4: Switch to Explore tab"
+# Bottom nav labels have "\nTab X of Y" — use coords
+# Feed ~67,850, Explore ~201,850, Profile ~335,850
+R=$(run_iez $IEZ ui tap --coords 201,790); assert_ok "$R" "Tap Explore"
+sleep 0.5
+has_text "Explore Screen" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Explore content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Explore content"; }
+
+echo "Step 5: Push Explore detail"
+R=$(run_iez $IEZ ui tap --label "Open Explore Detail"); assert_ok "$R" "Push explore detail"
+sleep 0.5
+has_text "Category Detail" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Category title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Category title"; }
+R=$(run_iez $IEZ ui tap --label "Go Back"); assert_ok "$R" "Go back"
+sleep 0.3
+
+echo "Step 6: Switch to Profile"
+R=$(run_iez $IEZ ui tap --coords 335,790); assert_ok "$R" "Tap Profile"
+sleep 0.5
+has_text "Profile Screen" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Profile content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Profile content"; }
+
+echo "Step 7: Profile detail + back to Feed"
+R=$(run_iez $IEZ ui tap --label "Open Profile Detail"); assert_ok "$R" "Push profile detail"
+sleep 0.5
+has_text "Edit Profile" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Edit Profile title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Edit Profile title"; }
+R=$(run_iez $IEZ ui tap --label "Go Back"); assert_ok "$R" "Go back"
+sleep 0.3
+R=$(run_iez $IEZ ui tap --coords 67,790); assert_ok "$R" "Back to Feed tab"
+sleep 0.3
+has_text "Feed Screen" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Feed preserved"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Feed preserved"; }
+
+echo ""
+
+########################################################################
+# APP 70: AnimatedWidgets — AnimatedOpacity, AnimatedAlign, AnimatedCrossFade
+########################################################################
+cat > test_app/lib/main.dart << 'DART'
+import 'package:flutter/material.dart';
+void main() => runApp(const App70());
+class App70 extends StatelessWidget {
+  const App70({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'AnimWidgets',
+      theme: ThemeData(colorSchemeSeed: Colors.pink, useMaterial3: true),
+      home: const AnimWidgetsHome(),
+    );
+  }
+}
+class AnimWidgetsHome extends StatefulWidget {
+  const AnimWidgetsHome({super.key});
+  @override
+  State<AnimWidgetsHome> createState() => _AnimWidgetsHomeState();
+}
+class _AnimWidgetsHomeState extends State<AnimWidgetsHome> {
+  bool _visible = true;
+  bool _showFirst = true;
+  bool _aligned = false;
+  double _containerWidth = 100;
+  Color _containerColor = Colors.blue;
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('AnimWidgets')),
+      body: SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // AnimatedOpacity
+          Text('Opacity: ${_visible ? "Visible" : "Hidden"}',
+            style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          AnimatedOpacity(
+            opacity: _visible ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 300),
+            child: Container(
+              width: 200, height: 50,
+              decoration: BoxDecoration(color: Colors.blue.shade200, borderRadius: BorderRadius.circular(8)),
+              alignment: Alignment.center,
+              child: const Text('Fade Box'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: () => setState(() => _visible = !_visible),
+            child: Text(_visible ? 'Hide' : 'Show'),
+          ),
+          const SizedBox(height: 24),
+
+          // AnimatedCrossFade
+          Text('CrossFade: ${_showFirst ? "First" : "Second"}',
+            style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          AnimatedCrossFade(
+            firstChild: Container(
+              width: 200, height: 50, alignment: Alignment.center,
+              decoration: BoxDecoration(color: Colors.green.shade200, borderRadius: BorderRadius.circular(8)),
+              child: const Text('Widget A'),
+            ),
+            secondChild: Container(
+              width: 200, height: 80, alignment: Alignment.center,
+              decoration: BoxDecoration(color: Colors.orange.shade200, borderRadius: BorderRadius.circular(8)),
+              child: const Text('Widget B'),
+            ),
+            crossFadeState: _showFirst ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+            duration: const Duration(milliseconds: 300),
+          ),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: () => setState(() => _showFirst = !_showFirst),
+            child: const Text('Toggle CrossFade'),
+          ),
+          const SizedBox(height: 24),
+
+          // AnimatedContainer
+          Text('Container: ${_containerWidth.round()}w',
+            style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          AnimatedContainer(
+            width: _containerWidth, height: 50,
+            decoration: BoxDecoration(color: _containerColor, borderRadius: BorderRadius.circular(8)),
+            duration: const Duration(milliseconds: 300),
+            alignment: Alignment.center,
+            child: const Text('Animated', style: TextStyle(color: Colors.white)),
+          ),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: () => setState(() {
+              _containerWidth = _containerWidth == 100 ? 300 : 100;
+              _containerColor = _containerColor == Colors.blue ? Colors.purple : Colors.blue;
+            }),
+            child: const Text('Animate Container'),
+          ),
+        ],
+      )),
+    );
+  }
+}
+DART
+
+echo "========================================"
+echo "APP 70: AnimWidgets"
 echo "========================================"
 rebuild_and_launch
 
 echo "Step 1: Initial state"
-has_label "DialogShowcase" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
-has_text "Last result: None" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Default result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Default result"; }
-has_label "Alert Dialog" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Alert button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Alert button"; }
-has_label "Simple Dialog" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Simple button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Simple button"; }
-has_label "Full Screen Dialog" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Full screen button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Full screen button"; }
-has_label "Modal Bottom Sheet" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Modal button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Modal button"; }
-has_label "Snackbar" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Snackbar button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Snackbar button"; }
+has_label "AnimWidgets" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
+has_text "Opacity: Visible" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Opacity visible"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Opacity visible"; }
+has_text "Fade Box" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Fade box"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Fade box"; }
+has_text "CrossFade: First" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ CrossFade first"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ CrossFade first"; }
+has_text "Widget A" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Widget A visible"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Widget A visible"; }
+has_text "Container: 100w" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Container 100w"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Container 100w"; }
 
-echo "Step 2: AlertDialog"
-R=$(run_iez $IEZ ui tap --label "Alert Dialog"); assert_ok "$R" "Open alert"
+echo "Step 2: Hide opacity"
+R=$(run_iez $IEZ ui tap --label "Hide"); assert_ok "$R" "Tap Hide"
 sleep 0.5
-has_text "Confirm Delete" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Alert title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Alert title"; }
-has_text "Are you sure" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Alert content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Alert content"; }
-R=$(run_iez $IEZ ui tap --label "Delete"); assert_ok "$R" "Tap Delete"
-sleep 0.3
-has_text "Last result: Deleted" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Deleted result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Deleted result"; }
+has_text "Opacity: Hidden" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Hidden"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Hidden"; }
+has_label "Show" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Show button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Show button"; }
 
-echo "Step 3: AlertDialog Cancel"
-R=$(run_iez $IEZ ui tap --label "Alert Dialog"); assert_ok "$R" "Open alert again"
+echo "Step 3: Show opacity"
+R=$(run_iez $IEZ ui tap --label "Show"); assert_ok "$R" "Tap Show"
 sleep 0.5
-R=$(run_iez $IEZ ui tap --label "Cancel"); assert_ok "$R" "Tap Cancel"
-sleep 0.3
-has_text "Last result: Cancelled" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Cancelled result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Cancelled result"; }
+has_text "Opacity: Visible" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Visible again"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Visible again"; }
 
-echo "Step 4: SimpleDialog"
-R=$(run_iez $IEZ ui tap --label "Simple Dialog"); assert_ok "$R" "Open simple dialog"
+echo "Step 4: Toggle CrossFade"
+R=$(run_iez $IEZ ui tap --label "Toggle CrossFade"); assert_ok "$R" "Toggle CF"
 sleep 0.5
-has_text "Choose Color" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Simple title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Simple title"; }
-has_text "Red" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Red option"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Red option"; }
-has_text "Green" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Green option"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Green option"; }
-R=$(run_iez $IEZ ui tap --label "Blue"); assert_ok "$R" "Select Blue"
-sleep 0.3
-has_text "Color: Blue" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Blue result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Blue result"; }
+has_text "CrossFade: Second" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Second shown"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Second shown"; }
+has_text "Widget B" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Widget B visible"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Widget B visible"; }
 
-echo "Step 5: Full Screen Dialog"
-R=$(run_iez $IEZ ui tap --label "Full Screen Dialog"); assert_ok "$R" "Open full screen"
+echo "Step 5: Toggle back"
+R=$(run_iez $IEZ ui tap --label "Toggle CrossFade"); assert_ok "$R" "Toggle CF back"
 sleep 0.5
-has_text "Full screen dialog content" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ FS content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ FS content"; }
-has_label "Done" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Done button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Done button"; }
-R=$(run_iez $IEZ ui tap --label "Done"); assert_ok "$R" "Tap Done"
-sleep 0.3
-has_text "Full screen done" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ FS result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ FS result"; }
+has_text "CrossFade: First" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ First again"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ First again"; }
 
-echo "Step 6: Modal Bottom Sheet"
-R=$(run_iez $IEZ ui tap --label "Modal Bottom Sheet"); assert_ok "$R" "Open modal sheet"
+echo "Step 6: Animate container"
+R=$(run_iez $IEZ ui tap --label "Animate Container"); assert_ok "$R" "Animate"
 sleep 0.5
-has_text "Modal Sheet" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Sheet title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Sheet title"; }
-has_text "Photo" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Photo option"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Photo option"; }
-has_text "Camera" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Camera option"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Camera option"; }
-R=$(run_iez $IEZ ui tap --label "Camera"); assert_ok "$R" "Select Camera"
-sleep 0.3
-has_text "Last result: Camera" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Camera result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Camera result"; }
+has_text "Container: 300w" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ 300w"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ 300w"; }
 
-echo "Step 7: Snackbar"
-R=$(run_iez $IEZ ui tap --label "Snackbar"); assert_ok "$R" "Show snackbar"
+echo "Step 7: Animate back"
+R=$(run_iez $IEZ ui tap --label "Animate Container"); assert_ok "$R" "Animate back"
 sleep 0.5
-has_text "snackbar message" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Snackbar text"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Snackbar text"; }
+has_text "Container: 100w" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ 100w"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ 100w"; }
 
 END=$(date +%s)
 echo ""
