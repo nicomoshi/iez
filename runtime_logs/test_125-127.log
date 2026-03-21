@@ -1,0 +1,147 @@
+=== App 125: EventPlanner ===
+com.test.eventPlanner: 65198
+  ✔ Event Planner is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ All filter
+  ✓ Upcoming filter
+  ✓ Past filter
+  ✓ Favorites filter
+  ✓ Sarah's Birthday
+  ✓ Q1 Review
+  ✓ Spring Gala
+  ✓ Tech Summit
+  ✓ Team Lunch
+  ✓ Birthday chip
+  ✓ Conference chip
+  ✓ Add Event FAB
+--- Filter by Upcoming ---
+  ✓ Tap Upcoming filter
+  ✓ Sarah upcoming
+  ✓ Q1 upcoming
+--- Filter back to All ---
+  ✓ Tap All filter
+--- Tap event for detail ---
+  ✓ Tap Sarah's Birthday
+  ✓ Event title
+  ✓ Location
+  ✓ Attendees
+  ✓ RSVP button
+  ✓ Edit button
+  ✓ Back from detail
+--- Navigate to Templates ---
+  ✓ Tap overflow menu
+  ✓ Tap Templates
+  ✓ Templates heading
+  ✓ Birthday Party
+  ✓ Team Meeting
+  ✓ Wedding Reception
+  ✓ Back from Templates
+--- Add new event ---
+  ✓ Tap Add Event
+  ✓ Add heading
+  ✓ Event Name field
+  ✓ Location field
+  ✓ Save button
+  ✓ Type event name
+  ✓ Type location
+  ✓ Tap Save Event
+  ✓ Back on home
+  ✓ New event
+  ✓ Screenshot EventPlanner
+
+=== App 126: LanguageCards ===
+com.test.languageCards: 66151
+  ✔ Language Cards is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ Spanish deck
+  ✓ French deck
+  ✓ Japanese deck
+  ✓ Beginner level
+  ✓ Intermediate level
+  ✓ 50% mastery
+  ✓ Add Deck FAB
+--- Tap Spanish deck ---
+  ✓ Tap Spanish deck
+  ✓ Deck title
+  ✓ hola card
+  ✓ gato card
+  ✓ perro card
+--- Tap card to study ---
+  ✓ Tap first card
+  ✓ Flip button
+  ✓ Tap Flip
+  ✓ Got It button
+  ✓ Review Again
+  ✓ Tap Got It
+  ✓ Back from deck
+--- Navigate to Progress ---
+  ✓ Tap overflow menu
+  ✓ Tap Progress
+  ✓ Progress heading
+  ✓ Total Cards
+  ✓ Daily Streak
+  ✓ Back from Progress
+--- Add new deck ---
+  ✓ Tap Add Deck
+  ✓ Add heading
+  ✓ Language Name field
+  ✓ Save button
+  ✓ Type language name
+  ✓ Tap Save Deck
+  ✓ Back on home
+  ✓ New deck
+  ✓ Screenshot LanguageCards
+
+=== App 127: VehicleLog ===
+com.test.vehicleLog: 67112
+  ✔ Vehicle Log is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ Tesla Model 3
+  ✓ Toyota Camry
+  ✓ Ford F-150
+  ✓ Good status
+  ✓ Due Soon status
+  ✓ Overdue status
+  ✓ Add Vehicle FAB
+--- Tap vehicle for detail ---
+  ✓ Tap Tesla
+  ✓ Vehicle title
+  ✓ Mileage
+  ✓ Service History
+  ✓ Fuel Log
+  ✓ Edit button
+--- Navigate to Service History ---
+  ✓ Tap Service History
+  ✓ Service heading
+  ✓ Tire Rotation
+  ✓ Annual Inspection
+  ✓ Back from Service History
+--- Navigate to Fuel Log ---
+  ✓ Tap Fuel Log
+  ✓ Fuel heading
+  ✓ Back from Fuel Log
+  ✓ Back from detail
+--- Navigate to Reminders ---
+  ✓ Tap overflow menu
+  ✓ Tap Reminders
+  ✓ Reminders heading
+  ✓ Back from Reminders
+--- Add new vehicle ---
+  ✓ Tap Add Vehicle
+  ✓ Add heading
+  ✓ Make field
+  ✓ Model field
+  ✓ Save button
+  ✓ Type year
+  ✓ Type make
+  ✓ Type model
+  ✓ Tap Save Vehicle
+  ✓ Back on home
+  ✓ Screenshot VehicleLog
+
+=========================================
+  RESULTS: 115/115 passed, 0 failed
+=========================================
