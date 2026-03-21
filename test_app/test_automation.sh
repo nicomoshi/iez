@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apps 68-70: SliverAppBar / NestedNav / AnimatedWidgets
+# Apps 71-73: SearchDelegate / PageViewIndicator / BottomAppBarScaffold
 set -euo pipefail
 IEZ="./bin/iez"
 PASS=0; FAIL=0; TOTAL=0
@@ -28,66 +28,305 @@ rebuild_and_launch() {
 }
 
 ########################################################################
-# APP 68: SliverAppBar — CollapsibleAppBar + SliverList + FloatingActionButton
+# APP 71: SearchDelegate — showSearch with suggestions and results
 ########################################################################
 cat > test_app/lib/main.dart << 'DART'
 import 'package:flutter/material.dart';
-void main() => runApp(const App68());
-class App68 extends StatelessWidget {
-  const App68({super.key});
+void main() => runApp(const App71());
+class App71 extends StatelessWidget {
+  const App71({super.key});
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'SliverApp',
-      theme: ThemeData(colorSchemeSeed: Colors.red, useMaterial3: true),
-      home: const SliverHome(),
-    );
+    return MaterialApp(title: 'SearchApp',
+      theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
+      home: const SearchHome());
   }
 }
-class SliverHome extends StatefulWidget {
-  const SliverHome({super.key});
+class SearchHome extends StatefulWidget {
+  const SearchHome({super.key});
   @override
-  State<SliverHome> createState() => _SliverHomeState();
+  State<SearchHome> createState() => _SearchHomeState();
 }
-class _SliverHomeState extends State<SliverHome> {
-  final List<String> _items = List.generate(20, (i) => 'Item ${i + 1}');
+class _SearchHomeState extends State<SearchHome> {
   String _selected = 'None';
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CustomScrollView(slivers: [
-        SliverAppBar(
-          expandedHeight: 200,
-          pinned: true,
-          flexibleSpace: FlexibleSpaceBar(
-            title: const Text('SliverApp'),
-            background: Container(color: Theme.of(context).colorScheme.primaryContainer),
-          ),
-          actions: [
-            IconButton(icon: const Icon(Icons.search), onPressed: () {
-              setState(() => _selected = 'Search tapped');
-            }),
-          ],
+      appBar: AppBar(title: const Text('SearchApp'), actions: [
+        IconButton(icon: const Icon(Icons.search), onPressed: () async {
+          final result = await showSearch(context: context, delegate: _ItemSearchDelegate());
+          if (result != null) setState(() => _selected = result);
+        }),
+      ]),
+      body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('Selected: $_selected', style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: 16),
+        const Text('Tap search icon to find items'),
+      ])),
+    );
+  }
+}
+class _ItemSearchDelegate extends SearchDelegate<String> {
+  final items = ['Apple', 'Banana', 'Cherry', 'Date', 'Elderberry', 'Fig', 'Grape', 'Honeydew'];
+  @override
+  List<Widget> buildActions(BuildContext context) => [
+    IconButton(icon: const Icon(Icons.clear), onPressed: () => query = ''),
+  ];
+  @override
+  Widget buildLeading(BuildContext context) =>
+    IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => close(context, ''));
+  @override
+  Widget buildResults(BuildContext context) {
+    final results = items.where((i) => i.toLowerCase().contains(query.toLowerCase())).toList();
+    return ListView(children: results.map((r) => ListTile(
+      title: Text(r), onTap: () => close(context, r),
+    )).toList());
+  }
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    final suggestions = query.isEmpty ? items.take(4).toList()
+      : items.where((i) => i.toLowerCase().contains(query.toLowerCase())).toList();
+    return ListView(children: suggestions.map((s) => ListTile(
+      key: ValueKey(s),
+      leading: const Icon(Icons.search),
+      title: Text(s),
+      onTap: () => close(context, s),
+    )).toList());
+  }
+}
+DART
+
+echo "========================================"
+echo "APP 71: SearchApp"
+echo "========================================"
+rebuild_and_launch
+
+echo "Step 1: Initial state"
+has_label "SearchApp" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
+has_text "Selected: None" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Default"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Default"; }
+
+echo "Step 2: Open search"
+# Search icon in AppBar — use coords (right side of AppBar)
+R=$(run_iez $IEZ ui tap --coords 370,78); assert_ok "$R" "Tap Search"
+sleep 0.5
+has_text "Apple" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Apple suggestion"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Apple suggestion"; }
+has_text "Banana" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Banana suggestion"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Banana suggestion"; }
+
+echo "Step 3: Select Apple directly"
+R=$(run_iez $IEZ ui tap --label "Apple"); assert_ok "$R" "Tap Apple"
+sleep 0.5
+has_text "Selected: Apple" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Apple selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Apple selected"; }
+
+echo "Step 4: Search again and select Cherry"
+R=$(run_iez $IEZ ui tap --coords 370,78); assert_ok "$R" "Open search again"
+sleep 0.5
+R=$(run_iez $IEZ ui tap --label "Cherry"); assert_ok "$R" "Tap Cherry"
+sleep 0.5
+has_text "Selected: Cherry" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Cherry selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Cherry selected"; }
+
+echo "Step 5: Search again and select Banana"
+R=$(run_iez $IEZ ui tap --coords 370,78); assert_ok "$R" "Open search"
+sleep 0.5
+R=$(run_iez $IEZ ui tap --label "Banana"); assert_ok "$R" "Tap Banana"
+sleep 0.5
+has_text "Selected: Banana" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Banana selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Banana selected"; }
+
+echo ""
+
+########################################################################
+# APP 72: PageViewIndicator — PageView with dots indicator
+########################################################################
+cat > test_app/lib/main.dart << 'DART'
+import 'package:flutter/material.dart';
+void main() => runApp(const App72());
+class App72 extends StatelessWidget {
+  const App72({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(title: 'PageViewApp',
+      theme: ThemeData(colorSchemeSeed: Colors.deepPurple, useMaterial3: true),
+      home: const PageViewHome());
+  }
+}
+class PageViewHome extends StatefulWidget {
+  const PageViewHome({super.key});
+  @override
+  State<PageViewHome> createState() => _PageViewHomeState();
+}
+class _PageViewHomeState extends State<PageViewHome> {
+  final _controller = PageController();
+  int _currentPage = 0;
+  final pages = [
+    {'title': 'Welcome', 'subtitle': 'Get started with our app', 'color': Colors.blue},
+    {'title': 'Discover', 'subtitle': 'Find amazing content', 'color': Colors.green},
+    {'title': 'Connect', 'subtitle': 'Join the community', 'color': Colors.orange},
+    {'title': 'Create', 'subtitle': 'Build something great', 'color': Colors.purple},
+  ];
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Page ${_currentPage + 1} of ${pages.length}')),
+      body: Column(children: [
+        Expanded(child: PageView.builder(
+          controller: _controller,
+          itemCount: pages.length,
+          onPageChanged: (i) => setState(() => _currentPage = i),
+          itemBuilder: (ctx, i) {
+            final p = pages[i];
+            return Container(
+              color: (p['color'] as Color).withValues(alpha: 0.1),
+              child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(p['title'] as String, style: Theme.of(ctx).textTheme.headlineLarge),
+                const SizedBox(height: 8),
+                Text(p['subtitle'] as String, style: Theme.of(ctx).textTheme.bodyLarge),
+              ])),
+            );
+          },
+        )),
+        Padding(padding: const EdgeInsets.all(16), child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(pages.length, (i) => Container(
+            width: i == _currentPage ? 24 : 8,
+            height: 8,
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              color: i == _currentPage
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.outline,
+            ),
+          )),
+        )),
+        Padding(padding: const EdgeInsets.only(bottom: 32, left: 16, right: 16),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            TextButton(
+              onPressed: _currentPage > 0 ? () => _controller.previousPage(
+                duration: const Duration(milliseconds: 300), curve: Curves.easeInOut) : null,
+              child: const Text('Previous'),
+            ),
+            FilledButton(
+              onPressed: _currentPage < pages.length - 1 ? () => _controller.nextPage(
+                duration: const Duration(milliseconds: 300), curve: Curves.easeInOut) : null,
+              child: Text(_currentPage < pages.length - 1 ? 'Next' : 'Done'),
+            ),
+          ]),
         ),
-        SliverToBoxAdapter(child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text('Selected: $_selected', style: Theme.of(context).textTheme.titleMedium),
-        )),
-        SliverList(delegate: SliverChildBuilderDelegate(
-          (ctx, i) => ListTile(
-            leading: CircleAvatar(child: Text('${i + 1}')),
-            title: Text(_items[i]),
-            subtitle: Text('Description for item ${i + 1}'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => setState(() => _selected = _items[i]),
-          ),
-          childCount: _items.length,
-        )),
       ]),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => setState(() => _selected = 'FAB tapped'),
-        icon: const Icon(Icons.add),
-        label: const Text('Add'),
+    );
+  }
+}
+DART
+
+echo "========================================"
+echo "APP 72: PageViewApp"
+echo "========================================"
+rebuild_and_launch
+
+echo "Step 1: Initial state (page 1)"
+has_text "Page 1 of 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Page counter"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Page counter"; }
+has_text "Welcome" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Welcome title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Welcome title"; }
+has_text "Get started" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Welcome subtitle"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Welcome subtitle"; }
+has_label "Next" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Next button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Next button"; }
+has_label "Previous" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Previous button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Previous button"; }
+
+echo "Step 2: Next page"
+R=$(run_iez $IEZ ui tap --label "Next"); assert_ok "$R" "Tap Next"
+sleep 0.5
+has_text "Page 2 of 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Page 2"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Page 2"; }
+has_text "Discover" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Discover"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Discover"; }
+
+echo "Step 3: Swipe to page 3"
+R=$(run_iez $IEZ ui swipe --from 350,400 --to 50,400); assert_ok "$R" "Swipe to page 3"
+sleep 0.5
+has_text "Page 3 of 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Page 3"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Page 3"; }
+has_text "Connect" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Connect"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Connect"; }
+
+echo "Step 4: Next to page 4"
+R=$(run_iez $IEZ ui tap --label "Next"); assert_ok "$R" "Tap Next"
+sleep 0.5
+has_text "Page 4 of 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Page 4"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Page 4"; }
+has_text "Create" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Create"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Create"; }
+has_label "Done" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Done button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Done button"; }
+
+echo "Step 5: Go back with Previous"
+R=$(run_iez $IEZ ui tap --label "Previous"); assert_ok "$R" "Tap Previous"
+sleep 0.5
+has_text "Page 3 of 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Back to 3"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Back to 3"; }
+
+echo "Step 6: Swipe back"
+R=$(run_iez $IEZ ui swipe --from 50,400 --to 350,400); assert_ok "$R" "Swipe back"
+sleep 0.5
+has_text "Page 2 of 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Back to 2"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Back to 2"; }
+
+echo ""
+
+########################################################################
+# APP 73: BottomAppBarScaffold — BottomAppBar with notched FAB + menus
+########################################################################
+cat > test_app/lib/main.dart << 'DART'
+import 'package:flutter/material.dart';
+void main() => runApp(const App73());
+class App73 extends StatelessWidget {
+  const App73({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(title: 'BottomBarApp',
+      theme: ThemeData(colorSchemeSeed: Colors.brown, useMaterial3: true),
+      home: const BottomBarHome());
+  }
+}
+class BottomBarHome extends StatefulWidget {
+  const BottomBarHome({super.key});
+  @override
+  State<BottomBarHome> createState() => _BottomBarHomeState();
+}
+class _BottomBarHomeState extends State<BottomBarHome> {
+  int _count = 0;
+  String _lastAction = 'None';
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('BottomBarApp')),
+      body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('Count: $_count', style: Theme.of(context).textTheme.displayMedium),
+        const SizedBox(height: 16),
+        Text('Last action: $_lastAction', style: Theme.of(context).textTheme.bodyLarge),
+        const SizedBox(height: 24),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          FilledButton(onPressed: () => setState(() { _count++; _lastAction = 'Incremented'; }),
+            child: const Text('Increment')),
+          const SizedBox(width: 16),
+          OutlinedButton(onPressed: () => setState(() { _count--; _lastAction = 'Decremented'; }),
+            child: const Text('Decrement')),
+        ]),
+        const SizedBox(height: 16),
+        TextButton(onPressed: () => setState(() { _count = 0; _lastAction = 'Reset'; }),
+          child: const Text('Reset')),
+      ])),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => setState(() { _count += 10; _lastAction = 'Added 10'; }),
+        tooltip: 'Add 10',
+        child: const Icon(Icons.add),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      bottomNavigationBar: BottomAppBar(
+        shape: const CircularNotchedRectangle(),
+        child: Row(children: [
+          IconButton(icon: const Icon(Icons.menu), tooltip: 'Menu', onPressed: () {
+            showModalBottomSheet(context: context, builder: (ctx) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(leading: const Icon(Icons.share), title: const Text('Share Count'),
+                  onTap: () { Navigator.pop(ctx); setState(() => _lastAction = 'Shared: $_count'); }),
+                ListTile(leading: const Icon(Icons.copy), title: const Text('Copy Count'),
+                  onTap: () { Navigator.pop(ctx); setState(() => _lastAction = 'Copied: $_count'); }),
+              ],
+            ));
+          }),
+          const Spacer(),
+          IconButton(icon: const Icon(Icons.search), tooltip: 'Search', onPressed: () =>
+            setState(() => _lastAction = 'Search pressed')),
+        ]),
       ),
     );
   }
@@ -95,341 +334,56 @@ class _SliverHomeState extends State<SliverHome> {
 DART
 
 echo "========================================"
-echo "APP 68: SliverApp"
+echo "APP 73: BottomBarApp"
 echo "========================================"
 rebuild_and_launch
 
 echo "Step 1: Initial state"
-has_text "SliverApp" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
-has_text "Selected: None" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Default selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Default selected"; }
-has_text "Item 1" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Item 1"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Item 1"; }
-has_text "Item 2" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Item 2"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Item 2"; }
-has_label "Add" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ FAB"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ FAB"; }
+has_label "BottomBarApp" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
+has_text "Count: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Count 0"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Count 0"; }
+has_text "Last action: None" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Action None"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Action None"; }
+has_label "Increment" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Increment btn"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Increment btn"; }
+has_label "Decrement" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Decrement btn"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Decrement btn"; }
+has_label "Reset" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Reset btn"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Reset btn"; }
 
-echo "Step 2: Tap Item 1"
-# ListTile labels are multiline "1\nItem 1\nDescription..." — use coords
-R=$(run_iez $IEZ ui tap --coords 200,354); assert_ok "$R" "Tap Item 1"
+echo "Step 2: Increment"
+R=$(run_iez $IEZ ui tap --label "Increment"); assert_ok "$R" "Tap Increment"
 sleep 0.3
-has_text "Selected: Item 1" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Item 1 selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Item 1 selected"; }
-
-echo "Step 3: Tap FAB"
-R=$(run_iez $IEZ ui tap --label "Add"); assert_ok "$R" "Tap Add FAB"
+R=$(run_iez $IEZ ui tap --label "Increment"); assert_ok "$R" "Tap Increment"
 sleep 0.3
-has_text "FAB tapped" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ FAB result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ FAB result"; }
-
-echo "Step 4: Scroll down"
-R=$(run_iez $IEZ ui swipe up); assert_ok "$R" "Scroll down"
-sleep 0.5
-R=$(run_iez $IEZ ui swipe up); assert_ok "$R" "Scroll more"
+R=$(run_iez $IEZ ui tap --label "Increment"); assert_ok "$R" "Tap Increment"
 sleep 0.3
-has_text "Item 10" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Item 10 visible"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Item 10 visible"; }
+has_text "Count: 3" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Count 3"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Count 3"; }
 
-echo "Step 5: Scroll back up"
-R=$(run_iez $IEZ ui swipe down); assert_ok "$R" "Scroll up"
+echo "Step 3: Decrement"
+R=$(run_iez $IEZ ui tap --label "Decrement"); assert_ok "$R" "Decrement"
 sleep 0.3
-R=$(run_iez $IEZ ui swipe down); assert_ok "$R" "Scroll up more"
+has_text "Count: 2" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Count 2"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Count 2"; }
+
+echo "Step 4: FAB (+10)"
+R=$(run_iez $IEZ ui tap --label "Add 10"); assert_ok "$R" "Tap FAB"
 sleep 0.3
-has_text "Item 1" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Back to top"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Back to top"; }
+has_text "Count: 12" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Count 12"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Count 12"; }
+has_text "Added 10" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Added 10 action"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Added 10 action"; }
 
-echo ""
-
-########################################################################
-# APP 69: NestedNav — Bottom tabs + push navigation within tabs
-########################################################################
-cat > test_app/lib/main.dart << 'DART'
-import 'package:flutter/material.dart';
-void main() => runApp(const App69());
-class App69 extends StatelessWidget {
-  const App69({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'NestedNav',
-      theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
-      home: const NestedNavHome(),
-    );
-  }
-}
-class NestedNavHome extends StatefulWidget {
-  const NestedNavHome({super.key});
-  @override
-  State<NestedNavHome> createState() => _NestedNavHomeState();
-}
-class _NestedNavHomeState extends State<NestedNavHome> {
-  int _tabIndex = 0;
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(index: _tabIndex, children: [
-        Navigator(onGenerateRoute: (_) => MaterialPageRoute(
-          builder: (_) => _TabPage(tabName: 'Feed', onPush: (ctx) {
-            Navigator.of(ctx).push(MaterialPageRoute(
-              builder: (_) => const _DetailPage(title: 'Post Detail', content: 'Full post content here')));
-          }),
-        )),
-        Navigator(onGenerateRoute: (_) => MaterialPageRoute(
-          builder: (_) => _TabPage(tabName: 'Explore', onPush: (ctx) {
-            Navigator.of(ctx).push(MaterialPageRoute(
-              builder: (_) => const _DetailPage(title: 'Category Detail', content: 'Category items here')));
-          }),
-        )),
-        Navigator(onGenerateRoute: (_) => MaterialPageRoute(
-          builder: (_) => _TabPage(tabName: 'Profile', onPush: (ctx) {
-            Navigator.of(ctx).push(MaterialPageRoute(
-              builder: (_) => const _DetailPage(title: 'Edit Profile', content: 'Profile edit form')));
-          }),
-        )),
-      ]),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tabIndex,
-        onDestinationSelected: (i) => setState(() => _tabIndex = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.feed), label: 'Feed'),
-          NavigationDestination(icon: Icon(Icons.explore), label: 'Explore'),
-          NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
-        ],
-      ),
-    );
-  }
-}
-class _TabPage extends StatelessWidget {
-  final String tabName;
-  final void Function(BuildContext) onPush;
-  const _TabPage({required this.tabName, required this.onPush});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(tabName)),
-      body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('$tabName Screen', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 16),
-        FilledButton(onPressed: () => onPush(context), child: Text('Open $tabName Detail')),
-      ])),
-    );
-  }
-}
-class _DetailPage extends StatelessWidget {
-  final String title;
-  final String content;
-  const _DetailPage({required this.title, required this.content});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(content, style: Theme.of(context).textTheme.bodyLarge),
-        const SizedBox(height: 16),
-        OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Go Back')),
-      ])),
-    );
-  }
-}
-DART
-
-echo "========================================"
-echo "APP 69: NestedNav"
-echo "========================================"
-rebuild_and_launch
-
-echo "Step 1: Initial state (Feed tab)"
-has_label "Feed" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Feed title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Feed title"; }
-has_text "Feed Screen" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Feed content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Feed content"; }
-has_label "Open Feed Detail" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Detail button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Detail button"; }
-
-echo "Step 2: Push detail within Feed tab"
-R=$(run_iez $IEZ ui tap --label "Open Feed Detail"); assert_ok "$R" "Push detail"
-sleep 0.5
-has_text "Post Detail" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Detail title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Detail title"; }
-has_text "Full post content" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Detail content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Detail content"; }
-has_label "Go Back" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Go Back button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Go Back button"; }
-
-echo "Step 3: Go back"
-R=$(run_iez $IEZ ui tap --label "Go Back"); assert_ok "$R" "Go back"
+echo "Step 5: Reset"
+R=$(run_iez $IEZ ui tap --label "Reset"); assert_ok "$R" "Reset"
 sleep 0.3
-has_text "Feed Screen" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Back to Feed"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Back to Feed"; }
+has_text "Count: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Count reset"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Count reset"; }
 
-echo "Step 4: Switch to Explore tab"
-# Bottom nav labels have "\nTab X of Y" — use coords
-# Feed ~67,850, Explore ~201,850, Profile ~335,850
-R=$(run_iez $IEZ ui tap --coords 201,790); assert_ok "$R" "Tap Explore"
+echo "Step 6: Bottom bar menu"
+R=$(run_iez $IEZ ui tap --label "Menu"); assert_ok "$R" "Tap menu"
 sleep 0.5
-has_text "Explore Screen" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Explore content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Explore content"; }
-
-echo "Step 5: Push Explore detail"
-R=$(run_iez $IEZ ui tap --label "Open Explore Detail"); assert_ok "$R" "Push explore detail"
-sleep 0.5
-has_text "Category Detail" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Category title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Category title"; }
-R=$(run_iez $IEZ ui tap --label "Go Back"); assert_ok "$R" "Go back"
+has_text "Share Count" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Share option"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Share option"; }
+has_text "Copy Count" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Copy option"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Copy option"; }
+R=$(run_iez $IEZ ui tap --label "Share Count"); assert_ok "$R" "Share"
 sleep 0.3
+has_text "Shared: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Shared result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Shared result"; }
 
-echo "Step 6: Switch to Profile"
-R=$(run_iez $IEZ ui tap --coords 335,790); assert_ok "$R" "Tap Profile"
-sleep 0.5
-has_text "Profile Screen" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Profile content"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Profile content"; }
-
-echo "Step 7: Profile detail + back to Feed"
-R=$(run_iez $IEZ ui tap --label "Open Profile Detail"); assert_ok "$R" "Push profile detail"
-sleep 0.5
-has_text "Edit Profile" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Edit Profile title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Edit Profile title"; }
-R=$(run_iez $IEZ ui tap --label "Go Back"); assert_ok "$R" "Go back"
+echo "Step 7: Search icon"
+R=$(run_iez $IEZ ui tap --label "Search"); assert_ok "$R" "Tap search"
 sleep 0.3
-R=$(run_iez $IEZ ui tap --coords 67,790); assert_ok "$R" "Back to Feed tab"
-sleep 0.3
-has_text "Feed Screen" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Feed preserved"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Feed preserved"; }
-
-echo ""
-
-########################################################################
-# APP 70: AnimatedWidgets — AnimatedOpacity, AnimatedAlign, AnimatedCrossFade
-########################################################################
-cat > test_app/lib/main.dart << 'DART'
-import 'package:flutter/material.dart';
-void main() => runApp(const App70());
-class App70 extends StatelessWidget {
-  const App70({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'AnimWidgets',
-      theme: ThemeData(colorSchemeSeed: Colors.pink, useMaterial3: true),
-      home: const AnimWidgetsHome(),
-    );
-  }
-}
-class AnimWidgetsHome extends StatefulWidget {
-  const AnimWidgetsHome({super.key});
-  @override
-  State<AnimWidgetsHome> createState() => _AnimWidgetsHomeState();
-}
-class _AnimWidgetsHomeState extends State<AnimWidgetsHome> {
-  bool _visible = true;
-  bool _showFirst = true;
-  bool _aligned = false;
-  double _containerWidth = 100;
-  Color _containerColor = Colors.blue;
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('AnimWidgets')),
-      body: SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // AnimatedOpacity
-          Text('Opacity: ${_visible ? "Visible" : "Hidden"}',
-            style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          AnimatedOpacity(
-            opacity: _visible ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 300),
-            child: Container(
-              width: 200, height: 50,
-              decoration: BoxDecoration(color: Colors.blue.shade200, borderRadius: BorderRadius.circular(8)),
-              alignment: Alignment.center,
-              child: const Text('Fade Box'),
-            ),
-          ),
-          const SizedBox(height: 8),
-          FilledButton(
-            onPressed: () => setState(() => _visible = !_visible),
-            child: Text(_visible ? 'Hide' : 'Show'),
-          ),
-          const SizedBox(height: 24),
-
-          // AnimatedCrossFade
-          Text('CrossFade: ${_showFirst ? "First" : "Second"}',
-            style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          AnimatedCrossFade(
-            firstChild: Container(
-              width: 200, height: 50, alignment: Alignment.center,
-              decoration: BoxDecoration(color: Colors.green.shade200, borderRadius: BorderRadius.circular(8)),
-              child: const Text('Widget A'),
-            ),
-            secondChild: Container(
-              width: 200, height: 80, alignment: Alignment.center,
-              decoration: BoxDecoration(color: Colors.orange.shade200, borderRadius: BorderRadius.circular(8)),
-              child: const Text('Widget B'),
-            ),
-            crossFadeState: _showFirst ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-            duration: const Duration(milliseconds: 300),
-          ),
-          const SizedBox(height: 8),
-          FilledButton(
-            onPressed: () => setState(() => _showFirst = !_showFirst),
-            child: const Text('Toggle CrossFade'),
-          ),
-          const SizedBox(height: 24),
-
-          // AnimatedContainer
-          Text('Container: ${_containerWidth.round()}w',
-            style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          AnimatedContainer(
-            width: _containerWidth, height: 50,
-            decoration: BoxDecoration(color: _containerColor, borderRadius: BorderRadius.circular(8)),
-            duration: const Duration(milliseconds: 300),
-            alignment: Alignment.center,
-            child: const Text('Animated', style: TextStyle(color: Colors.white)),
-          ),
-          const SizedBox(height: 8),
-          FilledButton(
-            onPressed: () => setState(() {
-              _containerWidth = _containerWidth == 100 ? 300 : 100;
-              _containerColor = _containerColor == Colors.blue ? Colors.purple : Colors.blue;
-            }),
-            child: const Text('Animate Container'),
-          ),
-        ],
-      )),
-    );
-  }
-}
-DART
-
-echo "========================================"
-echo "APP 70: AnimWidgets"
-echo "========================================"
-rebuild_and_launch
-
-echo "Step 1: Initial state"
-has_label "AnimWidgets" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
-has_text "Opacity: Visible" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Opacity visible"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Opacity visible"; }
-has_text "Fade Box" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Fade box"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Fade box"; }
-has_text "CrossFade: First" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ CrossFade first"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ CrossFade first"; }
-has_text "Widget A" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Widget A visible"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Widget A visible"; }
-has_text "Container: 100w" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Container 100w"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Container 100w"; }
-
-echo "Step 2: Hide opacity"
-R=$(run_iez $IEZ ui tap --label "Hide"); assert_ok "$R" "Tap Hide"
-sleep 0.5
-has_text "Opacity: Hidden" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Hidden"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Hidden"; }
-has_label "Show" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Show button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Show button"; }
-
-echo "Step 3: Show opacity"
-R=$(run_iez $IEZ ui tap --label "Show"); assert_ok "$R" "Tap Show"
-sleep 0.5
-has_text "Opacity: Visible" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Visible again"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Visible again"; }
-
-echo "Step 4: Toggle CrossFade"
-R=$(run_iez $IEZ ui tap --label "Toggle CrossFade"); assert_ok "$R" "Toggle CF"
-sleep 0.5
-has_text "CrossFade: Second" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Second shown"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Second shown"; }
-has_text "Widget B" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Widget B visible"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Widget B visible"; }
-
-echo "Step 5: Toggle back"
-R=$(run_iez $IEZ ui tap --label "Toggle CrossFade"); assert_ok "$R" "Toggle CF back"
-sleep 0.5
-has_text "CrossFade: First" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ First again"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ First again"; }
-
-echo "Step 6: Animate container"
-R=$(run_iez $IEZ ui tap --label "Animate Container"); assert_ok "$R" "Animate"
-sleep 0.5
-has_text "Container: 300w" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ 300w"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ 300w"; }
-
-echo "Step 7: Animate back"
-R=$(run_iez $IEZ ui tap --label "Animate Container"); assert_ok "$R" "Animate back"
-sleep 0.5
-has_text "Container: 100w" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ 100w"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ 100w"; }
+has_text "Search pressed" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Search action"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Search action"; }
 
 END=$(date +%s)
 echo ""
