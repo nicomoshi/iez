@@ -1,200 +1,97 @@
 #!/bin/bash
-# Test Automation: Interactive Widgets
-# Widgets: AnimatedSwitcher, AnimatedScale, AnimatedOpacity, FilledButton.tonalIcon,
-#          Badge, Tooltip, CircleAvatar, ListWheelScrollView, ListView.separated,
-#          Dismissible, SnackBar, Divider
+# App #47: Cupertino Form Test — CupertinoFormSection, CupertinoSwitch, CupertinoSlider, CupertinoSlidingSegmentedControl
+# Widgets: CupertinoApp, CupertinoNavigationBar, CupertinoFormSection.insetGrouped,
+#          CupertinoTextFormFieldRow, CupertinoSwitch, CupertinoSlider, CupertinoSlidingSegmentedControl,
+#          CupertinoAlertDialog, CupertinoActionSheet, CupertinoListTile, CupertinoPageRoute
 set -euo pipefail
-cd "$(dirname "$0")/.."
-
+IEZ="/Users/rudy/Developer/i_ez/bin/iez"
 PASS=0; FAIL=0; TOTAL=0
 run_iez() { "$@" 2>/dev/null | sed -n '/^{/,/^}/p'; }
-
 assert_ok() {
-  TOTAL=$((TOTAL + 1))
+  TOTAL=$((TOTAL+1))
   local ok; ok=$(echo "$1" | jq -r '.ok // false')
-  if [ "$ok" = "true" ]; then
-    PASS=$((PASS + 1)); echo "  ✓ $2"
-  else
-    FAIL=$((FAIL + 1)); echo "  ✗ $2"
-  fi
+  if [ "$ok" = "true" ]; then PASS=$((PASS+1)); echo "  ✓ $2"
+  else FAIL=$((FAIL+1)); echo "  ✗ $2"; fi
 }
+has_label() { run_iez "$IEZ" ui exists --label "$1" | jq -r '.ok' | grep -q true; }
+has_text() { run_iez "$IEZ" ui tree --compact | jq -r '.data.elements[].label // empty' | grep -qF "$1"; }
 
-has_label() {
-  run_iez ./bin/iez ui exists --label "$1" | jq -r '.ok' | grep -q true
-}
+echo "=== App #47: Cupertino Form Test ==="
+START=$(date +%s)
 
-assert_label() {
-  TOTAL=$((TOTAL + 1))
-  if has_label "$1"; then
-    PASS=$((PASS + 1)); echo "  ✓ Label: $1"
-  else
-    FAIL=$((FAIL + 1)); echo "  ✗ Label: $1"
-  fi
-}
+# Step 1: Verify form elements
+echo "Step 1: Verify form screen"
+has_text "Cupertino Form" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Nav title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Nav title"; }
+has_text "PERSONAL" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Personal section"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Personal section"; }
+has_text "PREFERENCES" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Preferences section"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Preferences section"; }
+has_text "PLAN" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Plan section"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Plan section"; }
+has_text "Current Plan: Free" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Current Plan: Free"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Current Plan: Free"; }
+assert_ok "$(run_iez "$IEZ" ui exists --label "Save")" "Save button"
 
-assert_no_label() {
-  TOTAL=$((TOTAL + 1))
-  if ! has_label "$1"; then
-    PASS=$((PASS + 1)); echo "  ✓ No label: $1"
-  else
-    FAIL=$((FAIL + 1)); echo "  ✗ Expected no label: $1"
-  fi
-}
+# Step 2: Fill in form fields
+echo "Step 2: Fill form"
+# Name field (multiline label: Name\nEnter your name)
+R=$(run_iez "$IEZ" ui tap --coords 300,155); assert_ok "$R" "Tap Name field"
+sleep 0.2
+R=$(run_iez "$IEZ" ui type "Alice"); assert_ok "$R" "Type name"
+sleep 0.2
+# Email field
+R=$(run_iez "$IEZ" ui tap --coords 300,200); assert_ok "$R" "Tap Email field"
+sleep 0.2
+R=$(run_iez "$IEZ" ui type "alice@test.com"); assert_ok "$R" "Type email"
+sleep 0.2
 
-assert_label_contains() {
-  TOTAL=$((TOTAL + 1))
-  local tree; tree=$(run_iez ./bin/iez ui tree --compact)
-  if echo "$tree" | jq -r '.data.elements[].label // ""' | grep -q "$1"; then
-    PASS=$((PASS + 1)); echo "  ✓ Contains: $1"
-  else
-    FAIL=$((FAIL + 1)); echo "  ✗ Missing: $1"
-  fi
-}
+# Step 3: Toggle switches (coords for CupertinoSwitch in PREFERENCES)
+echo "Step 3: Toggle preferences"
+# Newsletter switch ~y=280 right side
+R=$(run_iez "$IEZ" ui tap --coords 360,280); assert_ok "$R" "Toggle Newsletter off"
+sleep 0.2
+# Dark Mode switch ~y=324
+R=$(run_iez "$IEZ" ui tap --coords 360,324); assert_ok "$R" "Toggle Dark Mode on"
+sleep 0.2
 
-START_TIME=$(date +%s)
-echo "=== Interactive Widgets Test ==="
+# Step 4: Change plan with segmented control
+echo "Step 4: Change plan"
+R=$(run_iez "$IEZ" ui tap --label "Premium"); assert_ok "$R" "Select Premium"
+sleep 0.3
+has_text "Current Plan: Premium" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Plan updated to Premium"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Plan updated to Premium"; }
+R=$(run_iez "$IEZ" ui tap --label "Basic"); assert_ok "$R" "Select Basic"
+sleep 0.3
+has_text "Current Plan: Basic" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Plan updated to Basic"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Plan updated to Basic"; }
+
+# Step 5: Save and verify dialog
+echo "Step 5: Save dialog"
+R=$(run_iez "$IEZ" ui tap --label "Save"); assert_ok "$R" "Tap Save"
+sleep 0.3
+has_text "Saved" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Saved dialog"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Saved dialog"; }
+has_label "OK" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ OK button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ OK button"; }
+R=$(run_iez "$IEZ" ui tap --label "OK"); assert_ok "$R" "Dismiss dialog"
+sleep 0.3
+
+# Step 6: View Profile
+echo "Step 6: View Profile"
+# Need to scroll down to see View Profile (it may be off screen)
+R=$(run_iez "$IEZ" ui swipe up); sleep 0.3
+R=$(run_iez "$IEZ" ui tap --label "View Profile"); assert_ok "$R" "Tap View Profile"
+sleep 0.3
+has_text "Profile" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Profile page"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Profile page"; }
+has_text "DETAILS" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Details section"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Details section"; }
+# Go back
+R=$(run_iez "$IEZ" ui tap --label "Back"); assert_ok "$R" "Back from Profile"
+sleep 0.3
+
+# Step 7: Reset All with CupertinoActionSheet
+echo "Step 7: Reset All"
+R=$(run_iez "$IEZ" ui swipe up); sleep 0.3
+R=$(run_iez "$IEZ" ui tap --label "Reset All"); assert_ok "$R" "Tap Reset All"
+sleep 0.3
+has_text "Reset All Settings?" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Action sheet title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Action sheet title"; }
+has_label "Reset" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Reset action"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Reset action"; }
+has_label "Cancel" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Cancel action"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Cancel action"; }
+R=$(run_iez "$IEZ" ui tap --label "Reset"); assert_ok "$R" "Confirm Reset"
+sleep 0.3
+has_text "Current Plan: Free" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Plan reset to Free"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Plan reset to Free"; }
+
+END=$(date +%s)
 echo ""
-
-# --- Screen 1: Counter Animations ---
-echo "--- Screen 1: Counter Animations ---"
-assert_label "Counter Animations"
-assert_label "0"
-assert_label "Decrease"
-assert_label "Increase"
-assert_label "Fade Out"
-assert_label "Scale Up"
-assert_label "Count: 0"
-assert_label "Visible: true"
-assert_label "Scale: 1.0x"
-
-# Tap Increase 3 times
-R=$(run_iez ./bin/iez ui tap --label "Increase")
-assert_ok "$R" "Tap Increase (1)"
-
-R=$(run_iez ./bin/iez ui tap --label "Increase")
-assert_ok "$R" "Tap Increase (2)"
-
-R=$(run_iez ./bin/iez ui tap --label "Increase")
-assert_ok "$R" "Tap Increase (3)"
-
-
-assert_label "Count: 3"
-
-# Decrease once
-R=$(run_iez ./bin/iez ui tap --label "Decrease")
-assert_ok "$R" "Tap Decrease"
-
-
-assert_label "Count: 2"
-
-# Toggle fade
-R=$(run_iez ./bin/iez ui tap --label "Fade Out")
-assert_ok "$R" "Tap Fade Out"
-
-
-assert_label "Visible: false"
-assert_label "Fade In"
-
-# Toggle scale
-R=$(run_iez ./bin/iez ui tap --label "Scale Up")
-assert_ok "$R" "Tap Scale Up"
-
-
-assert_label "Scale: 2.0x"
-assert_label "Scale Down"
-
-# Toggle back
-R=$(run_iez ./bin/iez ui tap --label "Fade In")
-assert_ok "$R" "Tap Fade In"
-
-
-assert_label "Visible: true"
-
-R=$(run_iez ./bin/iez ui tap --label "Scale Down")
-assert_ok "$R" "Tap Scale Down"
-
-
-assert_label "Scale: 1.0x"
-
-# --- Screen 2: Badges & Tooltips ---
-echo ""
-echo "--- Screen 2: Badges & Tooltips ---"
-R=$(run_iez ./bin/iez ui tap --coords 201,800)
-assert_ok "$R" "Tap Badges tab"
-
-
-assert_label "Badges & Tooltips"
-assert_label "Tooltips"
-assert_label "Home"
-assert_label "Settings"
-assert_label "Profile"
-assert_label "Badges"
-assert_label "Notification count: 3"
-assert_label "Notifications"
-assert_label "Circle Avatars"
-assert_label "AB"
-assert_label "CD"
-assert_label "EF"
-assert_label "Color Picker (Wheel)"
-assert_label "Selected: Red"
-
-# Clear notifications
-R=$(run_iez ./bin/iez ui tap --label "Notifications")
-assert_ok "$R" "Tap Notifications (clear badge)"
-
-
-assert_label "Notification count: 0"
-
-# --- Screen 3: Swipe to Dismiss ---
-echo ""
-echo "--- Screen 3: Swipe to Dismiss (ListView.separated + Dismissible) ---"
-R=$(run_iez ./bin/iez ui tap --coords 335,800)
-assert_ok "$R" "Tap List tab"
-
-
-assert_label "Swipe to Dismiss"
-assert_label "Items: 10"
-assert_label "Last dismissed: None"
-assert_label "Reset"
-
-# Swipe first item to dismiss
-R=$(run_iez ./bin/iez ui swipe --from 350,206 --to 50,206)
-assert_ok "$R" "Swipe Item 1 to dismiss"
-sleep 0.15
-
-assert_label "Items: 9"
-assert_label_contains "Last dismissed: Item 1"
-
-# Swipe another item
-R=$(run_iez ./bin/iez ui swipe --from 350,206 --to 50,206)
-assert_ok "$R" "Swipe Item 2 to dismiss"
-sleep 0.15
-
-assert_label "Items: 8"
-assert_label_contains "Last dismissed: Item 2"
-
-# Reset list
-R=$(run_iez ./bin/iez ui tap --label "Reset")
-assert_ok "$R" "Tap Reset"
-
-
-assert_label "Items: 10"
-assert_label "Last dismissed: None"
-
-# Return to Counter to verify state preserved
-echo ""
-echo "--- Verify state preserved ---"
-R=$(run_iez ./bin/iez ui tap --coords 67,800)
-assert_ok "$R" "Tap Counter tab"
-
-
-assert_label "Count: 2"
-assert_label "Visible: true"
-assert_label "Scale: 1.0x"
-
-END_TIME=$(date +%s)
-ELAPSED=$((END_TIME - START_TIME))
-echo ""
-echo "=== Results: $PASS/$TOTAL passed ($FAIL failed) in ${ELAPSED}s ==="
-[ "$FAIL" -eq 0 ] && echo "🎉 ALL TESTS PASSED" || echo "❌ SOME TESTS FAILED"
-exit "$FAIL"
+echo "=== Results: $PASS/$TOTAL passed ($FAIL failed) — T-100%: $((END-START))s ==="

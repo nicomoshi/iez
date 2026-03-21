@@ -235,8 +235,16 @@ iez is continuously tested against real-world open-source Flutter apps to valida
 | 37 | Reorder & Autocomplete | custom | Drawer/Reorder/Search | 12 | 69 | **100%** | 29s | NavigationDrawer (M3), ReorderableListView, Autocomplete dropdown, CupertinoSearchTextField, Wrap+FilterChip, AnimatedList, RefreshIndicator, IndexedStack, Divider, FilledButton.icon |
 | 38 | Sliver Playground | custom | Slivers/Cupertino/Grid | 14 | 65 | **100%** | 28s | SliverAppBar, SliverPersistentHeader, SliverList, SliverGrid, SliverToBoxAdapter, CupertinoSliverNavigationBar, CupertinoListSection, CupertinoListTile, CupertinoSwitch, CupertinoSlider, MaterialBanner, ChoiceChip |
 | 39 | Interactive Widgets | custom | Anim/Badge/Dismiss | 11 | 60 | **100%** | 26s | AnimatedSwitcher, AnimatedScale, AnimatedOpacity, FilledButton.tonalIcon, Badge, Tooltip, CircleAvatar, ListWheelScrollView, ListView.separated, Dismissible (swipe), SnackBar |
+| 40 | Form Wizard | custom | Stepper/Form/Review | 10 | 46 | **100%** | 21s | Stepper (4 steps), TextFormField validation, SwitchListTile, SegmentedButton, CheckboxListTile, form submission, success screen, Start Over reset |
+| 41 | Data Dashboard | custom | DataTable/Filter/Drawer | 12 | 53 | **100%** | 22s | DataTable with sort columns, EndDrawer, ChoiceChip filter, Card summary stats, DataRow selection, DrawerHeader |
+| 42 | Toggle & Radio | custom | Toggle/Radio/NotchedFAB | 13 | 39 | **100%** | 21s | ToggleButtons (AXCheckBox), RadioListTile, OutlinedButton toggle, OverflowBar, NotchedFAB, BottomAppBar, AlertDialog, AboutDialog |
+| 43 | Dialog & Overlay | custom | Dialog/SnackBar/PopScope | 9 | 56 | **100%** | 32s | AlertDialog+Form, SimpleDialog, DatePickerDialog, SnackBar+Action, ModalBottomSheet, showGeneralDialog, PopScope, SpeedDial FAB pattern, ElevatedButton.icon |
+| 44 | Navigation Rail | custom | NavRail/Badge/Profile | 10 | 39 | **100%** | 19s | NavigationRail (4 dest), NavigationRailDestination+Badge, extended rail toggle, VerticalDivider, CircleAvatar, SwitchListTile, Card stats, FAB compose dialog |
+| 45 | Chip & Wrap | custom | Chips/Wrap/Filter | 8 | 36 | **100%** | 19s | ChoiceChip, FilterChip, InputChip (deletable), ActionChip, Wrap layout, CheckboxListTile filter page, add-tag dialog |
+| 46 | Tab & PageView | custom | TabBar/PageView/Nav | 10 | 38 | **100%** | 19s | TabBar (3 tabs), TabBarView, PageView.builder, page indicators, Previous/Next buttons, swipe navigation, GridView gallery |
+| 47 | Cupertino Form | custom | CupertinoForm/Segments | 7 | 30 | **100%** | 25s | CupertinoFormSection.insetGrouped, CupertinoTextFormFieldRow, CupertinoSwitch, CupertinoSlider, CupertinoSlidingSegmentedControl, CupertinoAlertDialog, CupertinoActionSheet, CupertinoListTile |
 
-**Summary:** 39 apps, 433 steps, 1255 assertions, **100% pass rate**
+**Summary:** 47 apps, 512 steps, 1631 assertions, **100% pass rate**
 
 **T-100% = Time from first app launch to 100% pass rate** (— = not measured for early apps)
 
