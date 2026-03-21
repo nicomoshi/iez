@@ -164,6 +164,100 @@ Install the Claude Code skill:
 cp skills/SKILL.md ~/.claude/skills/iez/SKILL.md
 ```
 
+## Reliability Testing
+
+iez is continuously tested against real-world open-source Flutter apps to validate automation reliability across diverse widget configurations, navigation patterns, and UI complexity levels.
+
+**Goal:** 100 public apps tested at 100% pass rate.
+
+| # | App | Source | Type | Steps | Assertions | Pass Rate | T-100% | Widgets Tested |
+|---|-----|--------|------|-------|------------|-----------|----------------|
+| 1 | iez Demo App | custom | Login/Nav/Settings | 13 | 13 | **100%** | TextField, ElevatedButton, ListTile, SwitchListTile, NavigationBar, ListView |
+| 2 | Wonderous | [gskinner](https://github.com/gskinnerTeam/flutter-wonderous-app) | Showcase/Museum | 35 | 81 | **100%** | PageView, TabBar, CustomScrollView, SliverAppBar, GridView, AlertDialog, BottomSheet, NavigationRail |
+| 3 | Admin Dashboard | [abuanwar072](https://github.com/abuanwar072/Flutter-Responsive-Admin-Panel-or-Dashboard) | Dashboard | 14 | 33 | **100%** | DataTable, Card, SearchBar, LinearProgressIndicator, GridView |
+| 4 | E-Commerce Complete | [abuanwar072](https://github.com/abuanwar072/E-commerce-Complete-Flutter-UI) | Shopping | 28 | 65 | **100%** | BottomNavigationBar, Form validation, ProductCard, CategoryChip, SliverAppBar, ExpansionTile |
+
+| 5 | Pro Calculator | [BoubaAhmed](https://github.com/BoubaAhmed/calculator) | Calculator | 12 | 68 | **100%** | GridView buttons, arithmetic ops, Unicode labels (×÷±⌫), chained calculations |
+
+| 6 | Rive Animated App | [abuanwar072](https://github.com/abuanwar072/Build-an-Animated-App-with-Rive-and-Flutter) | Animation/Auth | 10 | 23 | **100%** | Rive animations, modal dialog, TextField in dialog, coordinate dismiss |
+
+| 7 | Material 3 Demo | [flutter/samples](https://github.com/flutter/samples/tree/main/material_3_demo) | Widget Showcase | 26 | 65 | **100%** | ElevatedButton, FilledButton, OutlinedButton, TextButton, FAB variants, SegmentedButton, Badge, Card, Carousel, Dialog, BottomSheet, dark mode toggle, NavigationBar tabs |
+
+| 8 | Form App | [flutter/samples](https://github.com/flutter/samples/tree/main/form_app) | Forms/Validation | 28 | 59 | **100%** | TextFormField, Checkbox, Switch, Slider, DatePicker dialog, form validation, Submit, Autofill, multiline TextField |
+
+| 9 | Compass App | [flutter/samples](https://github.com/flutter/samples/tree/main/compass_app) | Travel/Booking | 11 | 20 | **100%** | SliverAppBar with hidden back, trip cards, Share sheet, activity list, scroll-to-reveal navigation |
+
+| 10 | Simplistic Calculator | [flutter/samples](https://github.com/flutter/samples/tree/main/simplistic_calculator) | Scientific Calc | 11 | 71 | **100%** | Scientific functions (Sin/Cos/Tan/ln/√), parentheses, factorial, power, history |
+| 11 | Provider Shopper | [flutter/samples](https://github.com/flutter/samples/tree/main/provider_shopper) | Shopping/Auth | 9 | 21 | **100%** | Login form, Provider state, catalog list, ADD to cart (duplicate labels → coords), scroll |
+| 12 | Provider Counter | [flutter/samples](https://github.com/flutter/samples/tree/main/provider_counter) | Counter | 6 | 19 | **100%** | FAB increment, state verification, Provider state management |
+| 13 | Context Menus | [flutter/samples](https://github.com/flutter/samples/tree/main/context_menus) | Context Menus | 8 | 15 | **100%** | Platform toggle, multi-line labels, sub-screen navigation, context menu demos |
+
+| 14 | Animations | [flutter/samples](https://github.com/flutter/samples/tree/main/animations) | Animation Demos | 6 | 28 | **100%** | AnimatedContainer, FadeTransition, Carousel, ExpandableCard, sub-screen nav + back |
+| 15 | Infinite List | [flutter/samples](https://github.com/flutter/samples/tree/main/infinite_list) | Infinite Scroll | 7 | 15 | **100%** | Infinite scroll loading, deep scroll, item count verification, scroll-back |
+
+| 16 | Testing App | [flutter/samples](https://github.com/flutter/samples/tree/main/testing_app) | List/Favorites | 7 | 20 | **100%** | ListTile toggle, Favorites navigation, back navigation |
+| 17 | Platform Design | [flutter/samples](https://github.com/flutter/samples/tree/main/platform_design) | Adaptive UI | 9 | 19 | **100%** | CupertinoTabBar, CupertinoListTile (AXStaticText → coords), platform-adaptive widgets |
+| 18 | Date Planner | [flutter/samples](https://github.com/flutter/samples/tree/main/date_planner) | Calendar/Events | 6 | 11 | **100%** | Event cards, section headers, date formatting, scroll |
+
+| 19 | Navigation & Routing | [flutter/samples](https://github.com/flutter/samples/tree/main/navigation_and_routing) | Bookstore/Auth | 8 | 23 | **100%** | GoRouter, login flow, nested tabs (Books/Authors/Settings + Popular/New/All), book detail |
+| 20 | Simplistic Editor | [flutter/samples](https://github.com/flutter/samples/tree/main/simplistic_editor) | Rich Text Editor | 5 | 14 | **100%** | TextEditingDelta, rich text input, info panels, editor focus |
+
+| 21 | Isolate Example | [flutter/samples](https://github.com/flutter/samples/tree/main/isolate_example) | Concurrency | 8 | 16 | **100%** | Compute buttons, TabBar with 3 tabs (coords), background isolate processing |
+| 22 | Deeplink Store | [flutter/samples](https://github.com/flutter/samples/tree/main/deeplink_store_example) | E-Commerce | 6 | 15 | **100%** | Product grid, deep link navigation, product detail, back navigation, scroll |
+
+| 23 | Cupertino Gallery | [flutter/samples](https://github.com/flutter/samples/tree/main/cupertino_gallery) | iOS Widget Showcase | 9 | 35 | **100%** | CupertinoButton, CupertinoSwitch, CupertinoSlider, CupertinoCheckbox, CupertinoRadio, CupertinoAlertDialog, CupertinoActionSheet, CupertinoDatePicker, CupertinoTextField, CupertinoSegmentedControl, CupertinoSettings |
+
+| 24 | Clean Arch TODO | [guilherme-v](https://github.com/guilherme-v/flutter-clean-architecture-example) | TODO/Clean Arch | 10 | 29 | **100%** | Clean Architecture, BLoC/Cubit, filter tabs (All/Completed/Incomplete), form with validation, discard dialog, search, drift DB |
+
+| 25 | Simple Shader | [flutter/samples](https://github.com/flutter/samples/tree/main/simple_shader) | GPU Shader | 4 | 8 | **100%** | Fragment shader rendering, touch interaction, swipe gesture on shader surface |
+
+| 26 | Asset Transformation | [flutter/samples](https://github.com/flutter/samples/tree/main/asset_transformation) | Asset Pipeline | 4 | 7 | **100%** | SVG rendering, grayscale transformer, vector_graphics, image asset pipeline |
+
+| 27 | Widget Gallery | custom | Widget Showcase | 21 | 44 | **100%** | Drawer, CheckboxListTile, SwitchListTile, RadioListTile, FilterChip, DropdownButton, AlertDialog, ModalBottomSheet, SnackBar, Tooltip, Badge, RangeSlider, FAB.extended, AboutDialog |
+
+| 28 | Tab & Stepper Test | custom | Tab/Stepper/Popup | 12 | 32 | **100%** | TabBar with TabBarView, Stepper (Continue/Cancel), ExpansionTile, PopupMenuButton, SegmentedButton, coord-based tab nav |
+
+| 29 | Search & Filter | custom | Search/Sort | 9 | 18 | **100%** | 37s | SearchBar, result count, sort BottomSheet, filtered ListView |
+
+| 30 | Nav & Inbox Test | custom | Navigation/Mail | 9 | 28 | **100%** | 53s | MaterialBanner, NavigationBar 4-tab (coords), Dismissible, message detail, Reply/Forward, notifications dialog, PopupMenu |
+
+| 31 | Grid & Cards | custom | Grid/List Toggle | 8 | 20 | **100%** | 33s | GridView.builder, Card, InkWell, grid↔list toggle, FAB with Badge (coords), photo detail nav |
+
+| 32 | Progress & Input | custom | Progress/Chips/Time | 7 | 24 | **100%** | 33s | LinearProgressIndicator, CircularProgressIndicator, ChoiceChip, Slider, TimePicker dialog, FilledButton.tonalIcon |
+
+| 33 | Multi Page Nav | custom | Named Routes | 7 | 24 | **100%** | 33s | Named routes, 4 screens (Home/Profile/Settings/About), SwitchListTile toggles, SnackBar, push/pop nav |
+
+| 34 | Bottom Sheet Demo | custom | Sheets/Chips | 9 | 31 | **100%** | 38s | ModalBottomSheet (4 types: simple/form/action/draggable), share sheet, ActionChip, InputChip, DraggableScrollableSheet |
+
+| 35 | Text & Input Demo | custom | Forms/Validation | 7 | 24 | **100%** | 35s | TextFormField (6 types), password visibility toggle, DropdownButtonFormField, form validation, reset, prefixText, multiline |
+
+| 36 | Hero Gallery | custom | Hero/Search/Grid | 7 | 23 | **100%** | 33s | Hero animation, GridView 3x3, SearchDelegate with typing, BottomAppBar icons, detail push/pop |
+| 37 | Reorder & Autocomplete | custom | Drawer/Reorder/Search | 12 | 69 | **100%** | 29s | NavigationDrawer (M3), ReorderableListView, Autocomplete dropdown, CupertinoSearchTextField, Wrap+FilterChip, AnimatedList, RefreshIndicator, IndexedStack, Divider, FilledButton.icon |
+| 38 | Sliver Playground | custom | Slivers/Cupertino/Grid | 14 | 65 | **100%** | 28s | SliverAppBar, SliverPersistentHeader, SliverList, SliverGrid, SliverToBoxAdapter, CupertinoSliverNavigationBar, CupertinoListSection, CupertinoListTile, CupertinoSwitch, CupertinoSlider, MaterialBanner, ChoiceChip |
+| 39 | Interactive Widgets | custom | Anim/Badge/Dismiss | 11 | 60 | **100%** | 26s | AnimatedSwitcher, AnimatedScale, AnimatedOpacity, FilledButton.tonalIcon, Badge, Tooltip, CircleAvatar, ListWheelScrollView, ListView.separated, Dismissible (swipe), SnackBar |
+
+**Summary:** 39 apps, 433 steps, 1255 assertions, **100% pass rate**
+
+**T-100% = Time from first app launch to 100% pass rate** (— = not measured for early apps)
+
+### Build Compatibility Note
+
+Many open-source Flutter repos fail to build with current Flutter SDK (3.35.x) due to:
+- Outdated `win32` dependency (pre-5.x)
+- Missing `platform :ios` in Podfile
+- Old null-safety requirements
+- SDK version constraints (`resolution: workspace`)
+- Native plugins without simulator support
+
+The Flutter official samples repo (`flutter/samples`) remains the most reliable source of buildable test apps. Fix strategies: `flutter pub add win32:^5.5.0`, add `platform :ios, '13.0'` to Podfile, remove `resolution: workspace` from pubspec.yaml.
+
+### Known Limitations
+
+- **SFSafariViewController:** System Safari webview overlays are outside the Flutter accessibility tree — iez cannot interact with them. Workaround: skip or `xcrun simctl terminate` to restart.
+- **NavigationBar tab labels** include `\nTab N of M` — use coordinate-based tapping instead of label matching.
+- **Off-screen ListView items** have 0x0 frames — swipe to bring them on-screen before tapping.
+- **SliverAppBar back buttons** scroll off-screen — scroll back up before tapping `Back`.
+
 ## License
 
 MIT
