@@ -253,7 +253,11 @@ iez is continuously tested against real-world open-source Flutter apps to valida
 | 54 | Timer Dashboard | custom | Stopwatch/Countdown/Stats | 10 | 35 | **100%** | 14s | NavigationBar (3 tabs, coords), IndexedStack, Stopwatch (Start/Stop/Lap), DropdownButton, LinearProgressIndicator, AlertDialog alarm, CircleAvatar, session history, Wrap |
 | 55 | Color Palette | custom | GridView/Detail/Drawer/Sheet | 12 | 44 | **100%** | 21s | GridView.count, Card+InkWell, color shades ListView, Clipboard+SnackBar, IconButton heart toggle, Drawer+DrawerHeader, ModalBottomSheet settings, SwitchListTile, RadioListTile, dark mode toggle |
 
-**Summary:** 55 apps, 599 steps, 1901 assertions, **100% pass rate**
+| 56 | Notes Manager | custom | Search/Filter/CRUD | 10 | 31 | **100%** | 17s | SearchDelegate, PopupMenuButton category filter, FAB add, TextFormField (title/body), Dismissible, ListTile with trailing edit, CircleAvatar category badge, AlertDialog delete confirm |
+| 57 | Weather Dashboard | custom | PageView/TabBar/Alerts | 11 | 32 | **100%** | 18s | TabBar (2 tabs), PageView.builder with page indicators (3 cities), ExpansionTile alerts, SwitchListTile Celsius toggle, DropdownButton city, Slider refresh interval, coord swipe PageView |
+| 58 | Contacts | custom | Drawer/Detail/About | 11 | 35 | **100%** | 19s | ListView.separated, CircleAvatar initials, Drawer groups filter, InheritedNotifier state, PopupMenuButton overflow, AboutDialog, ContactDetail with Call/Message/Email IconButtons, AlertDialog delete, TextFormField validation |
+
+**Summary:** 58 apps, 631 steps, 1999 assertions, **100% pass rate**
 
 **T-100% = Time from first app launch to 100% pass rate** (— = not measured for early apps)
 
