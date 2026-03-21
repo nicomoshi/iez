@@ -1,0 +1,129 @@
+=== App 128: ArtGallery ===
+com.test.artGallery: 69825
+  ✔ Art Gallery is in foreground
+--- Gallery Tab (Home) ---
+  ✓ App title
+  ✓ Starry Night
+  ✓ Persistence of Memory
+  ✓ Girl with Pearl Earring
+  ✓ The Great Wave
+  ✓ Water Lilies
+  ✓ The Kiss
+  ✓ Gallery tab
+  ✓ Artists tab
+  ✓ Exhibitions tab
+--- Tap artwork for detail (coords — GridView items are AXStaticText) ---
+  ✓ Tap Starry Night
+  ✓ Artwork title
+  ✓ Artist
+  ✓ Medium
+  ✓ Favorite button
+  ✓ Back from artwork
+--- Switch to Artists tab (coords) ---
+  ✓ Tap Artists tab
+  ✓ Van Gogh
+  ✓ Monet
+--- Switch to Exhibitions tab (coords) ---
+  ✓ Tap Exhibitions tab
+  ✓ Impressionist Masters
+  ✓ Modern Visions
+--- Navigate to About ---
+  ✓ Tap overflow menu
+  ✓ Tap About
+  ✓ About heading
+  ✓ Back from About
+  ✓ Screenshot ArtGallery
+
+=== App 129: FinanceTracker ===
+com.test.financeTracker: 70480
+  ✔ Finance Tracker is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ Summary card
+  ✓ Total Balance
+  ✓ All filter
+  ✓ Income filter
+  ✓ Expenses filter
+  ✓ Recurring filter
+  ✓ March Salary
+  ✓ Grocery Store
+  ✓ Electric Bill
+  ✓ Netflix
+  ✓ Uber Ride
+  ✓ Add Transaction FAB
+--- Filter by Income ---
+  ✓ Tap Income filter
+  ✓ Salary filtered
+  ✓ Freelance filtered
+--- Filter back to All ---
+  ✓ Tap All filter
+--- Tap transaction for detail ---
+  ✓ Tap March Salary
+  ✓ Description
+  ✓ Category
+  ✓ Edit button
+  ✓ Delete button
+  ✓ Back from detail
+--- Navigate to Reports ---
+  ✓ Tap overflow menu
+  ✓ Tap Reports
+  ✓ Reports heading
+  ✓ Total Income
+  ✓ Total Expenses
+  ✓ Savings Rate
+  ✓ Back from Reports
+--- Add new transaction ---
+  ✓ Tap Add Transaction
+  ✓ Add heading
+  ✓ Description field
+  ✓ Amount field
+  ✓ Save button
+  ✓ Type description
+  ✓ Type amount
+  ✓ Tap Save Transaction
+  ✓ Back on home
+  ✓ New transaction
+  ✓ Screenshot FinanceTracker
+
+=== App 130: TripPlanner ===
+com.test.tripPlanner: 71396
+  ✔ Trip Planner is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ Tokyo
+  ✓ Paris
+  ✓ New York
+  ✓ Planning status
+  ✓ Booked status
+  ✓ Add Trip FAB
+--- Tap trip for detail (coords — AXGenericElement) ---
+  ✓ Tap Tokyo trip
+  ✓ Trip title
+  ✓ Shibuya
+  ✓ Tsukiji
+  ✓ Mount Fuji
+  ✓ Add Activity
+  ✓ Edit button
+  ✓ Back from detail
+--- Navigate to Packing List ---
+  ✓ Tap overflow menu
+  ✓ Tap Packing List
+  ✓ Packing heading
+  ✓ Passport
+  ✓ Charger
+  ✓ Sunscreen
+  ✓ Back from Packing List
+--- Add new trip ---
+  ✓ Tap Add Trip
+  ✓ Add heading
+  ✓ Destination field
+  ✓ Save button
+  ✓ Type destination
+  ✓ Tap Save Trip
+  ✓ Back on home
+  ✓ New trip
+  ✓ Screenshot TripPlanner
+
+=========================================
+  RESULTS: 99/99 passed, 0 failed
+=========================================
