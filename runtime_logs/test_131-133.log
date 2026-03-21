@@ -1,0 +1,138 @@
+=== App 131: HealthDiary ===
+com.test.healthDiary: 73732
+  ✔ Health Diary is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ Summary card
+  ✓ Water intake
+  ✓ Calories
+  ✓ Sleep hours
+  ✓ All filter
+  ✓ Water filter
+  ✓ Meals filter
+  ✓ Sleep filter
+  ✓ Mood filter
+  ✓ Water entry
+  ✓ Oatmeal entry
+  ✓ Chicken salad
+  ✓ Mood entry
+  ✓ Sleep entry
+  ✓ Add Entry FAB
+--- Filter by Water ---
+  ✓ Tap Water filter
+  ✓ Water 3 glasses
+  ✓ Water 2 glasses
+--- Filter back to All ---
+  ✓ Tap All filter
+--- Tap entry for detail ---
+  ✓ Tap Oatmeal entry
+  ✓ Meal name
+  ✓ Edit button
+  ✓ Delete button
+  ✓ Back from detail
+--- Navigate to Goals ---
+  ✓ Tap overflow menu
+  ✓ Tap Goals
+  ✓ Goals heading
+  ✓ Water goal
+  ✓ Calories goal
+  ✓ Sleep goal
+  ✓ Back from Goals
+--- Add new entry ---
+  ✓ Tap Add Entry
+  ✓ Add heading
+  ✓ Save button
+  ✓ Screenshot HealthDiary
+  ✓ Back from Add
+
+=== App 132: SkillTree ===
+com.test.skillTree: 74469
+  ✔ Skill Tree is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ Programming
+  ✓ Design
+  ✓ Languages
+  ✓ Music
+  ✓ Add Skill FAB
+--- Expand Programming category ---
+  ✓ Tap Programming
+  ✓ Dart skill
+  ✓ Python skill
+  ✓ SQL skill
+--- Tap Dart for detail ---
+  ✓ Tap Dart
+  ✓ Skill title
+  ✓ Level
+  ✓ Practice button
+  ✓ Edit button
+--- Tap Practice ---
+  ✓ Tap Practice
+  ✓ Back from skill detail
+--- Navigate to Achievements ---
+  ✓ Tap overflow menu
+  ✓ Tap Achievements
+  ✓ Achievements heading
+  ✓ First Steps
+  ✓ Level 5 Club
+  ✓ Polymath
+  ✓ Master
+  ✓ Back from Achievements
+--- Add new skill ---
+  ✓ Tap Add Skill
+  ✓ Add heading
+  ✓ Skill Name field
+  ✓ Description field
+  ✓ Save button
+  ✓ Type skill name
+  ✓ Tap Save Skill
+  ✓ Back on home
+  ✓ Screenshot SkillTree
+
+=== App 133: TeamRoster ===
+com.test.teamRoster: 75374
+  ✔ Team Roster is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ Team name
+  ✓ Record
+  ✓ Alex Rivera
+  ✓ Jordan Kim
+  ✓ Casey Morgan
+  ✓ Taylor Smith
+  ✓ Sam Johnson
+  ✓ Active status
+  ✓ Injured status
+  ✓ Bench status
+  ✓ Add FAB
+--- Tap player for detail ---
+  ✓ Tap Alex Rivera
+  ✓ Player name
+  ✓ Position
+  ✓ Edit button
+  ✓ Back from player detail
+--- Navigate to Schedule ---
+  ✓ Tap overflow menu
+  ✓ Tap Schedule
+  ✓ Schedule heading
+  ✓ Lightning FC
+  ✓ Storm United
+  ✓ Phoenix Rising
+  ✓ Back from Schedule
+--- Add new player ---
+  ✓ Tap Add
+  ✓ Add heading
+  ✓ Name field
+  ✓ Number field
+  ✓ Position field
+  ✓ Save button
+  ✓ Type player name
+  ✓ Type number
+  ✓ Tap Save Player
+  ✓ Back on home
+  ✓ New player
+  ✓ Screenshot TeamRoster
+
+=========================================
+  RESULTS: 107/107 passed, 0 failed
+=========================================

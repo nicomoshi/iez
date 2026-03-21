@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test automation for Apps 128-130: ArtGallery/FinanceTracker/TripPlanner
+# Test automation for Apps 131-133: HealthDiary/SkillTree/TeamRoster
 set -uo pipefail
 
 IEZ="/Users/rudy/Developer/i_ez/bin/iez"
@@ -51,14 +51,14 @@ kill_runners() {
 
 fresh_launch() {
   local bid="$1" app_path="$2" expected="$3"
-  xcrun simctl terminate "$DEVICE_ID" com.test.artGallery 2>/dev/null || true
-  xcrun simctl terminate "$DEVICE_ID" com.test.financeTracker 2>/dev/null || true
-  xcrun simctl terminate "$DEVICE_ID" com.test.tripPlanner 2>/dev/null || true
+  xcrun simctl terminate "$DEVICE_ID" com.test.healthDiary 2>/dev/null || true
+  xcrun simctl terminate "$DEVICE_ID" com.test.skillTree 2>/dev/null || true
+  xcrun simctl terminate "$DEVICE_ID" com.test.teamRoster 2>/dev/null || true
   sleep 1
   kill_runners
-  xcrun simctl uninstall "$DEVICE_ID" com.test.artGallery 2>/dev/null || true
-  xcrun simctl uninstall "$DEVICE_ID" com.test.financeTracker 2>/dev/null || true
-  xcrun simctl uninstall "$DEVICE_ID" com.test.tripPlanner 2>/dev/null || true
+  xcrun simctl uninstall "$DEVICE_ID" com.test.healthDiary 2>/dev/null || true
+  xcrun simctl uninstall "$DEVICE_ID" com.test.skillTree 2>/dev/null || true
+  xcrun simctl uninstall "$DEVICE_ID" com.test.teamRoster 2>/dev/null || true
   sleep 1
   xcrun simctl install "$DEVICE_ID" "$app_path"
   sleep 1
@@ -76,125 +76,53 @@ fresh_launch() {
 }
 
 # ============================================================
-echo "=== App 128: ArtGallery ==="
+echo "=== App 131: HealthDiary ==="
 # ============================================================
 
-fresh_launch "com.test.artGallery" \
-  "$SCRIPT_DIR/art_gallery/build/ios/iphonesimulator/Runner.app" \
-  "Art Gallery"
-
-echo "--- Gallery Tab (Home) ---"
-refresh_tree
-assert_tree_has "App title" "Art Gallery"
-assert_tree_has "Starry Night" "Starry Night"
-assert_tree_has "Persistence of Memory" "The Persistence of Memory"
-assert_tree_has "Girl with Pearl Earring" "Girl with a Pearl Earring"
-assert_tree_has "The Great Wave" "The Great Wave"
-assert_tree_has "Water Lilies" "Water Lilies"
-assert_tree_has "The Kiss" "The Kiss"
-assert_tree_has "Gallery tab" "Gallery"
-assert_tree_has "Artists tab" "Artists"
-assert_tree_has "Exhibitions tab" "Exhibitions"
-
-echo "--- Tap artwork for detail (coords — GridView items are AXStaticText) ---"
-R=$(run_iez "$IEZ" ui tap --coords "100,200")
-assert_ok "Tap Starry Night" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "Artwork title" "Starry Night"
-assert_tree_has "Artist" "Van Gogh"
-assert_tree_has "Medium" "Oil on Canvas"
-assert_tree_has "Favorite button" "Favorite"
-
-R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "Back from artwork" "$R"
-sleep 1
-
-echo "--- Switch to Artists tab (coords) ---"
-R=$(run_iez "$IEZ" ui tap --coords "201,810")
-assert_ok "Tap Artists tab" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "Van Gogh" "Van Gogh"
-assert_tree_has "Monet" "Monet"
-
-echo "--- Switch to Exhibitions tab (coords) ---"
-R=$(run_iez "$IEZ" ui tap --coords "335,810")
-assert_ok "Tap Exhibitions tab" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "Impressionist Masters" "Impressionist Masters"
-assert_tree_has "Modern Visions" "Modern Visions"
-
-echo "--- Navigate to About ---"
-R=$(run_iez "$IEZ" ui tap --label "Show menu")
-assert_ok "Tap overflow menu" "$R"
-sleep 1
-
-R=$(run_iez "$IEZ" ui tap --label "About")
-assert_ok "Tap About" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "About heading" "About"
-
-R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "Back from About" "$R"
-sleep 1
-
-R=$(run_iez "$IEZ" ui screenshot --out /tmp/app128_artgallery.png)
-assert_ok "Screenshot ArtGallery" "$R"
-
-# ============================================================
-echo ""
-echo "=== App 129: FinanceTracker ==="
-# ============================================================
-
-fresh_launch "com.test.financeTracker" \
-  "$SCRIPT_DIR/finance_tracker/build/ios/iphonesimulator/Runner.app" \
-  "Finance Tracker"
+fresh_launch "com.test.healthDiary" \
+  "$SCRIPT_DIR/health_diary/build/ios/iphonesimulator/Runner.app" \
+  "Health Diary"
 
 echo "--- Home Screen ---"
 refresh_tree
-assert_tree_has "App title" "Finance Tracker"
-assert_tree_has "Summary card" "Monthly Summary"
-assert_tree_has "Total Balance" "Total Balance"
+assert_tree_has "App title" "Health Diary"
+assert_tree_has "Summary card" "Today's Summary"
+assert_tree_has "Water intake" "5 glasses"
+assert_tree_has "Calories" "870 cal"
+assert_tree_has "Sleep hours" "7.5h"
 assert_tree_has "All filter" "All"
-assert_tree_has "Income filter" "Income"
-assert_tree_has "Expenses filter" "Expenses"
-assert_tree_has "Recurring filter" "Recurring"
-assert_tree_has "March Salary" "March Salary"
-assert_tree_has "Grocery Store" "Grocery Store"
-assert_tree_has "Electric Bill" "Electric Bill"
-assert_tree_has "Netflix" "Netflix"
-assert_tree_has "Uber Ride" "Uber Ride"
-assert_tree_has "Add Transaction FAB" "Add Transaction"
+assert_tree_has "Water filter" "Water"
+assert_tree_has "Meals filter" "Meals"
+assert_tree_has "Sleep filter" "Sleep"
+assert_tree_has "Mood filter" "Mood"
+assert_tree_has "Water entry" "Water: 3 glasses"
+assert_tree_has "Oatmeal entry" "Oatmeal and fruit"
+assert_tree_has "Chicken salad" "Grilled chicken salad"
+assert_tree_has "Mood entry" "Mood: happy"
+assert_tree_has "Sleep entry" "Sleep: 7.5 hours"
+assert_tree_has "Add Entry FAB" "Add Entry"
 
-echo "--- Filter by Income ---"
-R=$(run_iez "$IEZ" ui tap --label "Income")
-assert_ok "Tap Income filter" "$R"
+echo "--- Filter by Water ---"
+R=$(run_iez "$IEZ" ui tap --label "Water")
+assert_ok "Tap Water filter" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "Salary filtered" "March Salary"
-assert_tree_has "Freelance filtered" "Freelance Project"
+assert_tree_has "Water 3 glasses" "Water: 3 glasses"
+assert_tree_has "Water 2 glasses" "Water: 2 glasses"
 
 echo "--- Filter back to All ---"
 R=$(run_iez "$IEZ" ui tap --label "All")
 assert_ok "Tap All filter" "$R"
 sleep 1
 
-echo "--- Tap transaction for detail ---"
-R=$(run_iez "$IEZ" ui tap --coords "200,360")
-assert_ok "Tap March Salary" "$R"
+echo "--- Tap entry for detail ---"
+R=$(run_iez "$IEZ" ui tap --coords "200,430")
+assert_ok "Tap Oatmeal entry" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "Description" "March Salary"
-assert_tree_has "Category" "Salary"
+assert_tree_has "Meal name" "Oatmeal and fruit"
 assert_tree_has "Edit button" "Edit"
 assert_tree_has "Delete button" "Delete"
 
@@ -202,140 +130,235 @@ R=$(run_iez "$IEZ" ui tap --label "Back")
 assert_ok "Back from detail" "$R"
 sleep 1
 
-echo "--- Navigate to Reports ---"
+echo "--- Navigate to Goals ---"
 R=$(run_iez "$IEZ" ui tap --label "Show menu")
 assert_ok "Tap overflow menu" "$R"
 sleep 1
 
-R=$(run_iez "$IEZ" ui tap --label "Reports")
-assert_ok "Tap Reports" "$R"
+R=$(run_iez "$IEZ" ui tap --label "Goals")
+assert_ok "Tap Goals" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "Reports heading" "Reports"
-assert_tree_has "Total Income" "Total Income"
-assert_tree_has "Total Expenses" "Total Expenses"
-assert_tree_has "Savings Rate" "Savings Rate"
+assert_tree_has "Goals heading" "Goals"
+assert_tree_has "Water goal" "Water"
+assert_tree_has "Calories goal" "Calories"
+assert_tree_has "Sleep goal" "Sleep"
 
 R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "Back from Reports" "$R"
+assert_ok "Back from Goals" "$R"
 sleep 1
 
-echo "--- Add new transaction ---"
-R=$(run_iez "$IEZ" ui tap --label "Add Transaction")
-assert_ok "Tap Add Transaction" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "Add heading" "Add Transaction"
-assert_tree_has "Description field" "Description"
-assert_tree_has "Amount field" "Amount"
-assert_tree_has "Save button" "Save Transaction"
-
-R=$(run_iez "$IEZ" ui type "Coffee Shop" --label "Description")
-assert_ok "Type description" "$R"
-sleep 0.5
-
-R=$(run_iez "$IEZ" ui type "6" --label "Amount")
-assert_ok "Type amount" "$R"
-sleep 0.5
-
-R=$(run_iez "$IEZ" ui tap --coords "200,120")
-sleep 0.5
-
-R=$(run_iez "$IEZ" ui tap --label "Save Transaction")
-assert_ok "Tap Save Transaction" "$R"
+echo "--- Add new entry ---"
+R=$(run_iez "$IEZ" ui tap --label "Add Entry")
+assert_ok "Tap Add Entry" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "Back on home" "Finance Tracker"
-assert_tree_has "New transaction" "Coffee Shop"
+assert_tree_has "Add heading" "Add Entry"
+assert_tree_has "Save button" "Save Entry"
 
-R=$(run_iez "$IEZ" ui screenshot --out /tmp/app129_financetracker.png)
-assert_ok "Screenshot FinanceTracker" "$R"
+R=$(run_iez "$IEZ" ui screenshot --out /tmp/app131_healthdiary.png)
+assert_ok "Screenshot HealthDiary" "$R"
+
+R=$(run_iez "$IEZ" ui tap --label "Back")
+assert_ok "Back from Add" "$R"
+sleep 1
 
 # ============================================================
 echo ""
-echo "=== App 130: TripPlanner ==="
+echo "=== App 132: SkillTree ==="
 # ============================================================
 
-fresh_launch "com.test.tripPlanner" \
-  "$SCRIPT_DIR/trip_planner/build/ios/iphonesimulator/Runner.app" \
-  "Trip Planner"
+fresh_launch "com.test.skillTree" \
+  "$SCRIPT_DIR/skill_tree/build/ios/iphonesimulator/Runner.app" \
+  "Skill Tree"
 
 echo "--- Home Screen ---"
 refresh_tree
-assert_tree_has "App title" "Trip Planner"
-assert_tree_has "Tokyo" "Tokyo"
-assert_tree_has "Paris" "Paris"
-assert_tree_has "New York" "New York"
-assert_tree_has "Planning status" "Planning"
-assert_tree_has "Booked status" "Booked"
-assert_tree_has "Add Trip FAB" "Add Trip"
+assert_tree_has "App title" "Skill Tree"
+assert_tree_has "Programming" "Programming"
+assert_tree_has "Design" "Design"
+assert_tree_has "Languages" "Languages"
+assert_tree_has "Music" "Music"
+assert_tree_has "Add Skill FAB" "Add Skill"
 
-echo "--- Tap trip for detail (coords — AXGenericElement) ---"
-R=$(run_iez "$IEZ" ui tap --coords "200,170")
-assert_ok "Tap Tokyo trip" "$R"
+echo "--- Expand Programming category ---"
+R=$(run_iez "$IEZ" ui tap --coords "200,138")
+assert_ok "Tap Programming" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "Trip title" "Tokyo"
-assert_tree_has "Shibuya" "Shibuya"
-assert_tree_has "Tsukiji" "Tsukiji"
-assert_tree_has "Mount Fuji" "Mount Fuji"
-assert_tree_has "Add Activity" "Add Activity"
-assert_tree_has "Edit button" "Edit"
+assert_tree_has "Dart skill" "Dart"
+assert_tree_has "Python skill" "Python"
+assert_tree_has "SQL skill" "SQL"
 
-R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "Back from detail" "$R"
+echo "--- Tap Dart for detail ---"
+DART_Y=$(run_iez "$IEZ" ui tree --compact | jq -r '.data.elements[] | select(.label | contains("Dart")) | .frame.y' 2>/dev/null | head -1)
+if [ -n "$DART_Y" ] && [ "$DART_Y" != "null" ]; then
+  DART_CENTER=$((DART_Y + 28))
+  R=$(run_iez "$IEZ" ui tap --coords "200,$DART_CENTER")
+else
+  R=$(run_iez "$IEZ" ui tap --coords "200,180")
+fi
+assert_ok "Tap Dart" "$R"
 sleep 1
 
-echo "--- Navigate to Packing List ---"
+refresh_tree
+assert_tree_has "Skill title" "Dart"
+assert_tree_has "Level" "Level"
+assert_tree_has "Practice button" "Practice"
+assert_tree_has "Edit button" "Edit"
+
+echo "--- Tap Practice ---"
+R=$(run_iez "$IEZ" ui tap --label "Practice")
+assert_ok "Tap Practice" "$R"
+sleep 1
+
+R=$(run_iez "$IEZ" ui tap --label "Back")
+assert_ok "Back from skill detail" "$R"
+sleep 1
+
+echo "--- Navigate to Achievements ---"
 R=$(run_iez "$IEZ" ui tap --label "Show menu")
 assert_ok "Tap overflow menu" "$R"
 sleep 1
 
-R=$(run_iez "$IEZ" ui tap --label "Packing List")
-assert_ok "Tap Packing List" "$R"
+R=$(run_iez "$IEZ" ui tap --label "Achievements")
+assert_ok "Tap Achievements" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "Packing heading" "Packing List"
-assert_tree_has "Passport" "Passport"
-assert_tree_has "Charger" "Charger"
-assert_tree_has "Sunscreen" "Sunscreen"
+assert_tree_has "Achievements heading" "Achievements"
+assert_tree_has "First Steps" "First Steps"
+assert_tree_has "Level 5 Club" "Level 5 Club"
+assert_tree_has "Polymath" "Polymath"
+assert_tree_has "Master" "Master"
 
 R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "Back from Packing List" "$R"
+assert_ok "Back from Achievements" "$R"
 sleep 1
 
-echo "--- Add new trip ---"
-R=$(run_iez "$IEZ" ui tap --label "Add Trip")
-assert_ok "Tap Add Trip" "$R"
+echo "--- Add new skill ---"
+R=$(run_iez "$IEZ" ui tap --label "Add Skill")
+assert_ok "Tap Add Skill" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "Add heading" "Add Trip"
-assert_tree_has "Destination field" "Destination"
-assert_tree_has "Save button" "Save Trip"
+assert_tree_has "Add heading" "Add Skill"
+assert_tree_has "Skill Name field" "Skill Name"
+assert_tree_has "Description field" "Description"
+assert_tree_has "Save button" "Save Skill"
 
-R=$(run_iez "$IEZ" ui type "London" --label "Destination")
-assert_ok "Type destination" "$R"
+R=$(run_iez "$IEZ" ui type "Rust" --label "Skill Name")
+assert_ok "Type skill name" "$R"
 sleep 0.5
 
 R=$(run_iez "$IEZ" ui tap --coords "200,120")
 sleep 0.5
 
-R=$(run_iez "$IEZ" ui tap --label "Save Trip")
-assert_ok "Tap Save Trip" "$R"
+R=$(run_iez "$IEZ" ui tap --label "Save Skill")
+assert_ok "Tap Save Skill" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "Back on home" "Trip Planner"
-assert_tree_has "New trip" "London"
+assert_tree_has "Back on home" "Skill Tree"
 
-R=$(run_iez "$IEZ" ui screenshot --out /tmp/app130_tripplanner.png)
-assert_ok "Screenshot TripPlanner" "$R"
+R=$(run_iez "$IEZ" ui screenshot --out /tmp/app132_skilltree.png)
+assert_ok "Screenshot SkillTree" "$R"
+
+# ============================================================
+echo ""
+echo "=== App 133: TeamRoster ==="
+# ============================================================
+
+fresh_launch "com.test.teamRoster" \
+  "$SCRIPT_DIR/team_roster/build/ios/iphonesimulator/Runner.app" \
+  "Team Roster"
+
+echo "--- Home Screen ---"
+refresh_tree
+assert_tree_has "App title" "Team Roster"
+assert_tree_has "Team name" "Thunder Hawks"
+assert_tree_has "Record" "12-5-1"
+assert_tree_has "Alex Rivera" "Alex Rivera"
+assert_tree_has "Jordan Kim" "Jordan Kim"
+assert_tree_has "Casey Morgan" "Casey Morgan"
+assert_tree_has "Taylor Smith" "Taylor Smith"
+assert_tree_has "Sam Johnson" "Sam Johnson"
+assert_tree_has "Active status" "Active"
+assert_tree_has "Injured status" "Injured"
+assert_tree_has "Bench status" "Bench"
+assert_tree_has "Add FAB" "Add"
+
+echo "--- Tap player for detail ---"
+R=$(run_iez "$IEZ" ui tap --coords "200,300")
+assert_ok "Tap Alex Rivera" "$R"
+sleep 1
+
+refresh_tree
+assert_tree_has "Player name" "Alex Rivera"
+assert_tree_has "Position" "Forward"
+assert_tree_has "Edit button" "Edit"
+
+R=$(run_iez "$IEZ" ui tap --label "Back")
+assert_ok "Back from player detail" "$R"
+sleep 1
+
+echo "--- Navigate to Schedule ---"
+R=$(run_iez "$IEZ" ui tap --label "Show menu")
+assert_ok "Tap overflow menu" "$R"
+sleep 1
+
+R=$(run_iez "$IEZ" ui tap --label "Schedule")
+assert_ok "Tap Schedule" "$R"
+sleep 1
+
+refresh_tree
+assert_tree_has "Schedule heading" "Schedule"
+assert_tree_has "Lightning FC" "Lightning FC"
+assert_tree_has "Storm United" "Storm United"
+assert_tree_has "Phoenix Rising" "Phoenix Rising"
+
+R=$(run_iez "$IEZ" ui tap --label "Back")
+assert_ok "Back from Schedule" "$R"
+sleep 1
+
+echo "--- Add new player ---"
+R=$(run_iez "$IEZ" ui tap --label "Add")
+assert_ok "Tap Add" "$R"
+sleep 1
+
+refresh_tree
+assert_tree_has "Add heading" "Add Player"
+assert_tree_has "Name field" "Name"
+assert_tree_has "Number field" "Number"
+assert_tree_has "Position field" "Position"
+assert_tree_has "Save button" "Save Player"
+
+R=$(run_iez "$IEZ" ui type "Chris Lee" --label "Name")
+assert_ok "Type player name" "$R"
+sleep 0.5
+
+R=$(run_iez "$IEZ" ui type "15" --label "Number")
+assert_ok "Type number" "$R"
+sleep 0.5
+
+R=$(run_iez "$IEZ" ui tap --coords "200,120")
+sleep 0.5
+R=$(run_iez "$IEZ" ui swipe up)
+sleep 0.5
+
+R=$(run_iez "$IEZ" ui tap --label "Save Player")
+assert_ok "Tap Save Player" "$R"
+sleep 1
+
+refresh_tree
+assert_tree_has "Back on home" "Team Roster"
+assert_tree_has "New player" "Chris Lee"
+
+R=$(run_iez "$IEZ" ui screenshot --out /tmp/app133_teamroster.png)
+assert_ok "Screenshot TeamRoster" "$R"
 
 # ============================================================
 echo ""
