@@ -246,8 +246,14 @@ iez is continuously tested against real-world open-source Flutter apps to valida
 | 48 | Animated Container | custom | Animation/CrossFade/List | 10 | 33 | **100%** | 21s | AnimatedContainer, AnimatedOpacity, AnimatedRotation, AnimatedCrossFade, AnimatedList (add/remove), MaterialBanner dismiss |
 | 49 | Multi-Select List | custom | Filter/Sort/Select | 10 | 31 | **100%** | 18s | ChoiceChip filter, ListView.builder, PopupMenuButton sort, CircleAvatar, AlertDialog (add task), DropdownButtonFormField, StatefulBuilder |
 | 50 | Expandable Panel | custom | FAQ/ExpansionTile/Search | 7 | 27 | **100%** | 18s | ExpansionTile (expand/collapse), SearchBar with filtering, TextButton.icon helpful toggle, FAB.extended, AlertDialog (ask question) |
+| 51 | Quiz App | custom | RadioListTile/Score/Results | 7 | 34 | **100%** | 18s | RadioListTile quiz, LinearProgressIndicator, score counter, correct/wrong feedback, result screen, FilledButton.icon restart |
+| 52 | Bottom Nav Nested | custom | NavBar/IndexedStack/Search | 9 | 26 | **100%** | 13s | NavigationBar (4-tab), IndexedStack, Badge on tab, nested push/pop, TextField search filter, Clear All, sign-out dialog |
 
-**Summary:** 50 apps, 539 steps, 1722 assertions, **100% pass rate**
+| 53 | Game Template | [flutter/samples](https://github.com/flutter/samples/tree/main/game_template) | Game/Menu/Levels | 12 | 40 | **100%** | 32s | GoRouter, Slider game (drag-to-win), level progression, win screen, confetti, SnackBar (reset progress), Provider state, multiline AX labels, audio controller |
+| 54 | Timer Dashboard | custom | Stopwatch/Countdown/Stats | 10 | 35 | **100%** | 14s | NavigationBar (3 tabs, coords), IndexedStack, Stopwatch (Start/Stop/Lap), DropdownButton, LinearProgressIndicator, AlertDialog alarm, CircleAvatar, session history, Wrap |
+| 55 | Color Palette | custom | GridView/Detail/Drawer/Sheet | 12 | 44 | **100%** | 21s | GridView.count, Card+InkWell, color shades ListView, Clipboard+SnackBar, IconButton heart toggle, Drawer+DrawerHeader, ModalBottomSheet settings, SwitchListTile, RadioListTile, dark mode toggle |
+
+**Summary:** 55 apps, 599 steps, 1901 assertions, **100% pass rate**
 
 **T-100% = Time from first app launch to 100% pass rate** (— = not measured for early apps)
 
