@@ -1,67 +1,90 @@
 import 'package:flutter/material.dart';
-void main() => runApp(const App73());
-class App73 extends StatelessWidget {
-  const App73({super.key});
+void main() => runApp(const App76());
+class App76 extends StatelessWidget {
+  const App76({super.key});
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(title: 'BottomBarApp',
-      theme: ThemeData(colorSchemeSeed: Colors.brown, useMaterial3: true),
-      home: const BottomBarHome());
+    return MaterialApp(title: 'ShopApp',
+      theme: ThemeData(colorSchemeSeed: Colors.pink, useMaterial3: true),
+      home: const ShopHome());
   }
 }
-class BottomBarHome extends StatefulWidget {
-  const BottomBarHome({super.key});
+class ShopHome extends StatefulWidget {
+  const ShopHome({super.key});
   @override
-  State<BottomBarHome> createState() => _BottomBarHomeState();
+  State<ShopHome> createState() => _ShopHomeState();
 }
-class _BottomBarHomeState extends State<BottomBarHome> {
-  int _count = 0;
-  String _lastAction = 'None';
+class _ShopHomeState extends State<ShopHome> {
+  final _products = [
+    {'name': 'Laptop', 'price': 999},
+    {'name': 'Phone', 'price': 699},
+    {'name': 'Tablet', 'price': 499},
+    {'name': 'Watch', 'price': 299},
+  ];
+  final Map<String, int> _cart = {};
+  int get _cartCount => _cart.values.fold(0, (a, b) => a + b);
+  int get _cartTotal => _cart.entries.fold(0, (sum, e) {
+    final p = _products.firstWhere((p) => p['name'] == e.key);
+    return sum + (p['price'] as int) * e.value;
+  });
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('BottomBarApp')),
-      body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('Count: $_count', style: Theme.of(context).textTheme.displayMedium),
-        const SizedBox(height: 16),
-        Text('Last action: $_lastAction', style: Theme.of(context).textTheme.bodyLarge),
-        const SizedBox(height: 24),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          FilledButton(onPressed: () => setState(() { _count++; _lastAction = 'Incremented'; }),
-            child: const Text('Increment')),
-          const SizedBox(width: 16),
-          OutlinedButton(onPressed: () => setState(() { _count--; _lastAction = 'Decremented'; }),
-            child: const Text('Decrement')),
-        ]),
-        const SizedBox(height: 16),
-        TextButton(onPressed: () => setState(() { _count = 0; _lastAction = 'Reset'; }),
-          child: const Text('Reset')),
-      ])),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => setState(() { _count += 10; _lastAction = 'Added 10'; }),
-        tooltip: 'Add 10',
-        child: const Icon(Icons.add),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        child: Row(children: [
-          IconButton(icon: const Icon(Icons.menu), tooltip: 'Menu', onPressed: () {
-            showModalBottomSheet(context: context, builder: (ctx) => Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(leading: const Icon(Icons.share), title: const Text('Share Count'),
-                  onTap: () { Navigator.pop(ctx); setState(() => _lastAction = 'Shared: $_count'); }),
-                ListTile(leading: const Icon(Icons.copy), title: const Text('Copy Count'),
-                  onTap: () { Navigator.pop(ctx); setState(() => _lastAction = 'Copied: $_count'); }),
-              ],
-            ));
-          }),
-          const Spacer(),
-          IconButton(icon: const Icon(Icons.search), tooltip: 'Search', onPressed: () =>
-            setState(() => _lastAction = 'Search pressed')),
-        ]),
+      appBar: AppBar(title: const Text('ShopApp'), actions: [
+        Badge(
+          label: Text('$_cartCount'),
+          isLabelVisible: _cartCount > 0,
+          child: IconButton(icon: const Icon(Icons.shopping_cart), tooltip: 'Cart',
+            onPressed: () => _showCart()),
+        ),
+      ]),
+      body: GridView.builder(
+        padding: const EdgeInsets.all(12),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12),
+        itemCount: _products.length,
+        itemBuilder: (ctx, i) {
+          final p = _products[i];
+          final name = p['name'] as String;
+          final price = p['price'] as int;
+          final qty = _cart[name] ?? 0;
+          return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(name, style: Theme.of(ctx).textTheme.titleMedium),
+              Text('\$$price'),
+              const SizedBox(height: 8),
+              if (qty > 0) Text('Qty: $qty'),
+              FilledButton(
+                onPressed: () => setState(() => _cart[name] = qty + 1),
+                child: Text(qty > 0 ? 'Add More' : 'Add to Cart'),
+              ),
+            ],
+          )));
+        },
       ),
     );
+  }
+  void _showCart() {
+    showModalBottomSheet(context: context, builder: (ctx) => Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('Shopping Cart', style: Theme.of(ctx).textTheme.titleLarge),
+        const SizedBox(height: 16),
+        if (_cart.isEmpty) const Text('Cart is empty')
+        else ..._cart.entries.map((e) => ListTile(
+          title: Text(e.key), trailing: Text('x${e.value}'),
+        )),
+        const Divider(),
+        Text('Total: \$$_cartTotal', style: Theme.of(ctx).textTheme.titleMedium),
+        const SizedBox(height: 16),
+        if (_cart.isNotEmpty) FilledButton(onPressed: () {
+          Navigator.pop(ctx);
+          setState(() => _cart.clear());
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Order placed!')));
+        }, child: const Text('Checkout')),
+      ]),
+    ));
   }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apps 71-73: SearchDelegate / PageViewIndicator / BottomAppBarScaffold
+# Apps 74-76: MultiCounter / PasswordValidator / ShoppingCart
 set -euo pipefail
 IEZ="./bin/iez"
 PASS=0; FAIL=0; TOTAL=0
@@ -28,362 +28,370 @@ rebuild_and_launch() {
 }
 
 ########################################################################
-# APP 71: SearchDelegate — showSearch with suggestions and results
+# APP 74: MultiCounter — Multiple independent counters + total
 ########################################################################
 cat > test_app/lib/main.dart << 'DART'
 import 'package:flutter/material.dart';
-void main() => runApp(const App71());
-class App71 extends StatelessWidget {
-  const App71({super.key});
+void main() => runApp(const App74());
+class App74 extends StatelessWidget {
+  const App74({super.key});
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(title: 'SearchApp',
-      theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
-      home: const SearchHome());
+    return MaterialApp(title: 'MultiCounter',
+      theme: ThemeData(colorSchemeSeed: Colors.lime, useMaterial3: true),
+      home: const MultiCounterHome());
   }
 }
-class SearchHome extends StatefulWidget {
-  const SearchHome({super.key});
+class MultiCounterHome extends StatefulWidget {
+  const MultiCounterHome({super.key});
   @override
-  State<SearchHome> createState() => _SearchHomeState();
+  State<MultiCounterHome> createState() => _MultiCounterHomeState();
 }
-class _SearchHomeState extends State<SearchHome> {
-  String _selected = 'None';
+class _MultiCounterHomeState extends State<MultiCounterHome> {
+  final Map<String, int> _counters = {'Red': 0, 'Green': 0, 'Blue': 0};
+  int get _total => _counters.values.fold(0, (a, b) => a + b);
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('SearchApp'), actions: [
-        IconButton(icon: const Icon(Icons.search), onPressed: () async {
-          final result = await showSearch(context: context, delegate: _ItemSearchDelegate());
-          if (result != null) setState(() => _selected = result);
-        }),
-      ]),
-      body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('Selected: $_selected', style: Theme.of(context).textTheme.headlineSmall),
+      appBar: AppBar(title: const Text('MultiCounter')),
+      body: Column(children: [
+        Container(
+          width: double.infinity, padding: const EdgeInsets.all(16),
+          color: Theme.of(context).colorScheme.primaryContainer,
+          child: Text('Total: $_total', textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.headlineMedium),
+        ),
+        ..._counters.entries.map((e) => ListTile(
+          title: Text('${e.key}: ${e.value}'),
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(icon: const Icon(Icons.remove), tooltip: 'Decrease ${e.key}',
+              onPressed: () => setState(() => _counters[e.key] = e.value - 1)),
+            IconButton(icon: const Icon(Icons.add), tooltip: 'Increase ${e.key}',
+              onPressed: () => setState(() => _counters[e.key] = e.value + 1)),
+          ]),
+        )),
+        const Spacer(),
+        Padding(padding: const EdgeInsets.all(16), child:
+          FilledButton(onPressed: () => setState(() {
+            for (var k in _counters.keys) _counters[k] = 0;
+          }), child: const Text('Reset All'))),
         const SizedBox(height: 16),
-        const Text('Tap search icon to find items'),
-      ])),
+      ]),
     );
-  }
-}
-class _ItemSearchDelegate extends SearchDelegate<String> {
-  final items = ['Apple', 'Banana', 'Cherry', 'Date', 'Elderberry', 'Fig', 'Grape', 'Honeydew'];
-  @override
-  List<Widget> buildActions(BuildContext context) => [
-    IconButton(icon: const Icon(Icons.clear), onPressed: () => query = ''),
-  ];
-  @override
-  Widget buildLeading(BuildContext context) =>
-    IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => close(context, ''));
-  @override
-  Widget buildResults(BuildContext context) {
-    final results = items.where((i) => i.toLowerCase().contains(query.toLowerCase())).toList();
-    return ListView(children: results.map((r) => ListTile(
-      title: Text(r), onTap: () => close(context, r),
-    )).toList());
-  }
-  @override
-  Widget buildSuggestions(BuildContext context) {
-    final suggestions = query.isEmpty ? items.take(4).toList()
-      : items.where((i) => i.toLowerCase().contains(query.toLowerCase())).toList();
-    return ListView(children: suggestions.map((s) => ListTile(
-      key: ValueKey(s),
-      leading: const Icon(Icons.search),
-      title: Text(s),
-      onTap: () => close(context, s),
-    )).toList());
   }
 }
 DART
 
 echo "========================================"
-echo "APP 71: SearchApp"
+echo "APP 74: MultiCounter"
 echo "========================================"
 rebuild_and_launch
 
 echo "Step 1: Initial state"
-has_label "SearchApp" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
-has_text "Selected: None" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Default"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Default"; }
+has_label "MultiCounter" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
+has_text "Total: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Total 0"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Total 0"; }
+has_text "Red: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Red 0"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Red 0"; }
+has_text "Green: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Green 0"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Green 0"; }
+has_text "Blue: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Blue 0"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Blue 0"; }
+has_label "Reset All" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Reset btn"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Reset btn"; }
 
-echo "Step 2: Open search"
-# Search icon in AppBar — use coords (right side of AppBar)
-R=$(run_iez $IEZ ui tap --coords 370,78); assert_ok "$R" "Tap Search"
-sleep 0.5
-has_text "Apple" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Apple suggestion"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Apple suggestion"; }
-has_text "Banana" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Banana suggestion"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Banana suggestion"; }
+echo "Step 2: Increment Red"
+R=$(run_iez $IEZ ui tap --label "Increase Red"); assert_ok "$R" "+Red"
+sleep 0.2
+R=$(run_iez $IEZ ui tap --label "Increase Red"); assert_ok "$R" "+Red"
+sleep 0.2
+R=$(run_iez $IEZ ui tap --label "Increase Red"); assert_ok "$R" "+Red"
+sleep 0.3
+has_text "Red: 3" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Red 3"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Red 3"; }
 
-echo "Step 3: Select Apple directly"
-R=$(run_iez $IEZ ui tap --label "Apple"); assert_ok "$R" "Tap Apple"
-sleep 0.5
-has_text "Selected: Apple" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Apple selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Apple selected"; }
+echo "Step 3: Increment Green"
+R=$(run_iez $IEZ ui tap --label "Increase Green"); assert_ok "$R" "+Green"
+sleep 0.2
+R=$(run_iez $IEZ ui tap --label "Increase Green"); assert_ok "$R" "+Green"
+sleep 0.3
+has_text "Green: 2" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Green 2"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Green 2"; }
 
-echo "Step 4: Search again and select Cherry"
-R=$(run_iez $IEZ ui tap --coords 370,78); assert_ok "$R" "Open search again"
-sleep 0.5
-R=$(run_iez $IEZ ui tap --label "Cherry"); assert_ok "$R" "Tap Cherry"
-sleep 0.5
-has_text "Selected: Cherry" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Cherry selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Cherry selected"; }
+echo "Step 4: Decrement Blue"
+R=$(run_iez $IEZ ui tap --label "Decrease Blue"); assert_ok "$R" "-Blue"
+sleep 0.3
+has_text "Blue: -1" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Blue -1"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Blue -1"; }
 
-echo "Step 5: Search again and select Banana"
-R=$(run_iez $IEZ ui tap --coords 370,78); assert_ok "$R" "Open search"
-sleep 0.5
-R=$(run_iez $IEZ ui tap --label "Banana"); assert_ok "$R" "Tap Banana"
-sleep 0.5
-has_text "Selected: Banana" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Banana selected"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Banana selected"; }
+echo "Step 5: Check total"
+has_text "Total: 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Total 4"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Total 4"; }
+
+echo "Step 6: Reset"
+R=$(run_iez $IEZ ui tap --label "Reset All"); assert_ok "$R" "Reset"
+sleep 0.3
+has_text "Total: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Total reset"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Total reset"; }
+has_text "Red: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Red reset"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Red reset"; }
 
 echo ""
 
 ########################################################################
-# APP 72: PageViewIndicator — PageView with dots indicator
+# APP 75: PasswordValidator — Real-time validation with strength meter
 ########################################################################
 cat > test_app/lib/main.dart << 'DART'
 import 'package:flutter/material.dart';
-void main() => runApp(const App72());
-class App72 extends StatelessWidget {
-  const App72({super.key});
+void main() => runApp(const App75());
+class App75 extends StatelessWidget {
+  const App75({super.key});
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(title: 'PageViewApp',
-      theme: ThemeData(colorSchemeSeed: Colors.deepPurple, useMaterial3: true),
-      home: const PageViewHome());
+    return MaterialApp(title: 'PasswordApp',
+      theme: ThemeData(colorSchemeSeed: Colors.red, useMaterial3: true),
+      home: const PasswordHome());
   }
 }
-class PageViewHome extends StatefulWidget {
-  const PageViewHome({super.key});
+class PasswordHome extends StatefulWidget {
+  const PasswordHome({super.key});
   @override
-  State<PageViewHome> createState() => _PageViewHomeState();
+  State<PasswordHome> createState() => _PasswordHomeState();
 }
-class _PageViewHomeState extends State<PageViewHome> {
-  final _controller = PageController();
-  int _currentPage = 0;
-  final pages = [
-    {'title': 'Welcome', 'subtitle': 'Get started with our app', 'color': Colors.blue},
-    {'title': 'Discover', 'subtitle': 'Find amazing content', 'color': Colors.green},
-    {'title': 'Connect', 'subtitle': 'Join the community', 'color': Colors.orange},
-    {'title': 'Create', 'subtitle': 'Build something great', 'color': Colors.purple},
-  ];
+class _PasswordHomeState extends State<PasswordHome> {
+  String _password = '';
+  bool _obscure = true;
+  bool _submitted = false;
+  bool get _hasLength => _password.length >= 8;
+  bool get _hasUpper => _password.contains(RegExp(r'[A-Z]'));
+  bool get _hasDigit => _password.contains(RegExp(r'[0-9]'));
+  bool get _hasSpecial => _password.contains(RegExp(r'[!@#$%^&*]'));
+  int get _strength => [_hasLength, _hasUpper, _hasDigit, _hasSpecial].where((b) => b).length;
+  String get _strengthLabel => ['Weak', 'Fair', 'Good', 'Strong'][(_strength - 1).clamp(0, 3)];
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Page ${_currentPage + 1} of ${pages.length}')),
-      body: Column(children: [
-        Expanded(child: PageView.builder(
-          controller: _controller,
-          itemCount: pages.length,
-          onPageChanged: (i) => setState(() => _currentPage = i),
-          itemBuilder: (ctx, i) {
-            final p = pages[i];
-            return Container(
-              color: (p['color'] as Color).withValues(alpha: 0.1),
-              child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text(p['title'] as String, style: Theme.of(ctx).textTheme.headlineLarge),
-                const SizedBox(height: 8),
-                Text(p['subtitle'] as String, style: Theme.of(ctx).textTheme.bodyLarge),
-              ])),
-            );
-          },
-        )),
-        Padding(padding: const EdgeInsets.all(16), child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(pages.length, (i) => Container(
-            width: i == _currentPage ? 24 : 8,
-            height: 8,
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              color: i == _currentPage
-                ? Theme.of(context).colorScheme.primary
-                : Theme.of(context).colorScheme.outline,
+      appBar: AppBar(title: const Text('PasswordApp')),
+      body: Padding(padding: const EdgeInsets.all(16), child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_submitted) Container(
+            width: double.infinity, padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+            child: const Text('Password accepted!', style: TextStyle(color: Colors.green)),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            decoration: InputDecoration(
+              labelText: 'Password',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                tooltip: _obscure ? 'Show password' : 'Hide password',
+                onPressed: () => setState(() => _obscure = !_obscure),
+              ),
             ),
-          )),
-        )),
-        Padding(padding: const EdgeInsets.only(bottom: 32, left: 16, right: 16),
-          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            TextButton(
-              onPressed: _currentPage > 0 ? () => _controller.previousPage(
-                duration: const Duration(milliseconds: 300), curve: Curves.easeInOut) : null,
-              child: const Text('Previous'),
-            ),
-            FilledButton(
-              onPressed: _currentPage < pages.length - 1 ? () => _controller.nextPage(
-                duration: const Duration(milliseconds: 300), curve: Curves.easeInOut) : null,
-              child: Text(_currentPage < pages.length - 1 ? 'Next' : 'Done'),
-            ),
-          ]),
+            obscureText: _obscure,
+            onChanged: (v) => setState(() { _password = v; _submitted = false; }),
+          ),
+          const SizedBox(height: 16),
+          if (_password.isNotEmpty) ...[
+            LinearProgressIndicator(value: _strength / 4),
+            const SizedBox(height: 8),
+            Text('Strength: $_strengthLabel'),
+            const SizedBox(height: 16),
+            _check('8+ characters', _hasLength),
+            _check('Uppercase letter', _hasUpper),
+            _check('Digit', _hasDigit),
+            _check('Special character', _hasSpecial),
+          ],
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: _strength == 4 ? () => setState(() => _submitted = true) : null,
+            child: const Text('Submit'),
+          ),
+        ],
+      )),
+    );
+  }
+  Widget _check(String label, bool met) => Row(children: [
+    Icon(met ? Icons.check_circle : Icons.cancel,
+      color: met ? Colors.green : Colors.red, size: 20),
+    const SizedBox(width: 8),
+    Text(label),
+  ]);
+}
+DART
+
+echo "========================================"
+echo "APP 75: PasswordApp"
+echo "========================================"
+rebuild_and_launch
+
+echo "Step 1: Initial state"
+has_label "PasswordApp" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
+has_label "Password" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Password field"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Password field"; }
+has_label "Submit" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Submit button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Submit button"; }
+
+echo "Step 2: Type weak password"
+R=$(run_iez $IEZ ui type "abc" --label "Password"); assert_ok "$R" "Type weak"
+sleep 0.5
+has_text "Strength: Weak" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Weak strength"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Weak strength"; }
+has_text "8+ characters" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Length check"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Length check"; }
+
+echo "Step 3: Toggle visibility"
+R=$(run_iez $IEZ ui tap --label "Show password"); assert_ok "$R" "Show password"
+sleep 0.3
+has_label "Hide password" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Toggle to hide"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Toggle to hide"; }
+R=$(run_iez $IEZ ui tap --label "Hide password"); assert_ok "$R" "Hide password"
+sleep 0.3
+
+echo "Step 4: Type strong password"
+# Clear and retype — restart app to reset
+xcrun simctl terminate booted "$BUNDLE_ID" 2>/dev/null; sleep 0.3
+xcrun simctl launch booted "$BUNDLE_ID" 2>/dev/null; sleep 1.5
+R=$(run_iez $IEZ ui type "MyPass1!" --label "Password"); assert_ok "$R" "Type strong"
+sleep 0.5
+has_text "Strength: Strong" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Strong"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Strong"; }
+
+echo "Step 5: Submit"
+R=$(run_iez $IEZ ui tap --label "Submit"); assert_ok "$R" "Submit"
+sleep 0.3
+has_text "Password accepted" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Accepted"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Accepted"; }
+
+echo ""
+
+########################################################################
+# APP 76: ShoppingCart — GridView + Badge + quantity + checkout dialog
+########################################################################
+cat > test_app/lib/main.dart << 'DART'
+import 'package:flutter/material.dart';
+void main() => runApp(const App76());
+class App76 extends StatelessWidget {
+  const App76({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(title: 'ShopApp',
+      theme: ThemeData(colorSchemeSeed: Colors.pink, useMaterial3: true),
+      home: const ShopHome());
+  }
+}
+class ShopHome extends StatefulWidget {
+  const ShopHome({super.key});
+  @override
+  State<ShopHome> createState() => _ShopHomeState();
+}
+class _ShopHomeState extends State<ShopHome> {
+  final _products = [
+    {'name': 'Laptop', 'price': 999},
+    {'name': 'Phone', 'price': 699},
+    {'name': 'Tablet', 'price': 499},
+    {'name': 'Watch', 'price': 299},
+  ];
+  final Map<String, int> _cart = {};
+  int get _cartCount => _cart.values.fold(0, (a, b) => a + b);
+  int get _cartTotal => _cart.entries.fold(0, (sum, e) {
+    final p = _products.firstWhere((p) => p['name'] == e.key);
+    return sum + (p['price'] as int) * e.value;
+  });
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('ShopApp'), actions: [
+        Badge(
+          label: Text('$_cartCount'),
+          isLabelVisible: _cartCount > 0,
+          child: IconButton(icon: const Icon(Icons.shopping_cart), tooltip: 'Cart',
+            onPressed: () => _showCart()),
         ),
       ]),
+      body: GridView.builder(
+        padding: const EdgeInsets.all(12),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12),
+        itemCount: _products.length,
+        itemBuilder: (ctx, i) {
+          final p = _products[i];
+          final name = p['name'] as String;
+          final price = p['price'] as int;
+          final qty = _cart[name] ?? 0;
+          return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(name, style: Theme.of(ctx).textTheme.titleMedium),
+              Text('\$$price'),
+              const SizedBox(height: 8),
+              if (qty > 0) Text('Qty: $qty'),
+              FilledButton(
+                onPressed: () => setState(() => _cart[name] = qty + 1),
+                child: Text(qty > 0 ? 'Add More' : 'Add to Cart'),
+              ),
+            ],
+          )));
+        },
+      ),
     );
+  }
+  void _showCart() {
+    showModalBottomSheet(context: context, builder: (ctx) => Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('Shopping Cart', style: Theme.of(ctx).textTheme.titleLarge),
+        const SizedBox(height: 16),
+        if (_cart.isEmpty) const Text('Cart is empty')
+        else ..._cart.entries.map((e) => ListTile(
+          title: Text(e.key), trailing: Text('x${e.value}'),
+        )),
+        const Divider(),
+        Text('Total: \$$_cartTotal', style: Theme.of(ctx).textTheme.titleMedium),
+        const SizedBox(height: 16),
+        if (_cart.isNotEmpty) FilledButton(onPressed: () {
+          Navigator.pop(ctx);
+          setState(() => _cart.clear());
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Order placed!')));
+        }, child: const Text('Checkout')),
+      ]),
+    ));
   }
 }
 DART
 
 echo "========================================"
-echo "APP 72: PageViewApp"
-echo "========================================"
-rebuild_and_launch
-
-echo "Step 1: Initial state (page 1)"
-has_text "Page 1 of 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Page counter"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Page counter"; }
-has_text "Welcome" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Welcome title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Welcome title"; }
-has_text "Get started" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Welcome subtitle"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Welcome subtitle"; }
-has_label "Next" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Next button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Next button"; }
-has_label "Previous" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Previous button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Previous button"; }
-
-echo "Step 2: Next page"
-R=$(run_iez $IEZ ui tap --label "Next"); assert_ok "$R" "Tap Next"
-sleep 0.5
-has_text "Page 2 of 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Page 2"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Page 2"; }
-has_text "Discover" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Discover"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Discover"; }
-
-echo "Step 3: Swipe to page 3"
-R=$(run_iez $IEZ ui swipe --from 350,400 --to 50,400); assert_ok "$R" "Swipe to page 3"
-sleep 0.5
-has_text "Page 3 of 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Page 3"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Page 3"; }
-has_text "Connect" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Connect"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Connect"; }
-
-echo "Step 4: Next to page 4"
-R=$(run_iez $IEZ ui tap --label "Next"); assert_ok "$R" "Tap Next"
-sleep 0.5
-has_text "Page 4 of 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Page 4"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Page 4"; }
-has_text "Create" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Create"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Create"; }
-has_label "Done" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Done button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Done button"; }
-
-echo "Step 5: Go back with Previous"
-R=$(run_iez $IEZ ui tap --label "Previous"); assert_ok "$R" "Tap Previous"
-sleep 0.5
-has_text "Page 3 of 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Back to 3"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Back to 3"; }
-
-echo "Step 6: Swipe back"
-R=$(run_iez $IEZ ui swipe --from 50,400 --to 350,400); assert_ok "$R" "Swipe back"
-sleep 0.5
-has_text "Page 2 of 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Back to 2"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Back to 2"; }
-
-echo ""
-
-########################################################################
-# APP 73: BottomAppBarScaffold — BottomAppBar with notched FAB + menus
-########################################################################
-cat > test_app/lib/main.dart << 'DART'
-import 'package:flutter/material.dart';
-void main() => runApp(const App73());
-class App73 extends StatelessWidget {
-  const App73({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(title: 'BottomBarApp',
-      theme: ThemeData(colorSchemeSeed: Colors.brown, useMaterial3: true),
-      home: const BottomBarHome());
-  }
-}
-class BottomBarHome extends StatefulWidget {
-  const BottomBarHome({super.key});
-  @override
-  State<BottomBarHome> createState() => _BottomBarHomeState();
-}
-class _BottomBarHomeState extends State<BottomBarHome> {
-  int _count = 0;
-  String _lastAction = 'None';
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('BottomBarApp')),
-      body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('Count: $_count', style: Theme.of(context).textTheme.displayMedium),
-        const SizedBox(height: 16),
-        Text('Last action: $_lastAction', style: Theme.of(context).textTheme.bodyLarge),
-        const SizedBox(height: 24),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          FilledButton(onPressed: () => setState(() { _count++; _lastAction = 'Incremented'; }),
-            child: const Text('Increment')),
-          const SizedBox(width: 16),
-          OutlinedButton(onPressed: () => setState(() { _count--; _lastAction = 'Decremented'; }),
-            child: const Text('Decrement')),
-        ]),
-        const SizedBox(height: 16),
-        TextButton(onPressed: () => setState(() { _count = 0; _lastAction = 'Reset'; }),
-          child: const Text('Reset')),
-      ])),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => setState(() { _count += 10; _lastAction = 'Added 10'; }),
-        tooltip: 'Add 10',
-        child: const Icon(Icons.add),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        child: Row(children: [
-          IconButton(icon: const Icon(Icons.menu), tooltip: 'Menu', onPressed: () {
-            showModalBottomSheet(context: context, builder: (ctx) => Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(leading: const Icon(Icons.share), title: const Text('Share Count'),
-                  onTap: () { Navigator.pop(ctx); setState(() => _lastAction = 'Shared: $_count'); }),
-                ListTile(leading: const Icon(Icons.copy), title: const Text('Copy Count'),
-                  onTap: () { Navigator.pop(ctx); setState(() => _lastAction = 'Copied: $_count'); }),
-              ],
-            ));
-          }),
-          const Spacer(),
-          IconButton(icon: const Icon(Icons.search), tooltip: 'Search', onPressed: () =>
-            setState(() => _lastAction = 'Search pressed')),
-        ]),
-      ),
-    );
-  }
-}
-DART
-
-echo "========================================"
-echo "APP 73: BottomBarApp"
+echo "APP 76: ShopApp"
 echo "========================================"
 rebuild_and_launch
 
 echo "Step 1: Initial state"
-has_label "BottomBarApp" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
-has_text "Count: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Count 0"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Count 0"; }
-has_text "Last action: None" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Action None"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Action None"; }
-has_label "Increment" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Increment btn"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Increment btn"; }
-has_label "Decrement" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Decrement btn"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Decrement btn"; }
-has_label "Reset" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Reset btn"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Reset btn"; }
+has_label "ShopApp" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
+has_text "Laptop" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Laptop"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Laptop"; }
+has_text "Phone" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Phone"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Phone"; }
+has_text "Tablet" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Tablet"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Tablet"; }
+has_text "\$999" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Laptop price"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Laptop price"; }
 
-echo "Step 2: Increment"
-R=$(run_iez $IEZ ui tap --label "Increment"); assert_ok "$R" "Tap Increment"
+echo "Step 2: Add Laptop to cart"
+# Laptop's "Add to Cart" button at ~(103, 248)
+R=$(run_iez $IEZ ui tap --coords 103,248); assert_ok "$R" "Add Laptop"
 sleep 0.3
-R=$(run_iez $IEZ ui tap --label "Increment"); assert_ok "$R" "Tap Increment"
-sleep 0.3
-R=$(run_iez $IEZ ui tap --label "Increment"); assert_ok "$R" "Tap Increment"
-sleep 0.3
-has_text "Count: 3" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Count 3"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Count 3"; }
+has_text "Qty: 1" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Qty 1"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Qty 1"; }
 
-echo "Step 3: Decrement"
-R=$(run_iez $IEZ ui tap --label "Decrement"); assert_ok "$R" "Decrement"
+echo "Step 3: Add Phone"
+# Phone's "Add to Cart" button at ~(300, 248)
+R=$(run_iez $IEZ ui tap --coords 300,248); assert_ok "$R" "Add Phone"
 sleep 0.3
-has_text "Count: 2" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Count 2"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Count 2"; }
 
-echo "Step 4: FAB (+10)"
-R=$(run_iez $IEZ ui tap --label "Add 10"); assert_ok "$R" "Tap FAB"
+echo "Step 4: Add more Laptop"
+# After adding, Laptop card now shows "Qty: 1" so button shifts down a bit
+R=$(run_iez $IEZ ui tap --coords 103,262); assert_ok "$R" "Add more Laptop"
 sleep 0.3
-has_text "Count: 12" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Count 12"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Count 12"; }
-has_text "Added 10" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Added 10 action"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Added 10 action"; }
 
-echo "Step 5: Reset"
-R=$(run_iez $IEZ ui tap --label "Reset"); assert_ok "$R" "Reset"
-sleep 0.3
-has_text "Count: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Count reset"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Count reset"; }
-
-echo "Step 6: Bottom bar menu"
-R=$(run_iez $IEZ ui tap --label "Menu"); assert_ok "$R" "Tap menu"
+echo "Step 5: Open cart"
+R=$(run_iez $IEZ ui tap --label "Cart"); assert_ok "$R" "Open cart"
 sleep 0.5
-has_text "Share Count" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Share option"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Share option"; }
-has_text "Copy Count" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Copy option"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Copy option"; }
-R=$(run_iez $IEZ ui tap --label "Share Count"); assert_ok "$R" "Share"
-sleep 0.3
-has_text "Shared: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Shared result"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Shared result"; }
+has_text "Shopping Cart" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Cart title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Cart title"; }
+has_text "Laptop" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Laptop in cart"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Laptop in cart"; }
+has_text "Phone" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Phone in cart"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Phone in cart"; }
+has_label "Checkout" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Checkout btn"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Checkout btn"; }
 
-echo "Step 7: Search icon"
-R=$(run_iez $IEZ ui tap --label "Search"); assert_ok "$R" "Tap search"
-sleep 0.3
-has_text "Search pressed" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Search action"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Search action"; }
+echo "Step 6: Checkout"
+R=$(run_iez $IEZ ui tap --label "Checkout"); assert_ok "$R" "Checkout"
+sleep 0.5
+has_text "Order placed" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Order snackbar"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Order snackbar"; }
+
+echo "Step 7: Verify empty cart"
+sleep 3
+R=$(run_iez $IEZ ui tap --label "Cart"); assert_ok "$R" "Open empty cart"
+sleep 0.5
+has_text "Cart is empty" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Cart empty"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Cart empty"; }
 
 END=$(date +%s)
 echo ""
