@@ -1,0 +1,151 @@
+=== App 119: PlantCare ===
+com.test.plantCare: 52342
+  ✔ Plant Care is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ All filter
+  ✓ Indoor filter
+  ✓ Outdoor filter
+  ✓ Succulents filter
+  ✓ Herbs filter
+  ✓ Monstera
+  ✓ Basil
+  ✓ Aloe Vera
+  ✓ Tomato
+  ✓ Snake Plant
+  ✓ Lavender
+  ✓ Healthy emoji
+  ✓ Needs water emoji
+  ✓ Add Plant FAB
+--- Filter by Indoor ---
+  ✓ Tap Indoor filter
+  ✓ Monstera indoor
+  ✓ Snake Plant indoor
+--- Filter back to All ---
+  ✓ Tap All filter
+--- Tap plant for detail ---
+  ✓ Tap Monstera
+  ✓ Detail name
+  ✓ Species
+  ✓ Water Now
+  ✓ Edit button
+  ✓ Back from detail
+--- Navigate to Care Tips ---
+  ✓ Tap overflow menu
+  ✓ Tap Care Tips
+  ✓ Care Tips heading
+  ✓ Watering Basics
+  ✓ Sunlight Guide
+  ✓ Common Problems
+  ✓ Back from Care Tips
+--- Add new plant ---
+  ✓ Tap Add Plant
+  ✓ Add heading
+  ✓ Name field
+  ✓ Species field
+  ✓ Location field
+  ✓ Save button
+  ✓ Type plant name
+  ✓ Type species
+  ✓ Tap Save Plant
+  ✓ Back on home
+  ✓ New plant visible
+  ✓ Screenshot PlantCare
+
+=== App 120: GradeBook ===
+com.test.gradeBook: 53300
+  ✔ Grade Book is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ Data Structures
+  ✓ Linear Algebra
+  ✓ Operating Systems
+  ✓ Art History
+  ✓ A grade
+  ✓ B+ grade
+  ✓ Add Course FAB
+--- Tap course for detail ---
+  ✓ Tap Data Structures
+  ✓ Course title
+  ✓ Instructor
+  ✓ Midterm
+  ✓ Final
+  ✓ Labs
+  ✓ Back from course detail
+--- Navigate to Summary ---
+  ✓ Tap overflow menu
+  ✓ Tap Summary
+  ✓ Summary heading
+  ✓ GPA
+  ✓ Total Credits
+  ✓ Back from Summary
+--- Add new course ---
+  ✓ Tap Add Course
+  ✓ Add heading
+  ✓ Course Name field
+  ✓ Instructor field
+  ✓ Credits field
+  ✓ Save button
+  ✓ Type course name
+  ✓ Type instructor
+  ✓ Type credits
+  ✓ Tap Save Course
+  ✓ Back on home
+  ✓ New course visible
+  ✓ Screenshot GradeBook
+
+=== App 121: PetTracker ===
+com.test.petTracker: 54145
+  ✔ Pet Tracker is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ Max
+  ✓ Luna
+  ✓ Buddy
+  ✓ Golden Retriever
+  ✓ Siamese
+  ✓ Labrador
+  ✓ Add Pet FAB
+--- Tap pet for detail ---
+  ✓ Tap Max
+  ✓ Pet name
+  ✓ Breed
+  ✓ Vaccinations button
+  ✓ Feeding Schedule button
+  ✓ Edit button
+--- Navigate to Vaccinations ---
+  ✓ Tap Vaccinations
+  ✓ Vaccinations heading
+  ✓ Rabies
+  ✓ DHPP
+  ✓ Back from Vaccinations
+--- Navigate to Feeding Schedule ---
+  ✓ Tap Feeding Schedule
+  ✓ Feeding heading
+  ✓ Kibble
+  ✓ Back from Feeding
+  ✓ Back from pet detail
+--- Navigate to Vet Directory ---
+  ✓ Tap overflow menu
+  ✓ Tap Vet Directory
+  ✓ Vet heading
+  ✓ Dr. Sarah Wilson
+  ✓ Dr. James Park
+  ✓ Dr. Emily Brown
+  ✓ Back from Vet Directory
+--- Add new pet ---
+  ✓ Tap Add Pet
+  ✓ Add heading
+  ✓ Name field
+  ✓ Breed field
+  ✓ Save button
+  ✓ Type pet name
+  ✓ Type breed
+  ✓ Tap Save Pet
+  ✓ Back on home
+  ✓ New pet visible
+  ✓ Screenshot PetTracker
+
+=========================================
+  RESULTS: 120/120 passed, 0 failed
+=========================================
