@@ -1,0 +1,223 @@
+=== App 137: MoodTracker ===
+com.iez.moodTracker: 89131
+  ✔ Mood Tracker is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ All filter
+  ✓ Happy filter
+  ✓ Neutral filter
+  ✓ Sad filter
+  ✓ Angry filter
+  ✓ Tired filter
+  ✓ Add Mood FAB
+  ✓ Exercise chip
+  ✓ Work chip
+  ✓ Overflow menu
+--- Filter by Happy ---
+  ✓ Tap Happy filter
+  ✓ Happy entries visible
+--- Filter back to All ---
+  ✓ Tap All filter
+--- Tap first entry for detail (use coords) ---
+  ✓ Tap first entry
+  ✓ Detail screen title
+  ✓ Note label
+  ✓ Activities label
+  ✓ Delete button
+--- Back to home ---
+  ✓ Tap Back from detail
+--- Open Statistics via menu ---
+  ✓ Tap overflow menu
+  ✓ Tap Statistics
+  ✓ Statistics title
+  ✓ Total entries
+  ✓ Most common mood
+  ✓ Mood Distribution
+--- Back from Statistics ---
+  ✓ Back from Statistics
+--- Open Activities via menu ---
+  ✓ Tap overflow menu 2
+  ✓ Tap Activities
+  ✓ Activities title
+  ✓ Exercise activity
+  ✓ Work activity
+  ✓ Social activity
+  ✓ Creative activity
+  ✓ Outdoors activity
+  ✓ Reading activity
+--- Back from Activities ---
+  ✓ Back from Activities
+--- Add Mood flow ---
+  ✓ Tap Add Mood FAB
+  ✓ Add Mood title
+  ✓ How feeling
+  ✓ Note field
+  ✓ Save Entry button
+--- Select a mood emoji (first one - happy) ---
+  ✓ Tap happy mood
+--- Type a note ---
+  ✓ Type note
+--- Select Exercise activity ---
+  ✓ Tap Exercise chip
+--- Save the entry ---
+  ✓ Tap Save Entry
+--- Screenshot ---
+  ✓ Screenshot MoodTracker
+
+App 137 MoodTracker done.
+
+=== App 138: BookClub ===
+com.iez.bookClub: 90179
+  ✔ Book Club is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ All filter
+  ✓ Fiction filter
+  ✓ Non-Fiction filter
+  ✓ Mystery filter
+  ✓ Sci-Fi filter
+  ✓ Biography filter
+  ✓ The Great Gatsby
+  ✓ Dune
+  ✓ Sapiens
+  ✓ Gone Girl
+  ✓ Steve Jobs
+  ✓ Neuromancer
+  ✓ Add Book FAB
+--- Filter by Sci-Fi ---
+  ✓ Tap Sci-Fi filter
+  ✓ Dune in Sci-Fi
+  ✓ Neuromancer in Sci-Fi
+--- Filter back to All ---
+  ✓ Tap All filter
+--- Tap book for detail (use coords for first item) ---
+  ✓ Tap first book
+  ✓ Detail title
+  ✓ Author
+  ✓ Genre chip
+  ✓ Review label
+  ✓ Update Progress btn
+  ✓ Mark Complete btn
+--- Back from detail ---
+  ✓ Back from detail
+--- Open Genres via menu ---
+  ✓ Tap overflow menu
+  ✓ Tap Genres
+  ✓ Genres title
+  ✓ Fiction genre
+  ✓ Mystery genre
+--- Back from Genres ---
+  ✓ Back from Genres
+--- Open Reading Stats via menu ---
+  ✓ Tap overflow menu 2
+  ✓ Tap Reading Stats
+  ✓ Reading Stats title
+  ✓ Total Books
+  ✓ Finished
+  ✓ Total Pages Read
+  ✓ Average Rating
+--- Back from Reading Stats ---
+  ✓ Back from Reading Stats
+--- Add Book flow ---
+  ✓ Tap Add Book FAB
+  ✓ Add Book title
+  ✓ Book Title field
+  ✓ Author field
+  ✓ Total Pages field
+  ✓ Genre dropdown
+  ✓ Review field
+--- Fill form ---
+  ✓ Type book title
+  ✓ Type author
+  ✓ Type pages
+--- Scroll to see Add Book button ---
+  ✓ Swipe up
+--- Submit ---
+  ✓ Tap Add Book submit
+--- Screenshot ---
+  ✓ Screenshot BookClub
+
+App 138 BookClub done.
+
+=== App 139: PlantDiary ===
+com.iez.plantDiary: 91272
+  ✔ Plant Diary is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ All filter
+  ✓ Indoor filter
+  ✓ Outdoor filter
+  ✓ Balcony filter
+  ✓ Garden filter
+  ✓ Monstera
+  ✓ Basil
+  ✓ Rose Bush
+  ✓ Snake Plant
+  ✓ Tomato
+  ✓ Lavender
+  ✓ Thriving status
+  ✓ Good status
+  ✓ Add Plant FAB
+--- Filter by Indoor ---
+  ✓ Tap Indoor filter
+  ✓ Monstera indoor
+  ✓ Snake Plant indoor
+--- Filter back to All ---
+  ✓ Tap All filter
+--- Tap Monstera for detail (use coords for first item) ---
+  ✓ Tap first plant
+  ✓ Detail name
+  ✓ Species
+  ✓ Location label
+  ✓ Water Frequency label
+  ✓ Health Status label
+  ✓ Notes label
+  ✓ Water Now btn
+  ✓ Edit Notes btn
+--- Tap Water Now ---
+  ✓ Tap Water Now
+--- Back from detail ---
+  ✓ Back from detail
+--- Open Care Guide via menu ---
+  ✓ Tap overflow menu
+  ✓ Tap Care Guide
+  ✓ Care Guide title
+  ✓ Watering tip
+  ✓ Light tip
+  ✓ Soil tip
+  ✓ Fertilizing tip
+--- Back from Care Guide ---
+  ✓ Back from Care Guide
+--- Open Watering Schedule via menu ---
+  ✓ Tap overflow menu 2
+  ✓ Tap Watering Schedule
+  ✓ Watering Schedule title
+  ✓ Monstera schedule
+  ✓ Basil schedule
+  ✓ Every 7 days
+--- Back from Watering Schedule ---
+  ✓ Back from Watering Schedule
+--- Add Plant flow ---
+  ✓ Tap Add Plant FAB
+  ✓ Add Plant title
+  ✓ Plant Name field
+  ✓ Species field
+  ✓ Water Frequency field
+  ✓ Location dropdown
+  ✓ Health Status dropdown
+--- Fill form ---
+  ✓ Type plant name
+  ✓ Type species
+  ✓ Type water frequency
+--- Scroll to see submit ---
+  ✓ Swipe up
+--- Submit ---
+  ✓ Tap Add Plant submit
+--- Verify new plant ---
+  ✓ Cactus added
+--- Screenshot ---
+  ✓ Screenshot PlantDiary
+
+========================================
+RESULTS: 159 passed / 159 total (0 failed)
+========================================
