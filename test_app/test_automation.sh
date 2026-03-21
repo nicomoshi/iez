@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test automation for Apps 77-79: TaskApp, QuizFlick, ExpenseApp
+# Test automation for Apps 86-88: PomodoroTimer, HabitTracker, FlashcardQuiz
 set -euo pipefail
 
 IEZ="/Users/rudy/Developer/i_ez/bin/iez"
@@ -34,9 +34,8 @@ assert_label() {
   fi
 }
 
-# Check if any element label contains the given substring (for multi-line labels)
 tree_has() {
-  run_iez "$IEZ" ui tree --compact | jq -r '.data.elements[].label' 2>/dev/null | grep -qF "$1"
+  run_iez "$IEZ" ui tree --compact | jq -r '.data.elements[].label' 2>/dev/null | grep -qF -- "$1"
 }
 
 assert_tree_has() {
@@ -49,407 +48,299 @@ assert_tree_has() {
   fi
 }
 
-install_and_launch() {
-  local app_path="$1" bundle_id="$2"
-  xcrun simctl terminate "$DEVICE_ID" "$bundle_id" 2>/dev/null || true
-  sleep 0.3
-  xcrun simctl install "$DEVICE_ID" "$app_path"
-  xcrun simctl launch "$DEVICE_ID" "$bundle_id"
-  sleep 2
-}
+# ============================================================
+echo "=== App 86: PomodoroTimer ==="
+# ============================================================
 
-screenshot() {
-  run_iez "$IEZ" ui screenshot --out "/tmp/$1.png" >/dev/null 2>&1
-}
-
-########################################
-# APP 77: TaskApp
-########################################
-echo ""
-echo "=== APP 77: TaskApp ==="
-install_and_launch "/Users/rudy/Developer/i_ez/test_app/task_app/build/ios/iphonesimulator/Runner.app" "com.example.taskapp"
-
-echo "--- Home Screen ---"
-assert_label "App title visible" "Task Manager"
-assert_label "FAB Add Task visible" "Add Task"
-assert_label "Search button visible" "Search"
-assert_label "Menu button visible" "Menu"
-screenshot "taskapp_home"
-
-# Check task list items exist (multi-line labels — check by first line only isn't reliable, use coords)
-TREE=$(run_iez "$IEZ" ui tree --compact)
-TOTAL=$((TOTAL + 1))
-ELEM_COUNT=$(echo "$TREE" | jq '[.data.elements[] | select(.role == "AXGenericElement")] | length' 2>/dev/null)
-if [ "$ELEM_COUNT" -ge 4 ]; then
-  PASS=$((PASS + 1)); echo "  ✓ 4 task items displayed ($ELEM_COUNT found)"
-else
-  FAIL=$((FAIL + 1)); echo "  ✗ Expected 4 task items, got $ELEM_COUNT"
-fi
-
-echo "--- Add Task Dialog ---"
-R=$(run_iez "$IEZ" ui tap --label "Add Task"); assert_ok "Tap Add Task FAB" "$R"
-sleep 0.5
-assert_label "Dialog title: Add Task" "Add Task"
-assert_label "Cancel button visible" "Cancel"
-assert_label "Add button visible" "Add"
-assert_label "Task Name field" "Task Name"
-screenshot "taskapp_add_dialog"
-
-# Type a task name
-R=$(run_iez "$IEZ" ui tap --label "Task Name"); assert_ok "Tap Task Name field" "$R"
-sleep 0.3
-R=$(run_iez "$IEZ" ui type "Test automation task"); assert_ok "Type task name" "$R"
-sleep 0.3
-
-# Check priority and category dropdowns
-assert_tree_has "Priority dropdown" "Priority"
-assert_tree_has "Category dropdown" "Category"
-assert_label "Pick Due Date button" "Pick Due Date"
-
-# Cancel dialog
-R=$(run_iez "$IEZ" ui tap --label "Cancel"); assert_ok "Cancel add dialog" "$R"
-sleep 0.5
-
-echo "--- Search ---"
-R=$(run_iez "$IEZ" ui tap --label "Search"); assert_ok "Tap search" "$R"
-sleep 0.5
-screenshot "taskapp_search"
-# Close search with back
-R=$(run_iez "$IEZ" ui tap --coords 30,80); assert_ok "Close search" "$R"
-sleep 0.5
-
-echo "--- Categories Tab ---"
-R=$(run_iez "$IEZ" ui tap --coords 300,790); assert_ok "Tap Categories tab" "$R"
-sleep 0.5
-screenshot "taskapp_categories"
-
-# Categories tab has multi-line labels. Check via tree element count
-TREE2=$(run_iez "$IEZ" ui tree --compact)
-TOTAL=$((TOTAL + 1))
-CAT_COUNT=$(echo "$TREE2" | jq '[.data.elements[] | select(.role == "AXStaticText")] | length' 2>/dev/null)
-if [ "$CAT_COUNT" -ge 3 ]; then
-  PASS=$((PASS + 1)); echo "  ✓ Categories tab has $CAT_COUNT text items"
-else
-  FAIL=$((FAIL + 1)); echo "  ✗ Categories tab has only $CAT_COUNT text items"
-fi
-
-echo "--- Settings Screen ---"
-# Go back to All Tasks
-R=$(run_iez "$IEZ" ui tap --coords 100,790); assert_ok "Switch to All Tasks tab" "$R"
-sleep 0.3
-
-# Open menu
-R=$(run_iez "$IEZ" ui tap --label "Menu"); assert_ok "Tap Menu" "$R"
-sleep 0.5
-
-# Tap Settings
-R=$(run_iez "$IEZ" ui tap --label "Settings"); assert_ok "Tap Settings" "$R"
-sleep 0.5
-assert_label "Settings title" "Settings"
-screenshot "taskapp_settings"
-
-# Check settings items (multi-line labels — use first part match via exists)
-assert_tree_has "Dark Mode checkbox" "Dark Mode"
-assert_tree_has "Notifications checkbox" "Notifications"
-assert_tree_has "About button" "About"
-
-# Toggle dark mode (multi-line label)
-R=$(run_iez "$IEZ" ui tap --label $'Dark Mode\nToggle dark theme'); assert_ok "Toggle Dark Mode" "$R"
-sleep 0.3
-screenshot "taskapp_dark_mode"
-
-# Tap About (multi-line label)
-R=$(run_iez "$IEZ" ui tap --label $'About\nApp information'); assert_ok "Tap About" "$R"
-sleep 0.5
-assert_label "Close button in About" "Close"
-screenshot "taskapp_about"
-
-# Close about dialog
-R=$(run_iez "$IEZ" ui tap --label "Close"); assert_ok "Close About dialog" "$R"
-sleep 0.3
-
-# Go back to home
-R=$(run_iez "$IEZ" ui tap --label "Back"); assert_ok "Back to home" "$R"
-sleep 0.3
-
-echo "  TaskApp: $PASS/$TOTAL passed"
-TASKAPP_PASS=$PASS; TASKAPP_TOTAL=$TOTAL
-
-########################################
-# APP 78: QuizFlick
-########################################
-echo ""
-echo "=== APP 78: QuizFlick ==="
-PASS=0; FAIL=0; TOTAL=0
-install_and_launch "/Users/rudy/Developer/i_ez/test_app/quizflick/build/ios/iphonesimulator/Runner.app" "com.example.flutterQuizAppProject"
-
-echo "--- Splash & Onboarding ---"
-# Splash may auto-advance, check what's on screen
-TREE_S=$(run_iez "$IEZ" ui tree --compact)
-TOTAL=$((TOTAL + 1))
-if echo "$TREE_S" | jq -r '.data.elements[].label' 2>/dev/null | grep -qF "Enhance Your Knowledge"; then
-  PASS=$((PASS + 1)); echo "  ✓ Splash screen detected"
-  screenshot "quizflick_splash"
-  sleep 2
-  R=$(run_iez "$IEZ" ui tap --coords 200,400); assert_ok "Tap splash" "$R"
-  sleep 2
-elif echo "$TREE_S" | jq -r '.data.elements[].label' 2>/dev/null | grep -qF "Get Started"; then
-  PASS=$((PASS + 1)); echo "  ✓ Welcome screen (splash auto-advanced)"
-else
-  FAIL=$((FAIL + 1)); echo "  ✗ Neither splash nor welcome found"
-  sleep 3
-  R=$(run_iez "$IEZ" ui tap --coords 200,400); assert_ok "Tap splash" "$R"
-  sleep 2
-fi
-
-# Welcome screen
-assert_label "Get Started button" "Get Started"
-R=$(run_iez "$IEZ" ui tap --label "Get Started"); assert_ok "Tap Get Started" "$R"
-sleep 1
-
-echo "--- Name Entry ---"
-assert_label "Name entry prompt" "Enter Your Name"
-assert_label "Name text field" "Name"
-assert_label "OK button" "OK"
-assert_label "Cancel button" "Cancel"
-
-R=$(run_iez "$IEZ" ui tap --label "Name"); assert_ok "Tap Name field" "$R"
-sleep 0.3
-R=$(run_iez "$IEZ" ui type "TestUser"); assert_ok "Type name" "$R"
-sleep 0.3
-R=$(run_iez "$IEZ" ui tap --label "OK"); assert_ok "Confirm name" "$R"
+xcrun simctl terminate "$DEVICE_ID" com.test.flashcardQuiz 2>/dev/null || true
+xcrun simctl terminate "$DEVICE_ID" com.test.habitTracker 2>/dev/null || true
+xcrun simctl terminate "$DEVICE_ID" com.test.pomodoroTimer 2>/dev/null || true
+xcrun simctl launch "$DEVICE_ID" com.test.pomodoroTimer
 sleep 2
 
-echo "--- Home Screen ---"
-assert_label "Home heading" "HOME"
-assert_label "Select Section label" "Select Section"
+echo "--- Main Screen ---"
+assert_tree_has "Work indicator" "Work"
+assert_tree_has "Session counter" "Session 1 of 4"
+assert_tree_has "Timer display" "25:00"
+assert_label "Start button" "Start"
+assert_label "Reset button" "Reset"
+assert_tree_has "Work mode card" "Work (25 min)"
+assert_tree_has "Short Break card" "Short Break (5 min)"
+assert_tree_has "Long Break card" "Long Break (15 min)"
 assert_label "Settings button" "Settings"
-assert_label "Open navigation menu" "Open navigation menu"
-screenshot "quizflick_home"
 
-# Check categories
-assert_label "Category: General Knowledge" "General Knowledge"
-assert_label "Category: Science" "Science"
-assert_label "Category: History" "History"
-assert_label "Category: Geography" "Geography"
-assert_label "Category: Computer" "Computer"
-
-# Check bottom tabs
-assert_label "Notifications button" "Notifications"
-
-echo "--- Quiz Flow ---"
-# Tap General Knowledge by coords (StaticText, not Button)
-R=$(run_iez "$IEZ" ui tap --coords 100,490); assert_ok "Tap General Knowledge" "$R"
+echo "--- Start/Pause/Resume ---"
+R=$(run_iez "$IEZ" ui tap --label "Start")
+assert_ok "Start timer" "$R"
 sleep 1
 
-# Quiz screen
-assert_label "Quiz heading" "Quiz App"
-assert_label "Back button" "Back"
-assert_label "Next button" "Next"
-screenshot "quizflick_quiz"
+assert_label "Pause button" "Pause"
 
-# Check question is displayed
-TREE3=$(run_iez "$IEZ" ui tree --compact)
-TOTAL=$((TOTAL + 1))
-Q_COUNT=$(echo "$TREE3" | jq '[.data.elements[] | select(.label | test("^[1-4]\\)"))] | length' 2>/dev/null)
-if [ "$Q_COUNT" -ge 4 ]; then
-  PASS=$((PASS + 1)); echo "  ✓ 4 answer options displayed"
-else
-  FAIL=$((FAIL + 1)); echo "  ✗ Expected 4 answer options, got $Q_COUNT"
-fi
-
-# Select an answer (first option)
-FIRST_ANS=$(echo "$TREE3" | jq -r '.data.elements[] | select(.label | test("^1\\)")) | .frame' 2>/dev/null)
-ANS_Y=$(echo "$FIRST_ANS" | jq '.y + 20' 2>/dev/null)
-ANS_X=$(echo "$FIRST_ANS" | jq '.x + 100' 2>/dev/null)
-R=$(run_iez "$IEZ" ui tap --coords "${ANS_X:-200},${ANS_Y:-400}"); assert_ok "Select answer option" "$R"
-sleep 0.5
-
-# Tap Next
-R=$(run_iez "$IEZ" ui tap --label "Next"); assert_ok "Tap Next" "$R"
-sleep 0.5
-screenshot "quizflick_q2"
-
-# Go back to home
-R=$(run_iez "$IEZ" ui tap --label "Back"); assert_ok "Back to home" "$R"
-sleep 0.5
-
-echo "--- Navigation Drawer ---"
-R=$(run_iez "$IEZ" ui tap --label "Open navigation menu"); assert_ok "Open nav drawer" "$R"
-sleep 0.5
-screenshot "quizflick_drawer"
-
-assert_label "Drawer: HOME" "HOME"
-assert_label "Drawer: TestUser" "TestUser"
-assert_label "Drawer: Leaderboard" "Leaderboard"
-assert_label "Drawer: DAILY QUIZ" "DAILY QUIZ"
-assert_label "Drawer: About Us" "About Us"
-assert_label "Drawer: Toggle Theme" "Toggle Theme"
-
-# Close drawer
-R=$(run_iez "$IEZ" ui tap --coords 380,400); assert_ok "Close drawer" "$R"
+R=$(run_iez "$IEZ" ui tap --label "Pause")
+assert_ok "Pause timer" "$R"
 sleep 0.3
 
-echo "--- Profile Tab ---"
-R=$(run_iez "$IEZ" ui tap --coords 335,790); assert_ok "Tap Profile tab" "$R"
-sleep 0.5
-assert_label "Profile heading" "Profile"
-assert_label "Settings in profile" "Settings"
-screenshot "quizflick_profile"
+assert_label "Resume button" "Resume"
 
-echo "--- Settings Screen ---"
-R=$(run_iez "$IEZ" ui tap --label "Settings"); assert_ok "Tap Settings" "$R"
+R=$(run_iez "$IEZ" ui tap --label "Resume")
+assert_ok "Resume timer" "$R"
+sleep 0.3
+
+echo "--- Reset ---"
+R=$(run_iez "$IEZ" ui tap --label "Reset")
+assert_ok "Reset timer" "$R"
+sleep 0.3
+
+assert_tree_has "Timer reset to 25:00" "25:00"
+assert_label "Start again" "Start"
+
+echo "--- Switch Modes ---"
+# Tap Short Break mode card (y=642, x=257 center)
+R=$(run_iez "$IEZ" ui tap --coords 257,668)
+assert_ok "Select Short Break" "$R"
+sleep 0.3
+
+assert_tree_has "Timer shows 5:00" "5:00"
+assert_tree_has "Short Break indicator" "Short Break"
+
+# Tap Long Break mode card (y=706, x=180 center)
+R=$(run_iez "$IEZ" ui tap --coords 180,732)
+assert_ok "Select Long Break" "$R"
+sleep 0.3
+
+assert_tree_has "Timer shows 15:00" "15:00"
+assert_tree_has "Long Break indicator" "Long Break"
+
+# Back to Work mode
+R=$(run_iez "$IEZ" ui tap --coords 87,668)
+assert_ok "Select Work mode" "$R"
+sleep 0.3
+
+assert_tree_has "Timer back to 25:00" "25:00"
+
+echo "--- Settings ---"
+R=$(run_iez "$IEZ" ui tap --label "Settings")
+assert_ok "Open Settings" "$R"
 sleep 0.5
+
 assert_label "Settings heading" "Settings"
-screenshot "quizflick_settings"
+assert_tree_has "Work Duration label" "Work Duration"
+assert_tree_has "Short Break label" "Short Break Duration"
+assert_tree_has "Long Break label" "Long Break Duration"
+assert_label "Auto-start switch" "Auto-start breaks"
+assert_label "Save button" "Save"
 
-echo "  QuizFlick: $PASS/$TOTAL passed"
-QUIZ_PASS=$PASS; QUIZ_TOTAL=$TOTAL
+R=$(run_iez "$IEZ" ui tap --label "Auto-start breaks")
+assert_ok "Toggle auto-start" "$R"
+sleep 0.3
 
-########################################
-# APP 79: ExpenseApp
-########################################
-echo ""
-echo "=== APP 79: ExpenseApp ==="
-PASS=0; FAIL=0; TOTAL=0
-install_and_launch "/Users/rudy/Developer/i_ez/test_app/expense_app/build/ios/iphonesimulator/Runner.app" "com.example.expenseapp"
-
-echo "--- Home Screen ---"
-assert_label "App title" "Expense Tracker"
-assert_label "Total Balance label" "Total Balance"
-assert_label 'Amount: $167.48' '$167.48'
-assert_label "Recent Transactions label" "Recent Transactions"
-assert_label "FAB Add Expense" "Add Expense"
-screenshot "expense_home"
-
-# Check transactions
-TREE4=$(run_iez "$IEZ" ui tree --compact)
-TOTAL=$((TOTAL + 1))
-TXN_COUNT=$(echo "$TREE4" | jq '[.data.elements[] | select(.role == "AXStaticText" and (.label | test("Coffee|Uber|Amazon|Electric|Netflix")))] | length' 2>/dev/null)
-if [ "$TXN_COUNT" -ge 5 ]; then
-  PASS=$((PASS + 1)); echo "  ✓ All 5 transactions displayed"
-else
-  FAIL=$((FAIL + 1)); echo "  ✗ Expected 5 transactions, got $TXN_COUNT"
-fi
-
-echo "--- Add Expense Screen ---"
-R=$(run_iez "$IEZ" ui tap --label "Add Expense"); assert_ok "Tap Add Expense FAB" "$R"
+R=$(run_iez "$IEZ" ui tap --label "Save")
+assert_ok "Save settings" "$R"
 sleep 0.5
-assert_label "Add Expense heading" "Add Expense"
-assert_label "Description field" "Description"
-assert_label "Amount field" "Amount"
-assert_label "Save Expense button" "Save Expense"
+
+assert_label "Back to timer" "Start"
+
+echo ""
+echo "App 86 subtotal: $PASS/$TOTAL"
+echo ""
+
+# ============================================================
+echo "=== App 87: HabitTracker ==="
+# ============================================================
+
+xcrun simctl terminate "$DEVICE_ID" com.test.pomodoroTimer 2>/dev/null || true
+xcrun simctl launch "$DEVICE_ID" com.test.habitTracker
+sleep 2
+
+echo "--- Today Tab ---"
+assert_tree_has "Drink Water habit" "Drink Water"
+assert_tree_has "Exercise habit" "Exercise"
+assert_tree_has "Read habit" "Read"
+assert_tree_has "Meditate habit" "Meditate"
+assert_tree_has "Streak text" "day streak"
+assert_label "FAB add button" "+"
+assert_label "Today tab" $'Today\nTab 1 of 2'
+assert_label "Stats tab" $'Stats\nTab 2 of 2'
+
+echo "--- Habit Detail ---"
+# Tap Exercise habit (y=244 center)
+R=$(run_iez "$IEZ" ui tap --coords 201,244)
+assert_ok "Open Exercise detail" "$R"
+sleep 0.5
+
+assert_tree_has "Exercise heading" "Exercise"
+assert_tree_has "Current Streak" "Current Streak"
+assert_tree_has "Best Streak" "Best Streak"
+assert_tree_has "Total Completions" "Total Completions"
+assert_tree_has "Weekly Progress" "Weekly Progress"
+assert_tree_has "Day Mon" "Mon"
+assert_tree_has "Day Fri" "Fri"
 assert_label "Back button" "Back"
-screenshot "expense_add"
 
-# Check category dropdown
-TREE5=$(run_iez "$IEZ" ui tree --compact)
-TOTAL=$((TOTAL + 1))
-HAS_CATEGORY=$(echo "$TREE5" | jq '[.data.elements[] | select(.role == "AXButton" and (.label | test("Category")))] | length' 2>/dev/null)
-if [ "$HAS_CATEGORY" -ge 1 ]; then
-  PASS=$((PASS + 1)); echo "  ✓ Category dropdown present"
-else
-  FAIL=$((FAIL + 1)); echo "  ✗ Category dropdown not found"
-fi
-
-# Check date selector
-TOTAL=$((TOTAL + 1))
-HAS_DATE=$(echo "$TREE5" | jq '[.data.elements[] | select(.role == "AXButton" and (.label | test("Select Date")))] | length' 2>/dev/null)
-if [ "$HAS_DATE" -ge 1 ]; then
-  PASS=$((PASS + 1)); echo "  ✓ Date selector present"
-else
-  FAIL=$((FAIL + 1)); echo "  ✗ Date selector not found"
-fi
-
-# Fill in expense
-R=$(run_iez "$IEZ" ui tap --label "Description"); assert_ok "Tap Description field" "$R"
-sleep 0.3
-R=$(run_iez "$IEZ" ui type "Test expense"); assert_ok "Type description" "$R"
-sleep 0.3
-R=$(run_iez "$IEZ" ui tap --label "Amount"); assert_ok "Tap Amount field" "$R"
-sleep 0.3
-R=$(run_iez "$IEZ" ui type "25.50"); assert_ok "Type amount" "$R"
-sleep 0.3
-
-# Save expense
-R=$(run_iez "$IEZ" ui tap --label "Save Expense"); assert_ok "Tap Save Expense" "$R"
+R=$(run_iez "$IEZ" ui tap --label "Back")
+assert_ok "Back from detail" "$R"
 sleep 0.5
 
-# Should be back on home with updated total
-assert_label "Back on home screen" "Expense Tracker"
-screenshot "expense_after_save"
-
-echo "--- Charts Tab ---"
-R=$(run_iez "$IEZ" ui tap --coords 200,790); assert_ok "Tap Charts tab" "$R"
+echo "--- Add Habit ---"
+R=$(run_iez "$IEZ" ui tap --label "+")
+assert_ok "Open Add Habit dialog" "$R"
 sleep 0.5
-assert_label "Charts heading" "Category Breakdown"
-screenshot "expense_charts"
 
-# Check category breakdown items
-TREE6=$(run_iez "$IEZ" ui tree --compact)
-TOTAL=$((TOTAL + 1))
-CHART_ITEMS=$(echo "$TREE6" | jq '[.data.elements[] | select(.role == "AXStaticText" and (.label | test("Food|Transport|Shopping|Bills|Entertainment")))] | length' 2>/dev/null)
-if [ "$CHART_ITEMS" -ge 5 ]; then
-  PASS=$((PASS + 1)); echo "  ✓ All 5 categories in chart ($CHART_ITEMS)"
-else
-  FAIL=$((FAIL + 1)); echo "  ✗ Expected 5 chart categories, got $CHART_ITEMS"
-fi
+assert_tree_has "Add Habit title" "Add Habit"
+assert_label "Habit Name field" "Habit Name"
+assert_label "Cancel button" "Cancel"
+assert_label "Add button" "Add"
 
-echo "--- Profile Tab ---"
-R=$(run_iez "$IEZ" ui tap --coords 335,790); assert_ok "Tap Profile tab" "$R"
-sleep 0.5
-assert_label "Profile heading" "Profile"
-assert_label "User name: Test User" "Test User"
-assert_tree_has "Currency option" "Currency"
-assert_tree_has "Export Data option" "Export Data"
-assert_tree_has "Clear All option" "Clear All"
-screenshot "expense_profile"
-
-# Tap Currency to open dialog (multi-line label)
-R=$(run_iez "$IEZ" ui tap --label $'Currency\nUSD'); assert_ok "Tap Currency" "$R"
-sleep 0.5
-screenshot "expense_currency_dialog"
-
-# Check currency dialog has options
-TREE7=$(run_iez "$IEZ" ui tree --compact)
-TOTAL=$((TOTAL + 1))
-CURRENCY_OPTS=$(echo "$TREE7" | jq '[.data.elements[] | select(.label | test("USD|EUR|GBP"))] | length' 2>/dev/null)
-if [ "$CURRENCY_OPTS" -ge 3 ]; then
-  PASS=$((PASS + 1)); echo "  ✓ Currency dialog has 3 options"
-else
-  FAIL=$((FAIL + 1)); echo "  ✗ Currency options: $CURRENCY_OPTS"
-fi
-
-# Close currency dialog
-R=$(run_iez "$IEZ" ui tap --label "Cancel"); assert_ok "Close currency dialog" "$R"
+R=$(run_iez "$IEZ" ui type "Yoga" --label "Habit Name")
+assert_ok "Type habit name" "$R"
 sleep 0.3
 
-# Test Clear All confirmation (multi-line label)
-R=$(run_iez "$IEZ" ui tap --label $'Clear All\nRemove all expenses'); assert_ok "Tap Clear All" "$R"
+R=$(run_iez "$IEZ" ui tap --label "Add")
+assert_ok "Add new habit" "$R"
 sleep 0.5
-assert_label "Clear confirmation dialog" "Clear All"
-screenshot "expense_clear_dialog"
 
-# Cancel clear
-R=$(run_iez "$IEZ" ui tap --label "Cancel"); assert_ok "Cancel clear" "$R"
+assert_tree_has "New habit added" "Yoga"
+
+echo "--- Stats Tab ---"
+R=$(run_iez "$IEZ" ui tap --label $'Stats\nTab 2 of 2')
+assert_ok "Switch to Stats" "$R"
+sleep 0.5
+
+assert_tree_has "Statistics heading" "Statistics"
+assert_tree_has "Total Habits" "Total Habits: 5"
+assert_tree_has "Completed Today" "Completed Today"
+assert_tree_has "Completion Rate" "Completion Rate"
+
+# Back to Today
+R=$(run_iez "$IEZ" ui tap --label $'Today\nTab 1 of 2')
+assert_ok "Back to Today" "$R"
 sleep 0.3
 
-echo "  ExpenseApp: $PASS/$TOTAL passed"
-EXP_PASS=$PASS; EXP_TOTAL=$TOTAL
+echo "--- Delete Habit ---"
+# Delete button for first habit (top card) — multiple Delete buttons, use coords
+R=$(run_iez "$IEZ" ui tap --coords 354,168)
+assert_ok "Delete first habit" "$R"
+sleep 0.5
 
-########################################
-# SUMMARY
-########################################
 echo ""
+echo "App 87 subtotal: $PASS/$TOTAL"
+echo ""
+
+# ============================================================
+echo "=== App 88: FlashcardQuiz ==="
+# ============================================================
+
+xcrun simctl terminate "$DEVICE_ID" com.test.habitTracker 2>/dev/null || true
+xcrun simctl launch "$DEVICE_ID" com.test.flashcardQuiz
+sleep 2
+
+echo "--- Deck List ---"
+assert_label "Flashcards heading" "Flashcards"
+assert_tree_has "Math deck" "Math"
+assert_tree_has "Science deck" "Science"
+assert_tree_has "History deck" "History"
+assert_tree_has "Cards count" "5 cards"
+assert_tree_has "Mastered count" "mastered"
+assert_label "Settings button" "Settings"
+
+echo "--- Settings ---"
+R=$(run_iez "$IEZ" ui tap --label "Settings")
+assert_ok "Open Settings" "$R"
+sleep 0.5
+
+assert_label "Settings heading" "Settings"
+assert_label "Shuffle Cards switch" "Shuffle Cards"
+assert_label "Show Progress switch" "Show Progress"
+assert_label "Cards Per Session" $'Cards Per Session\n5'
+
+R=$(run_iez "$IEZ" ui tap --label "Shuffle Cards")
+assert_ok "Toggle Shuffle" "$R"
+sleep 0.3
+
+R=$(run_iez "$IEZ" ui tap --label "Back")
+assert_ok "Back from settings" "$R"
+sleep 0.5
+
+echo "--- Quiz: Math Deck ---"
+# Tap Math deck (y=196 center)
+R=$(run_iez "$IEZ" ui tap --coords 201,196)
+assert_ok "Start Math quiz" "$R"
+sleep 0.5
+
+assert_tree_has "Card counter" "Card 1 of 5"
+assert_tree_has "Question text" "Question"
+assert_label "Show Answer button" "Show Answer"
+
+R=$(run_iez "$IEZ" ui tap --label "Show Answer")
+assert_ok "Show answer card 1" "$R"
+sleep 0.3
+
+assert_tree_has "Answer revealed" "Answer"
+assert_label "Got It button" "Got It"
+assert_label "Need Practice button" "Need Practice"
+
+# Go through all 5 cards
+R=$(run_iez "$IEZ" ui tap --label "Got It")
+assert_ok "Got It card 1" "$R"
+sleep 0.3
+
+# Card 2
+assert_tree_has "Card 2" "Card 2 of 5"
+R=$(run_iez "$IEZ" ui tap --label "Show Answer")
+assert_ok "Show answer card 2" "$R"
+sleep 0.3
+R=$(run_iez "$IEZ" ui tap --label "Got It")
+assert_ok "Got It card 2" "$R"
+sleep 0.3
+
+# Card 3
+assert_tree_has "Card 3" "Card 3 of 5"
+R=$(run_iez "$IEZ" ui tap --label "Show Answer")
+assert_ok "Show answer card 3" "$R"
+sleep 0.3
+R=$(run_iez "$IEZ" ui tap --label "Need Practice")
+assert_ok "Need Practice card 3" "$R"
+sleep 0.3
+
+# Card 4
+assert_tree_has "Card 4" "Card 4 of 5"
+R=$(run_iez "$IEZ" ui tap --label "Show Answer")
+assert_ok "Show answer card 4" "$R"
+sleep 0.3
+R=$(run_iez "$IEZ" ui tap --label "Got It")
+assert_ok "Got It card 4" "$R"
+sleep 0.3
+
+# Card 5
+assert_tree_has "Card 5" "Card 5 of 5"
+R=$(run_iez "$IEZ" ui tap --label "Show Answer")
+assert_ok "Show answer card 5" "$R"
+sleep 0.3
+R=$(run_iez "$IEZ" ui tap --label "Need Practice")
+assert_ok "Need Practice card 5" "$R"
+sleep 0.5
+
+echo "--- Results Screen ---"
+assert_tree_has "Quiz Complete" "Quiz Complete!"
+assert_tree_has "Score" "Score: 3/5"
+assert_label "Try Again button" "Try Again"
+assert_label "Back to Decks button" "Back to Decks"
+
+R=$(run_iez "$IEZ" ui tap --label "Back to Decks")
+assert_ok "Back to deck list" "$R"
+sleep 0.5
+
+assert_label "Back at decks" "Flashcards"
+
+echo ""
+echo "App 88 subtotal: $PASS/$TOTAL"
+echo ""
+
+# ============================================================
 echo "========================================"
-GRAND_PASS=$((TASKAPP_PASS + QUIZ_PASS + EXP_PASS))
-GRAND_TOTAL=$((TASKAPP_TOTAL + QUIZ_TOTAL + EXP_TOTAL))
-echo "TOTAL: $GRAND_PASS/$GRAND_TOTAL assertions passed"
-echo "  App 77 TaskApp:     $TASKAPP_PASS/$TASKAPP_TOTAL"
-echo "  App 78 QuizFlick:   $QUIZ_PASS/$QUIZ_TOTAL"
-echo "  App 79 ExpenseApp:  $EXP_PASS/$EXP_TOTAL"
+echo "TOTAL: $PASS passed, $FAIL failed, $TOTAL total"
 echo "========================================"
 
-if [ "$GRAND_PASS" -ne "$GRAND_TOTAL" ]; then
+if [ "$FAIL" -gt 0 ]; then
   exit 1
 fi
