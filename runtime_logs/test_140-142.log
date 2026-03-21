@@ -1,0 +1,225 @@
+=== App 140: FitnessLog ===
+com.iez.fitnessLog: 94636
+  ✔ Fitness Log is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ All filter
+  ✓ Strength filter
+  ✓ Cardio filter
+  ✓ Flexibility filter
+  ✓ HIIT filter
+  ✓ Sports filter
+  ✓ Morning Strength
+  ✓ Cardio Blast
+  ✓ HIIT Circuit
+  ✓ Yoga Flow
+  ✓ Add Workout FAB
+  ✓ Overflow menu
+--- Filter by Cardio ---
+  ✓ Tap Cardio filter
+  ✓ Cardio Blast filtered
+--- Filter back to All ---
+  ✓ Tap All filter
+--- Tap first workout for detail (coords) ---
+  ✓ Tap first workout
+  ✓ Detail title
+  ✓ Workout name
+  ✓ Exercises label
+  ✓ Bench Press exercise
+  ✓ Squats exercise
+  ✓ Notes label
+  ✓ Delete button
+--- Back from detail ---
+  ✓ Back from detail
+--- Open Summary via menu ---
+  ✓ Tap overflow menu
+  ✓ Tap Summary
+  ✓ Summary title
+  ✓ Total Workouts
+  ✓ Total Duration
+  ✓ Total Calories
+  ✓ Breakdown
+--- Back from Summary ---
+  ✓ Back from Summary
+--- Open Exercise Library via menu ---
+  ✓ Tap overflow menu 2
+  ✓ Tap Exercise Library
+  ✓ Exercise Library title
+  ✓ Push-ups
+  ✓ Squats lib
+  ✓ Running lib
+  ✓ Deadlift lib
+--- Back from Exercise Library ---
+  ✓ Back from Exercise Library
+--- Add Workout flow ---
+  ✓ Tap Add Workout FAB
+  ✓ Add Workout title
+  ✓ Workout Name field
+  ✓ Type dropdown
+  ✓ Duration field
+  ✓ Calories field
+  ✓ Notes field
+--- Fill form ---
+  ✓ Type workout name
+  ✓ Type duration
+  ✓ Type calories
+--- Scroll and save ---
+  ✓ Swipe up
+  ✓ Tap Save Workout
+--- Screenshot ---
+  ✓ Screenshot FitnessLog
+
+App 140 FitnessLog done.
+
+=== App 141: MovieNight ===
+com.iez.movieNight: 95756
+  ✔ Movie Night is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ All filter
+  ✓ Action filter
+  ✓ Comedy filter
+  ✓ Drama filter
+  ✓ Horror filter
+  ✓ Sci-Fi filter
+  ✓ Romance filter
+  ✓ The Dark Knight
+  ✓ Grand Budapest
+  ✓ Shawshank
+  ✓ Hereditary
+  ✓ Blade Runner
+  ✓ Before Sunrise
+  ✓ Add Movie FAB
+--- Filter by Drama ---
+  ✓ Tap Drama filter
+  ✓ Shawshank in Drama
+--- Filter back to All ---
+  ✓ Tap All filter
+--- Tap first movie for detail (coords) ---
+  ✓ Tap first movie
+  ✓ Detail title
+  ✓ Director
+  ✓ Genre chip
+  ✓ Toggle Watched btn
+  ✓ Delete Movie btn
+--- Back from detail ---
+  ✓ Back from detail
+--- Open Watchlist Stats via menu ---
+  ✓ Tap overflow menu
+  ✓ Tap Watchlist Stats
+  ✓ Watchlist Stats title
+  ✓ Total Movies
+  ✓ Watched stat
+  ✓ Unwatched stat
+  ✓ Average Rating
+--- Back from Watchlist Stats ---
+  ✓ Back from Watchlist Stats
+--- Open Directors via menu ---
+  ✓ Tap overflow menu 2
+  ✓ Tap Directors
+  ✓ Directors title
+  ✓ Christopher Nolan
+  ✓ Wes Anderson
+  ✓ Frank Darabont
+--- Back from Directors ---
+  ✓ Back from Directors
+--- Add Movie flow ---
+  ✓ Tap Add Movie FAB
+  ✓ Add Movie title
+  ✓ Movie Title field
+  ✓ Director field
+  ✓ Year field
+  ✓ Review field
+  ✓ Genre dropdown
+--- Fill form ---
+  ✓ Type movie title
+  ✓ Type director
+  ✓ Type year
+--- Scroll and submit ---
+  ✓ Swipe up
+  ✓ Tap Add Movie submit
+--- Screenshot ---
+  ✓ Screenshot MovieNight
+
+App 141 MovieNight done.
+
+=== App 142: StudyPlanner ===
+com.iez.studyPlanner: 96855
+  ✔ Study Planner is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ All filter
+  ✓ Math filter
+  ✓ Science filter
+  ✓ English filter
+  ✓ History filter
+  ✓ Art filter
+  ✓ Linear Algebra
+  ✓ Organic Chemistry
+  ✓ Essay Writing
+  ✓ World War II
+  ✓ Renaissance Painting
+  ✓ Calculus Integration
+  ✓ Add Session FAB
+--- Filter by Math ---
+  ✓ Tap Math filter
+  ✓ Linear Algebra filtered
+  ✓ Calculus Integration filtered
+--- Filter back to All ---
+  ✓ Tap All filter
+--- Tap first session for detail (coords) ---
+  ✓ Tap first session
+  ✓ Detail title
+  ✓ Topic
+  ✓ Subject
+  ✓ Duration
+  ✓ Difficulty
+  ✓ Notes label
+  ✓ Mark Incomplete btn
+  ✓ Delete Session btn
+--- Back from detail ---
+  ✓ Back from detail
+--- Open Progress via menu ---
+  ✓ Tap overflow menu
+  ✓ Tap Progress
+  ✓ Progress title
+  ✓ Total Sessions
+  ✓ Completed
+  ✓ Total Study Time
+  ✓ Average Duration
+  ✓ Difficulty Breakdown
+--- Back from Progress ---
+  ✓ Back from Progress
+--- Open Subjects via menu ---
+  ✓ Tap overflow menu 2
+  ✓ Tap Subjects
+  ✓ Subjects title
+  ✓ Math subject
+  ✓ Science subject
+  ✓ English subject
+  ✓ History subject
+  ✓ Art subject
+--- Back from Subjects ---
+  ✓ Back from Subjects
+--- Add Session flow ---
+  ✓ Tap Add Session FAB
+  ✓ Add Session title
+  ✓ Topic field
+  ✓ Duration field
+  ✓ Notes field
+  ✓ Subject dropdown
+  ✓ Difficulty dropdown
+--- Fill form ---
+  ✓ Type topic
+  ✓ Type duration
+--- Scroll and submit ---
+  ✓ Swipe up
+  ✓ Tap Add Session submit
+--- Verify new session ---
+  ✓ Test Topic added
+--- Screenshot ---
+  ✓ Screenshot StudyPlanner
+
+========================================
+RESULTS: 166 passed / 166 total (0 failed)
+========================================
