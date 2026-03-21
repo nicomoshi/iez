@@ -1,38 +1,22 @@
 #!/bin/bash
-# Test automation for Apps 95-97: FormApp, ContactsApp, TaskBoard
+# Test automation for Apps 98-100: CountdownTimer/ColorMixer/QuoteBook
 set -euo pipefail
 
 IEZ="/Users/rudy/Developer/i_ez/bin/iez"
 DEVICE_ID="70FFEC3F-07A7-4F3A-BC49-B5ABAB81491C"
 PASS=0; FAIL=0; TOTAL=0
 
-run_iez() { "$@" 2>/dev/null | sed -n '/^{/,/^}/p'; }
+run_iez() { "$@" 2>/dev/null | sed -n '/^{/,/^}/p' || true; }
 
 assert_ok() {
   local desc="$1" result="$2"
   TOTAL=$((TOTAL + 1))
   local ok
-  ok=$(echo "$result" | jq -r '.ok // false' 2>/dev/null)
+  ok=$(echo "$result" | jq -r '.ok // false' 2>/dev/null || echo "false")
   if [ "$ok" = "true" ]; then
     PASS=$((PASS + 1)); echo "  ✓ $desc"
   else
     FAIL=$((FAIL + 1)); echo "  ✗ $desc"
-  fi
-}
-
-has_label() {
-  local result
-  result=$(run_iez "$IEZ" ui exists --label "$1" | jq -r '.ok' 2>/dev/null || echo "false")
-  [ "$result" = "true" ]
-}
-
-assert_label() {
-  local desc="$1" label="$2"
-  TOTAL=$((TOTAL + 1))
-  if has_label "$label"; then
-    PASS=$((PASS + 1)); echo "  ✓ $desc"
-  else
-    FAIL=$((FAIL + 1)); echo "  ✗ $desc (label '$label' not found)"
   fi
 }
 
@@ -55,378 +39,270 @@ assert_tree_has() {
   fi
 }
 
+kill_all() {
+  xcrun simctl terminate "$DEVICE_ID" com.test.countdownTimer 2>/dev/null || true
+  xcrun simctl terminate "$DEVICE_ID" com.test.colorMixer 2>/dev/null || true
+  xcrun simctl terminate "$DEVICE_ID" com.test.quoteBook 2>/dev/null || true
+  sleep 1
+}
+
 # ============================================================
-echo "=== App 95: FormApp ==="
+echo "=== App 98: CountdownTimer ==="
 # ============================================================
 
-xcrun simctl terminate "$DEVICE_ID" dev.flutter.formApp.formApp 2>/dev/null || true
-xcrun simctl terminate "$DEVICE_ID" com.example.contactsApp 2>/dev/null || true
-xcrun simctl terminate "$DEVICE_ID" com.example.taskBoard 2>/dev/null || true
-xcrun simctl launch "$DEVICE_ID" dev.flutter.formApp.formApp
-sleep 2
+kill_all
+xcrun simctl launch "$DEVICE_ID" com.test.countdownTimer
+sleep 3
 
 echo "--- Home Screen ---"
 refresh_tree
-assert_tree_has "Form Samples heading" "Form Samples"
-assert_tree_has "Sign in with HTTP option" "Sign in with HTTP"
-assert_tree_has "Autofill option" "Autofill"
-assert_tree_has "Form widgets option" "Form widgets"
-assert_tree_has "Validation option" "Validation"
+assert_tree_has "App title" "Countdown Timer"
+assert_tree_has "Time display" "Time remaining"
+assert_tree_has "Duration label" "Duration: 60s"
+assert_tree_has "Start button" "Start"
+assert_tree_has "Pause button" "Pause"
+assert_tree_has "Reset button" "Reset"
+assert_tree_has "History button" "History"
+assert_tree_has "Settings button" "Settings"
 
-echo "--- Sign In Form ---"
-R=$(run_iez "$IEZ" ui tap --label "Sign in with HTTP")
-assert_ok "Tap Sign in with HTTP" "$R"
+echo "--- Start Timer ---"
+R=$(run_iez "$IEZ" ui tap --label "Start")
+assert_ok "Tap Start" "$R"
+sleep 2
+
+echo "--- Pause Timer ---"
+R=$(run_iez "$IEZ" ui tap --label "Pause")
+assert_ok "Tap Pause" "$R"
+sleep 0.3
+
+echo "--- Reset Timer ---"
+R=$(run_iez "$IEZ" ui tap --label "Reset")
+assert_ok "Tap Reset" "$R"
+sleep 0.5
+
+refresh_tree
+assert_tree_has "Duration restored" "Duration: 60s"
+
+echo "--- Navigate to Settings ---"
+R=$(run_iez "$IEZ" ui tap --label "Settings")
+assert_ok "Tap Settings" "$R"
+sleep 2
+
+refresh_tree
+assert_tree_has "Settings heading" "Timer Settings"
+assert_tree_has "Duration label" "Duration: 60 seconds"
+assert_tree_has "Quick Presets" "Quick Presets"
+assert_tree_has "30s preset" "30s"
+assert_tree_has "120s preset" "120s"
+assert_tree_has "300s preset" "300s"
+assert_tree_has "600s preset" "600s"
+assert_tree_has "Apply button" "Apply"
+
+echo "--- Select Preset ---"
+R=$(run_iez "$IEZ" ui tap --label "30s")
+assert_ok "Tap 30s preset" "$R"
+sleep 0.3
+
+refresh_tree
+assert_tree_has "Duration updated to 30" "Duration: 30 seconds"
+
+echo "--- Apply and return ---"
+R=$(run_iez "$IEZ" ui tap --label "Apply")
+assert_ok "Tap Apply" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "Sign in Form heading" "Sign in Form"
-assert_tree_has "Email field" "Email"
-assert_tree_has "Password field" "Password"
+assert_tree_has "Back on home" "Countdown Timer"
+assert_tree_has "Duration now 30s" "Duration: 30s"
 
-R=$(run_iez "$IEZ" ui type "root" --label "Email")
-assert_ok "Type email" "$R"
-sleep 0.3
-
-R=$(run_iez "$IEZ" ui type "password" --label "Password")
-assert_ok "Type password" "$R"
-sleep 0.3
-
-R=$(run_iez "$IEZ" ui tap --label "Sign in")
-assert_ok "Tap Sign in button" "$R"
-sleep 1.5
+echo "--- Navigate to History ---"
+R=$(run_iez "$IEZ" ui tap --label "History")
+assert_ok "Tap History" "$R"
+sleep 1
 
 refresh_tree
-assert_tree_has "Success dialog" "Successfully signed in."
+assert_tree_has "History heading" "Timer History"
+assert_tree_has "Empty history" "No completed timers yet"
+
+R=$(run_iez "$IEZ" ui tap --label "Back")
+assert_ok "Back from History" "$R"
+sleep 0.5
+
+R=$(run_iez "$IEZ" ui screenshot --out /tmp/app98_countdown.png)
+assert_ok "Screenshot CountdownTimer" "$R"
+
+# ============================================================
+echo ""
+echo "=== App 99: ColorMixer ==="
+# ============================================================
+
+kill_all
+xcrun simctl launch "$DEVICE_ID" com.test.colorMixer
+sleep 3
+
+echo "--- Home Screen ---"
+refresh_tree
+assert_tree_has "App title" "Color Mixer"
+assert_tree_has "Hex code" "#808080"
+assert_tree_has "Red slider" "Red: 128"
+assert_tree_has "Green slider" "Green: 128"
+assert_tree_has "Blue slider" "Blue: 128"
+assert_tree_has "Save Color button" "Save Color"
+assert_tree_has "Reset button" "Reset"
+assert_tree_has "Quick Colors heading" "Quick Colors"
+assert_tree_has "Pure Red chip" "Pure Red"
+assert_tree_has "Pure Green chip" "Pure Green"
+assert_tree_has "Pure Blue chip" "Pure Blue"
+assert_tree_has "Yellow chip" "Yellow"
+assert_tree_has "Cyan chip" "Cyan"
+assert_tree_has "White chip" "White"
+assert_tree_has "Saved Colors button" "Saved Colors"
+assert_tree_has "About button" "About"
+
+echo "--- Tap Pure Red ---"
+R=$(run_iez "$IEZ" ui tap --label "Pure Red")
+assert_ok "Tap Pure Red" "$R"
+sleep 0.5
+
+refresh_tree
+assert_tree_has "Hex is red" "#FF0000"
+assert_tree_has "Red is 255" "Red: 255"
+
+echo "--- Save Color ---"
+R=$(run_iez "$IEZ" ui tap --label "Save Color")
+assert_ok "Tap Save Color" "$R"
+sleep 0.5
+
+echo "--- Tap Yellow ---"
+R=$(run_iez "$IEZ" ui tap --label "Yellow")
+assert_ok "Tap Yellow" "$R"
+sleep 0.5
+
+refresh_tree
+assert_tree_has "Hex is yellow" "#FFFF00"
+
+echo "--- Save second color ---"
+R=$(run_iez "$IEZ" ui tap --label "Save Color")
+assert_ok "Save Yellow" "$R"
+sleep 0.5
+
+echo "--- View Saved Colors ---"
+R=$(run_iez "$IEZ" ui tap --label "Saved Colors")
+assert_ok "Tap Saved Colors" "$R"
+sleep 1
+
+refresh_tree
+assert_tree_has "Saved Colors heading" "Saved Colors"
+assert_tree_has "Red saved" "#FF0000"
+assert_tree_has "Yellow saved" "#FFFF00"
+
+R=$(run_iez "$IEZ" ui tap --label "Back")
+assert_ok "Back from Saved Colors" "$R"
+sleep 0.5
+
+echo "--- About Dialog ---"
+R=$(run_iez "$IEZ" ui tap --label "About")
+assert_ok "Tap About" "$R"
+sleep 0.5
+
+refresh_tree
+assert_tree_has "About title" "About Color Mixer"
+assert_tree_has "About content" "Mix colors using RGB sliders"
+assert_tree_has "OK button" "OK"
 
 R=$(run_iez "$IEZ" ui tap --label "OK")
-assert_ok "Dismiss dialog" "$R"
+assert_ok "Dismiss About dialog" "$R"
 sleep 0.5
 
-echo "--- Navigate back to Home ---"
-R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "Tap Back from Sign in" "$R"
+echo "--- Reset Color ---"
+R=$(run_iez "$IEZ" ui tap --label "Reset")
+assert_ok "Tap Reset" "$R"
 sleep 0.5
-
-echo "--- Autofill Form ---"
-R=$(run_iez "$IEZ" ui tap --label "Autofill")
-assert_ok "Tap Autofill" "$R"
-sleep 1
 
 refresh_tree
-assert_tree_has "Autofill heading" "Autofill"
-assert_tree_has "First Name field" "First Name"
-assert_tree_has "Last Name field" "Last Name"
+assert_tree_has "Reset to grey" "#808080"
 
-R=$(run_iez "$IEZ" ui type "John" --label "First Name")
-assert_ok "Type First Name" "$R"
-sleep 0.3
-
-R=$(run_iez "$IEZ" ui type "Doe" --label "Last Name")
-assert_ok "Type Last Name" "$R"
-sleep 0.3
-
-echo "--- Navigate back to Home ---"
-R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "Tap Back from Autofill" "$R"
-sleep 0.5
-
-echo "--- Form Widgets ---"
-R=$(run_iez "$IEZ" ui tap --label "Form widgets")
-assert_ok "Tap Form widgets" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "Form widgets heading" "Form widgets"
-assert_tree_has "Title field" "Title"
-assert_tree_has "Description field" "Description"
-
-R=$(run_iez "$IEZ" ui type "Test Title" --label "Title")
-assert_ok "Type Title" "$R"
-sleep 0.3
-
-R=$(run_iez "$IEZ" ui type "A test description" --label "Description")
-assert_ok "Type Description" "$R"
-sleep 0.3
-
-echo "--- Navigate back to Home ---"
-R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "Tap Back from Form widgets" "$R"
-sleep 0.5
-
-echo "--- Validation Form ---"
-R=$(run_iez "$IEZ" ui tap --label "Validation")
-assert_ok "Tap Validation" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "Story Generator heading" "Story Generator"
-assert_tree_has "Adjective field" "Enter an adjective"
-assert_tree_has "Noun field" "Enter a noun"
-
-R=$(run_iez "$IEZ" ui type "beautiful" --label "Enter an adjective")
-assert_ok "Type adjective" "$R"
-sleep 0.3
-
-R=$(run_iez "$IEZ" ui type "house" --label "Enter a noun")
-assert_ok "Type noun" "$R"
-sleep 0.5
-
-# Dismiss keyboard before tapping checkbox
-R=$(run_iez "$IEZ" ui tap --coords 200,60)
-assert_ok "Dismiss keyboard" "$R"
-sleep 0.5
-
-# Check the terms checkbox
-refresh_tree
-assert_tree_has "Terms checkbox" "I agree to the terms of service."
-
-# Tap checkbox by coords (left side of checkbox row)
-R=$(run_iez "$IEZ" ui tap --coords 36,326)
-assert_ok "Tap terms checkbox" "$R"
-sleep 0.5
-
-R=$(run_iez "$IEZ" ui tap --label "Submit")
-assert_ok "Tap Submit" "$R"
-sleep 1.5
-
-refresh_tree
-assert_tree_has "Story result" "Your story"
-
-R=$(run_iez "$IEZ" ui tap --label "Done")
-assert_ok "Dismiss story dialog" "$R"
-sleep 0.3
-
-R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "Tap Back from Validation" "$R"
-sleep 0.5
-
-R=$(run_iez "$IEZ" ui screenshot --out /tmp/app95_form.png)
-assert_ok "Screenshot FormApp" "$R"
+R=$(run_iez "$IEZ" ui screenshot --out /tmp/app99_colormixer.png)
+assert_ok "Screenshot ColorMixer" "$R"
 
 # ============================================================
 echo ""
-echo "=== App 96: ContactsApp ==="
+echo "=== App 100: QuoteBook ==="
 # ============================================================
 
-xcrun simctl terminate "$DEVICE_ID" dev.flutter.formApp.formApp 2>/dev/null || true
-xcrun simctl launch "$DEVICE_ID" com.example.contactsApp
-sleep 2
+kill_all
+xcrun simctl launch "$DEVICE_ID" com.test.quoteBook
+sleep 3
 
 echo "--- Home Screen ---"
 refresh_tree
-assert_tree_has "Contacts heading" "Contacts"
-assert_tree_has "Alice Johnson contact" "Alice Johnson"
-assert_tree_has "Bob Martinez contact" "Bob Martinez"
-assert_tree_has "More options" "More options"
+assert_tree_has "App title" "Quote Book"
+assert_tree_has "All filter" "All"
+assert_tree_has "Motivation filter" "Motivation"
+assert_tree_has "Innovation filter" "Innovation"
+assert_tree_has "Life filter" "Life"
+assert_tree_has "Wisdom filter" "Wisdom"
+assert_tree_has "Steve Jobs quote" "The only way to do great work"
+assert_tree_has "Favorites button" "Favorites"
+assert_tree_has "Add Quote FAB" "Add Quote"
 
-echo "--- View Contact Detail ---"
-# Contact labels are multi-line (initial + name + phone), use coords
-# Alice Johnson: frame y:118 x:0 w:402 h:72 → center ~200,154
-R=$(run_iez "$IEZ" ui tap --coords 200,154)
-assert_ok "Tap Alice Johnson" "$R"
+echo "--- Filter by Innovation ---"
+R=$(run_iez "$IEZ" ui tap --label "Innovation")
+assert_ok "Tap Innovation filter" "$R"
+sleep 0.5
+
+refresh_tree
+assert_tree_has "Innovation quote visible" "Innovation distinguishes"
+
+echo "--- Reset to All ---"
+R=$(run_iez "$IEZ" ui tap --label "All")
+assert_ok "Tap All filter" "$R"
+sleep 0.5
+
+echo "--- Navigate to Favorites ---"
+R=$(run_iez "$IEZ" ui tap --label "Favorites")
+assert_ok "Tap Favorites" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "Contact detail heading" "Contact"
-assert_tree_has "Alice name shown" "Alice Johnson"
-assert_tree_has "Call button" "Call"
-assert_tree_has "Message button" "Message"
-assert_tree_has "Email button" "Email"
-assert_tree_has "Delete button" "Delete"
+assert_tree_has "Favorites heading" "Favorites"
+assert_tree_has "No favorites" "No favorites yet"
 
 R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "Back from contact detail" "$R"
+assert_ok "Back from Favorites" "$R"
 sleep 0.5
 
-echo "--- Drawer Filter ---"
-R=$(run_iez "$IEZ" ui tap --label "Open navigation menu")
-assert_ok "Open drawer" "$R"
-sleep 0.5
-
-refresh_tree
-assert_tree_has "All Contacts filter" "All Contacts"
-assert_tree_has "Family filter" "Family"
-assert_tree_has "Friends filter" "Friends"
-assert_tree_has "Work filter" "Work"
-
-R=$(run_iez "$IEZ" ui tap --label "Family")
-assert_ok "Tap Family filter" "$R"
-sleep 0.5
-
-refresh_tree
-assert_tree_has "Carol Williams in Family" "Carol Williams"
-
-echo "--- Add Contact ---"
-R=$(run_iez "$IEZ" ui tap --label "Open navigation menu")
-assert_ok "Open drawer again" "$R"
-sleep 0.5
-R=$(run_iez "$IEZ" ui tap --label "All Contacts")
-assert_ok "Tap All Contacts" "$R"
-sleep 0.5
-
-R=$(run_iez "$IEZ" ui tap --label "Add contact")
-assert_ok "Tap Add contact FAB" "$R"
+echo "--- Navigate to Add Quote ---"
+R=$(run_iez "$IEZ" ui tap --label "Add Quote")
+assert_ok "Tap Add Quote" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "Add Contact heading" "Add Contact"
-assert_tree_has "Name field" "Name"
-assert_tree_has "Phone field" "Phone"
+assert_tree_has "Add Quote heading" "Add Quote"
+assert_tree_has "Quote text field" "Quote text"
+assert_tree_has "Author field" "Author"
+assert_tree_has "Save Quote button" "Save Quote"
 
-R=$(run_iez "$IEZ" ui type "Test User" --label "Name")
-assert_ok "Type contact name" "$R"
+echo "--- Fill in new quote ---"
+R=$(run_iez "$IEZ" ui type "Knowledge is power" --label "Quote text")
+assert_ok "Type quote text" "$R"
 sleep 0.3
 
-R=$(run_iez "$IEZ" ui type "+1 555 999 0000" --label "Phone")
-assert_ok "Type contact phone" "$R"
+R=$(run_iez "$IEZ" ui type "Francis Bacon" --label "Author")
+assert_ok "Type author" "$R"
 sleep 0.3
 
-R=$(run_iez "$IEZ" ui type "test@test.com" --label "Email")
-assert_ok "Type contact email" "$R"
-sleep 0.3
-
-R=$(run_iez "$IEZ" ui tap --label "Save")
-assert_ok "Tap Save" "$R"
+R=$(run_iez "$IEZ" ui tap --label "Save Quote")
+assert_ok "Tap Save Quote" "$R"
 sleep 1
 
-echo "--- Verify New Contact ---"
+echo "--- Verify new quote ---"
 refresh_tree
-assert_tree_has "New contact in list" "Test User"
+assert_tree_has "Back on home" "Quote Book"
+assert_tree_has "New quote visible" "Knowledge is power"
 
-echo "--- Delete Contact ---"
-# New contact will be in the list, find by tree position
-# Test User should be near bottom - use coords from tree
-CONTACT_Y=$(run_iez "$IEZ" ui tree --compact | jq -r '.data.elements[] | select(.label | test("Test User")) | .frame.y' 2>/dev/null || echo "600")
-CONTACT_CENTER_Y=$((CONTACT_Y + 36))
-R=$(run_iez "$IEZ" ui tap --coords 200,$CONTACT_CENTER_Y)
-assert_ok "Tap new contact" "$R"
-sleep 1
-
-R=$(run_iez "$IEZ" ui tap --label "Delete")
-assert_ok "Tap Delete" "$R"
-sleep 0.5
-
-refresh_tree
-assert_tree_has "Delete dialog" "Delete Contact"
-
-R=$(run_iez "$IEZ" ui tap --label "Delete")
-assert_ok "Confirm Delete" "$R"
-sleep 1
-
-R=$(run_iez "$IEZ" ui screenshot --out /tmp/app96_contacts.png)
-assert_ok "Screenshot ContactsApp" "$R"
-
-# ============================================================
-echo ""
-echo "=== App 97: TaskBoard ==="
-# ============================================================
-
-xcrun simctl terminate "$DEVICE_ID" com.example.contactsApp 2>/dev/null || true
-xcrun simctl launch "$DEVICE_ID" com.example.taskBoard
-sleep 2
-
-echo "--- Home Screen / Kanban Board ---"
-refresh_tree
-assert_tree_has "Task Board heading" "Task Board"
-assert_tree_has "To Do column" "To Do"
-assert_tree_has "Design new logo task" "Design new logo"
-assert_tree_has "Write unit tests task" "Write unit tests"
-
-echo "--- View Task Detail ---"
-# Task cards are AXGenericElement with multi-line labels, use coords
-# Design new logo card: y:190 h:124 → center ~200,252
-R=$(run_iez "$IEZ" ui tap --coords 200,252)
-assert_ok "Tap Design new logo" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "Task Detail heading" "Task Detail"
-assert_tree_has "Design new logo title" "Design new logo"
-assert_tree_has "Description text" "Create a modern logo"
-assert_tree_has "Priority/Status/Date info" "Priority"
-assert_tree_has "High priority chip" "High"
-
-R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "Back from task detail" "$R"
-sleep 0.5
-
-echo "--- Swipe to In Progress column ---"
-R=$(run_iez "$IEZ" ui swipe --from 350,400 --to 50,400)
-assert_ok "Swipe to In Progress" "$R"
-sleep 0.8
-
-refresh_tree
-assert_tree_has "In Progress column" "In Progress"
-assert_tree_has "Fix login bug task" "Fix login bug"
-
-echo "--- Swipe to Done column ---"
-R=$(run_iez "$IEZ" ui swipe --from 350,400 --to 50,400)
-assert_ok "Swipe to Done" "$R"
-sleep 0.8
-
-refresh_tree
-assert_tree_has "Done column" "Done"
-assert_tree_has "Update dependencies task" "Update dependencies"
-
-echo "--- Swipe back to To Do ---"
-R=$(run_iez "$IEZ" ui swipe --from 50,400 --to 350,400)
-assert_ok "Swipe back 1" "$R"
-sleep 0.5
-R=$(run_iez "$IEZ" ui swipe --from 50,400 --to 350,400)
-assert_ok "Swipe back 2" "$R"
-sleep 0.5
-
-echo "--- Add Task ---"
-# FAB has no AX label, use coords (bottom-right)
-R=$(run_iez "$IEZ" ui tap --coords 365,815)
-assert_ok "Tap Add FAB" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "Add Task heading" "Add Task"
-assert_tree_has "Task Title field" "Task Title"
-assert_tree_has "Description field" "Description"
-
-R=$(run_iez "$IEZ" ui type "Automation Test Task" --label "Task Title")
-assert_ok "Type task title" "$R"
-sleep 0.3
-
-R=$(run_iez "$IEZ" ui type "Created by iez automation" --label "Description")
-assert_ok "Type task description" "$R"
-sleep 0.3
-
-# Dismiss keyboard before tapping Save Task
-R=$(run_iez "$IEZ" ui tap --coords 200,60)
-assert_ok "Dismiss keyboard" "$R"
-sleep 0.3
-
-R=$(run_iez "$IEZ" ui tap --label "Save Task")
-assert_ok "Tap Save Task" "$R"
-sleep 1
-
-echo "--- Verify New Task ---"
-refresh_tree
-assert_tree_has "New task in board" "Automation Test Task"
-
-echo "--- Settings Bottom Sheet ---"
-# Settings icon has no AX label, use coords (top-right AppBar)
-R=$(run_iez "$IEZ" ui tap --coords 378,90)
-assert_ok "Tap Settings icon" "$R"
-sleep 0.8
-
-refresh_tree
-assert_tree_has "Settings title" "Settings"
-assert_tree_has "Show completed toggle" "Show completed tasks"
-assert_tree_has "Sort by label" "Sort by"
-assert_tree_has "Priority sort option" "Priority"
-
-# Close settings by tapping outside
-R=$(run_iez "$IEZ" ui tap --coords 200,100)
-assert_ok "Dismiss settings sheet" "$R"
-sleep 0.5
-
-R=$(run_iez "$IEZ" ui screenshot --out /tmp/app97_taskboard.png)
-assert_ok "Screenshot TaskBoard" "$R"
+R=$(run_iez "$IEZ" ui screenshot --out /tmp/app100_quotebook.png)
+assert_ok "Screenshot QuoteBook" "$R"
 
 # ============================================================
 echo ""
