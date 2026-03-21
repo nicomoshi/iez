@@ -1,400 +1,455 @@
-#!/usr/bin/env bash
-# Apps 74-76: MultiCounter / PasswordValidator / ShoppingCart
+#!/bin/bash
+# Test automation for Apps 77-79: TaskApp, QuizFlick, ExpenseApp
 set -euo pipefail
-IEZ="./bin/iez"
+
+IEZ="/Users/rudy/Developer/i_ez/bin/iez"
+DEVICE_ID="70FFEC3F-07A7-4F3A-BC49-B5ABAB81491C"
 PASS=0; FAIL=0; TOTAL=0
-START=$(date +%s)
-BUNDLE_ID="com.example.bottomNavNested"
 
 run_iez() { "$@" 2>/dev/null | sed -n '/^{/,/^}/p'; }
+
 assert_ok() {
-  local ok; ok=$(echo "$1" | jq -r '.ok // false')
-  TOTAL=$((TOTAL+1))
-  if [ "$ok" = "true" ]; then PASS=$((PASS+1)); echo "  ✓ $2"
-  else FAIL=$((FAIL+1)); echo "  ✗ $2"; fi
+  local desc="$1" result="$2"
+  TOTAL=$((TOTAL + 1))
+  local ok
+  ok=$(echo "$result" | jq -r '.ok // false' 2>/dev/null)
+  if [ "$ok" = "true" ]; then
+    PASS=$((PASS + 1)); echo "  ✓ $desc"
+  else
+    FAIL=$((FAIL + 1)); echo "  ✗ $desc"
+  fi
 }
-has_label() { run_iez $IEZ ui exists --label "$1" | jq -r '.ok' | grep -q true; }
-has_text() {
-  run_iez $IEZ ui tree --compact | jq -r '.data.elements[]?.label // empty' | grep -qF "$1"
+
+has_label() {
+  run_iez "$IEZ" ui exists --label "$1" | jq -r '.ok' 2>/dev/null | grep -q true
 }
-rebuild_and_launch() {
-  xcrun simctl terminate booted "$BUNDLE_ID" 2>/dev/null || true
+
+assert_label() {
+  local desc="$1" label="$2"
+  TOTAL=$((TOTAL + 1))
+  if has_label "$label"; then
+    PASS=$((PASS + 1)); echo "  ✓ $desc"
+  else
+    FAIL=$((FAIL + 1)); echo "  ✗ $desc (label '$label' not found)"
+  fi
+}
+
+# Check if any element label contains the given substring (for multi-line labels)
+tree_has() {
+  run_iez "$IEZ" ui tree --compact | jq -r '.data.elements[].label' 2>/dev/null | grep -qF "$1"
+}
+
+assert_tree_has() {
+  local desc="$1" substr="$2"
+  TOTAL=$((TOTAL + 1))
+  if tree_has "$substr"; then
+    PASS=$((PASS + 1)); echo "  ✓ $desc"
+  else
+    FAIL=$((FAIL + 1)); echo "  ✗ $desc (substring '$substr' not in tree)"
+  fi
+}
+
+install_and_launch() {
+  local app_path="$1" bundle_id="$2"
+  xcrun simctl terminate "$DEVICE_ID" "$bundle_id" 2>/dev/null || true
   sleep 0.3
-  cd /Users/rudy/Developer/i_ez/test_app && flutter build ios --simulator --no-codesign 2>&1 | tail -1
-  xcrun simctl install booted build/ios/iphonesimulator/Runner.app
-  xcrun simctl launch booted "$BUNDLE_ID" 2>/dev/null
-  cd /Users/rudy/Developer/i_ez
-  sleep 1.5
+  xcrun simctl install "$DEVICE_ID" "$app_path"
+  xcrun simctl launch "$DEVICE_ID" "$bundle_id"
+  sleep 2
 }
 
-########################################################################
-# APP 74: MultiCounter — Multiple independent counters + total
-########################################################################
-cat > test_app/lib/main.dart << 'DART'
-import 'package:flutter/material.dart';
-void main() => runApp(const App74());
-class App74 extends StatelessWidget {
-  const App74({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(title: 'MultiCounter',
-      theme: ThemeData(colorSchemeSeed: Colors.lime, useMaterial3: true),
-      home: const MultiCounterHome());
-  }
+screenshot() {
+  run_iez "$IEZ" ui screenshot --out "/tmp/$1.png" >/dev/null 2>&1
 }
-class MultiCounterHome extends StatefulWidget {
-  const MultiCounterHome({super.key});
-  @override
-  State<MultiCounterHome> createState() => _MultiCounterHomeState();
-}
-class _MultiCounterHomeState extends State<MultiCounterHome> {
-  final Map<String, int> _counters = {'Red': 0, 'Green': 0, 'Blue': 0};
-  int get _total => _counters.values.fold(0, (a, b) => a + b);
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('MultiCounter')),
-      body: Column(children: [
-        Container(
-          width: double.infinity, padding: const EdgeInsets.all(16),
-          color: Theme.of(context).colorScheme.primaryContainer,
-          child: Text('Total: $_total', textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineMedium),
-        ),
-        ..._counters.entries.map((e) => ListTile(
-          title: Text('${e.key}: ${e.value}'),
-          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-            IconButton(icon: const Icon(Icons.remove), tooltip: 'Decrease ${e.key}',
-              onPressed: () => setState(() => _counters[e.key] = e.value - 1)),
-            IconButton(icon: const Icon(Icons.add), tooltip: 'Increase ${e.key}',
-              onPressed: () => setState(() => _counters[e.key] = e.value + 1)),
-          ]),
-        )),
-        const Spacer(),
-        Padding(padding: const EdgeInsets.all(16), child:
-          FilledButton(onPressed: () => setState(() {
-            for (var k in _counters.keys) _counters[k] = 0;
-          }), child: const Text('Reset All'))),
-        const SizedBox(height: 16),
-      ]),
-    );
-  }
-}
-DART
 
-echo "========================================"
-echo "APP 74: MultiCounter"
-echo "========================================"
-rebuild_and_launch
-
-echo "Step 1: Initial state"
-has_label "MultiCounter" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
-has_text "Total: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Total 0"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Total 0"; }
-has_text "Red: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Red 0"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Red 0"; }
-has_text "Green: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Green 0"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Green 0"; }
-has_text "Blue: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Blue 0"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Blue 0"; }
-has_label "Reset All" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Reset btn"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Reset btn"; }
-
-echo "Step 2: Increment Red"
-R=$(run_iez $IEZ ui tap --label "Increase Red"); assert_ok "$R" "+Red"
-sleep 0.2
-R=$(run_iez $IEZ ui tap --label "Increase Red"); assert_ok "$R" "+Red"
-sleep 0.2
-R=$(run_iez $IEZ ui tap --label "Increase Red"); assert_ok "$R" "+Red"
-sleep 0.3
-has_text "Red: 3" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Red 3"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Red 3"; }
-
-echo "Step 3: Increment Green"
-R=$(run_iez $IEZ ui tap --label "Increase Green"); assert_ok "$R" "+Green"
-sleep 0.2
-R=$(run_iez $IEZ ui tap --label "Increase Green"); assert_ok "$R" "+Green"
-sleep 0.3
-has_text "Green: 2" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Green 2"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Green 2"; }
-
-echo "Step 4: Decrement Blue"
-R=$(run_iez $IEZ ui tap --label "Decrease Blue"); assert_ok "$R" "-Blue"
-sleep 0.3
-has_text "Blue: -1" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Blue -1"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Blue -1"; }
-
-echo "Step 5: Check total"
-has_text "Total: 4" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Total 4"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Total 4"; }
-
-echo "Step 6: Reset"
-R=$(run_iez $IEZ ui tap --label "Reset All"); assert_ok "$R" "Reset"
-sleep 0.3
-has_text "Total: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Total reset"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Total reset"; }
-has_text "Red: 0" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Red reset"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Red reset"; }
-
+########################################
+# APP 77: TaskApp
+########################################
 echo ""
+echo "=== APP 77: TaskApp ==="
+install_and_launch "/Users/rudy/Developer/i_ez/test_app/task_app/build/ios/iphonesimulator/Runner.app" "com.example.taskapp"
 
-########################################################################
-# APP 75: PasswordValidator — Real-time validation with strength meter
-########################################################################
-cat > test_app/lib/main.dart << 'DART'
-import 'package:flutter/material.dart';
-void main() => runApp(const App75());
-class App75 extends StatelessWidget {
-  const App75({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(title: 'PasswordApp',
-      theme: ThemeData(colorSchemeSeed: Colors.red, useMaterial3: true),
-      home: const PasswordHome());
-  }
-}
-class PasswordHome extends StatefulWidget {
-  const PasswordHome({super.key});
-  @override
-  State<PasswordHome> createState() => _PasswordHomeState();
-}
-class _PasswordHomeState extends State<PasswordHome> {
-  String _password = '';
-  bool _obscure = true;
-  bool _submitted = false;
-  bool get _hasLength => _password.length >= 8;
-  bool get _hasUpper => _password.contains(RegExp(r'[A-Z]'));
-  bool get _hasDigit => _password.contains(RegExp(r'[0-9]'));
-  bool get _hasSpecial => _password.contains(RegExp(r'[!@#$%^&*]'));
-  int get _strength => [_hasLength, _hasUpper, _hasDigit, _hasSpecial].where((b) => b).length;
-  String get _strengthLabel => ['Weak', 'Fair', 'Good', 'Strong'][(_strength - 1).clamp(0, 3)];
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('PasswordApp')),
-      body: Padding(padding: const EdgeInsets.all(16), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (_submitted) Container(
-            width: double.infinity, padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
-            child: const Text('Password accepted!', style: TextStyle(color: Colors.green)),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            decoration: InputDecoration(
-              labelText: 'Password',
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
-                tooltip: _obscure ? 'Show password' : 'Hide password',
-                onPressed: () => setState(() => _obscure = !_obscure),
-              ),
-            ),
-            obscureText: _obscure,
-            onChanged: (v) => setState(() { _password = v; _submitted = false; }),
-          ),
-          const SizedBox(height: 16),
-          if (_password.isNotEmpty) ...[
-            LinearProgressIndicator(value: _strength / 4),
-            const SizedBox(height: 8),
-            Text('Strength: $_strengthLabel'),
-            const SizedBox(height: 16),
-            _check('8+ characters', _hasLength),
-            _check('Uppercase letter', _hasUpper),
-            _check('Digit', _hasDigit),
-            _check('Special character', _hasSpecial),
-          ],
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: _strength == 4 ? () => setState(() => _submitted = true) : null,
-            child: const Text('Submit'),
-          ),
-        ],
-      )),
-    );
-  }
-  Widget _check(String label, bool met) => Row(children: [
-    Icon(met ? Icons.check_circle : Icons.cancel,
-      color: met ? Colors.green : Colors.red, size: 20),
-    const SizedBox(width: 8),
-    Text(label),
-  ]);
-}
-DART
+echo "--- Home Screen ---"
+assert_label "App title visible" "Task Manager"
+assert_label "FAB Add Task visible" "Add Task"
+assert_label "Search button visible" "Search"
+assert_label "Menu button visible" "Menu"
+screenshot "taskapp_home"
 
-echo "========================================"
-echo "APP 75: PasswordApp"
-echo "========================================"
-rebuild_and_launch
+# Check task list items exist (multi-line labels — check by first line only isn't reliable, use coords)
+TREE=$(run_iez "$IEZ" ui tree --compact)
+TOTAL=$((TOTAL + 1))
+ELEM_COUNT=$(echo "$TREE" | jq '[.data.elements[] | select(.role == "AXGenericElement")] | length' 2>/dev/null)
+if [ "$ELEM_COUNT" -ge 4 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ 4 task items displayed ($ELEM_COUNT found)"
+else
+  FAIL=$((FAIL + 1)); echo "  ✗ Expected 4 task items, got $ELEM_COUNT"
+fi
 
-echo "Step 1: Initial state"
-has_label "PasswordApp" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
-has_label "Password" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Password field"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Password field"; }
-has_label "Submit" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Submit button"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Submit button"; }
-
-echo "Step 2: Type weak password"
-R=$(run_iez $IEZ ui type "abc" --label "Password"); assert_ok "$R" "Type weak"
+echo "--- Add Task Dialog ---"
+R=$(run_iez "$IEZ" ui tap --label "Add Task"); assert_ok "Tap Add Task FAB" "$R"
 sleep 0.5
-has_text "Strength: Weak" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Weak strength"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Weak strength"; }
-has_text "8+ characters" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Length check"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Length check"; }
+assert_label "Dialog title: Add Task" "Add Task"
+assert_label "Cancel button visible" "Cancel"
+assert_label "Add button visible" "Add"
+assert_label "Task Name field" "Task Name"
+screenshot "taskapp_add_dialog"
 
-echo "Step 3: Toggle visibility"
-R=$(run_iez $IEZ ui tap --label "Show password"); assert_ok "$R" "Show password"
+# Type a task name
+R=$(run_iez "$IEZ" ui tap --label "Task Name"); assert_ok "Tap Task Name field" "$R"
 sleep 0.3
-has_label "Hide password" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Toggle to hide"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Toggle to hide"; }
-R=$(run_iez $IEZ ui tap --label "Hide password"); assert_ok "$R" "Hide password"
+R=$(run_iez "$IEZ" ui type "Test automation task"); assert_ok "Type task name" "$R"
 sleep 0.3
 
-echo "Step 4: Type strong password"
-# Clear and retype — restart app to reset
-xcrun simctl terminate booted "$BUNDLE_ID" 2>/dev/null; sleep 0.3
-xcrun simctl launch booted "$BUNDLE_ID" 2>/dev/null; sleep 1.5
-R=$(run_iez $IEZ ui type "MyPass1!" --label "Password"); assert_ok "$R" "Type strong"
+# Check priority and category dropdowns
+assert_tree_has "Priority dropdown" "Priority"
+assert_tree_has "Category dropdown" "Category"
+assert_label "Pick Due Date button" "Pick Due Date"
+
+# Cancel dialog
+R=$(run_iez "$IEZ" ui tap --label "Cancel"); assert_ok "Cancel add dialog" "$R"
 sleep 0.5
-has_text "Strength: Strong" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Strong"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Strong"; }
 
-echo "Step 5: Submit"
-R=$(run_iez $IEZ ui tap --label "Submit"); assert_ok "$R" "Submit"
+echo "--- Search ---"
+R=$(run_iez "$IEZ" ui tap --label "Search"); assert_ok "Tap search" "$R"
+sleep 0.5
+screenshot "taskapp_search"
+# Close search with back
+R=$(run_iez "$IEZ" ui tap --coords 30,80); assert_ok "Close search" "$R"
+sleep 0.5
+
+echo "--- Categories Tab ---"
+R=$(run_iez "$IEZ" ui tap --coords 300,790); assert_ok "Tap Categories tab" "$R"
+sleep 0.5
+screenshot "taskapp_categories"
+
+# Categories tab has multi-line labels. Check via tree element count
+TREE2=$(run_iez "$IEZ" ui tree --compact)
+TOTAL=$((TOTAL + 1))
+CAT_COUNT=$(echo "$TREE2" | jq '[.data.elements[] | select(.role == "AXStaticText")] | length' 2>/dev/null)
+if [ "$CAT_COUNT" -ge 3 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ Categories tab has $CAT_COUNT text items"
+else
+  FAIL=$((FAIL + 1)); echo "  ✗ Categories tab has only $CAT_COUNT text items"
+fi
+
+echo "--- Settings Screen ---"
+# Go back to All Tasks
+R=$(run_iez "$IEZ" ui tap --coords 100,790); assert_ok "Switch to All Tasks tab" "$R"
 sleep 0.3
-has_text "Password accepted" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Accepted"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Accepted"; }
 
+# Open menu
+R=$(run_iez "$IEZ" ui tap --label "Menu"); assert_ok "Tap Menu" "$R"
+sleep 0.5
+
+# Tap Settings
+R=$(run_iez "$IEZ" ui tap --label "Settings"); assert_ok "Tap Settings" "$R"
+sleep 0.5
+assert_label "Settings title" "Settings"
+screenshot "taskapp_settings"
+
+# Check settings items (multi-line labels — use first part match via exists)
+assert_tree_has "Dark Mode checkbox" "Dark Mode"
+assert_tree_has "Notifications checkbox" "Notifications"
+assert_tree_has "About button" "About"
+
+# Toggle dark mode (multi-line label)
+R=$(run_iez "$IEZ" ui tap --label $'Dark Mode\nToggle dark theme'); assert_ok "Toggle Dark Mode" "$R"
+sleep 0.3
+screenshot "taskapp_dark_mode"
+
+# Tap About (multi-line label)
+R=$(run_iez "$IEZ" ui tap --label $'About\nApp information'); assert_ok "Tap About" "$R"
+sleep 0.5
+assert_label "Close button in About" "Close"
+screenshot "taskapp_about"
+
+# Close about dialog
+R=$(run_iez "$IEZ" ui tap --label "Close"); assert_ok "Close About dialog" "$R"
+sleep 0.3
+
+# Go back to home
+R=$(run_iez "$IEZ" ui tap --label "Back"); assert_ok "Back to home" "$R"
+sleep 0.3
+
+echo "  TaskApp: $PASS/$TOTAL passed"
+TASKAPP_PASS=$PASS; TASKAPP_TOTAL=$TOTAL
+
+########################################
+# APP 78: QuizFlick
+########################################
 echo ""
+echo "=== APP 78: QuizFlick ==="
+PASS=0; FAIL=0; TOTAL=0
+install_and_launch "/Users/rudy/Developer/i_ez/test_app/quizflick/build/ios/iphonesimulator/Runner.app" "com.example.flutterQuizAppProject"
 
-########################################################################
-# APP 76: ShoppingCart — GridView + Badge + quantity + checkout dialog
-########################################################################
-cat > test_app/lib/main.dart << 'DART'
-import 'package:flutter/material.dart';
-void main() => runApp(const App76());
-class App76 extends StatelessWidget {
-  const App76({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(title: 'ShopApp',
-      theme: ThemeData(colorSchemeSeed: Colors.pink, useMaterial3: true),
-      home: const ShopHome());
-  }
-}
-class ShopHome extends StatefulWidget {
-  const ShopHome({super.key});
-  @override
-  State<ShopHome> createState() => _ShopHomeState();
-}
-class _ShopHomeState extends State<ShopHome> {
-  final _products = [
-    {'name': 'Laptop', 'price': 999},
-    {'name': 'Phone', 'price': 699},
-    {'name': 'Tablet', 'price': 499},
-    {'name': 'Watch', 'price': 299},
-  ];
-  final Map<String, int> _cart = {};
-  int get _cartCount => _cart.values.fold(0, (a, b) => a + b);
-  int get _cartTotal => _cart.entries.fold(0, (sum, e) {
-    final p = _products.firstWhere((p) => p['name'] == e.key);
-    return sum + (p['price'] as int) * e.value;
-  });
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('ShopApp'), actions: [
-        Badge(
-          label: Text('$_cartCount'),
-          isLabelVisible: _cartCount > 0,
-          child: IconButton(icon: const Icon(Icons.shopping_cart), tooltip: 'Cart',
-            onPressed: () => _showCart()),
-        ),
-      ]),
-      body: GridView.builder(
-        padding: const EdgeInsets.all(12),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12),
-        itemCount: _products.length,
-        itemBuilder: (ctx, i) {
-          final p = _products[i];
-          final name = p['name'] as String;
-          final price = p['price'] as int;
-          final qty = _cart[name] ?? 0;
-          return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(name, style: Theme.of(ctx).textTheme.titleMedium),
-              Text('\$$price'),
-              const SizedBox(height: 8),
-              if (qty > 0) Text('Qty: $qty'),
-              FilledButton(
-                onPressed: () => setState(() => _cart[name] = qty + 1),
-                child: Text(qty > 0 ? 'Add More' : 'Add to Cart'),
-              ),
-            ],
-          )));
-        },
-      ),
-    );
-  }
-  void _showCart() {
-    showModalBottomSheet(context: context, builder: (ctx) => Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('Shopping Cart', style: Theme.of(ctx).textTheme.titleLarge),
-        const SizedBox(height: 16),
-        if (_cart.isEmpty) const Text('Cart is empty')
-        else ..._cart.entries.map((e) => ListTile(
-          title: Text(e.key), trailing: Text('x${e.value}'),
-        )),
-        const Divider(),
-        Text('Total: \$$_cartTotal', style: Theme.of(ctx).textTheme.titleMedium),
-        const SizedBox(height: 16),
-        if (_cart.isNotEmpty) FilledButton(onPressed: () {
-          Navigator.pop(ctx);
-          setState(() => _cart.clear());
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Order placed!')));
-        }, child: const Text('Checkout')),
-      ]),
-    ));
-  }
-}
-DART
+echo "--- Splash & Onboarding ---"
+# Splash may auto-advance, check what's on screen
+TREE_S=$(run_iez "$IEZ" ui tree --compact)
+TOTAL=$((TOTAL + 1))
+if echo "$TREE_S" | jq -r '.data.elements[].label' 2>/dev/null | grep -qF "Enhance Your Knowledge"; then
+  PASS=$((PASS + 1)); echo "  ✓ Splash screen detected"
+  screenshot "quizflick_splash"
+  sleep 2
+  R=$(run_iez "$IEZ" ui tap --coords 200,400); assert_ok "Tap splash" "$R"
+  sleep 2
+elif echo "$TREE_S" | jq -r '.data.elements[].label' 2>/dev/null | grep -qF "Get Started"; then
+  PASS=$((PASS + 1)); echo "  ✓ Welcome screen (splash auto-advanced)"
+else
+  FAIL=$((FAIL + 1)); echo "  ✗ Neither splash nor welcome found"
+  sleep 3
+  R=$(run_iez "$IEZ" ui tap --coords 200,400); assert_ok "Tap splash" "$R"
+  sleep 2
+fi
 
-echo "========================================"
-echo "APP 76: ShopApp"
-echo "========================================"
-rebuild_and_launch
+# Welcome screen
+assert_label "Get Started button" "Get Started"
+R=$(run_iez "$IEZ" ui tap --label "Get Started"); assert_ok "Tap Get Started" "$R"
+sleep 1
 
-echo "Step 1: Initial state"
-has_label "ShopApp" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Title"; }
-has_text "Laptop" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Laptop"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Laptop"; }
-has_text "Phone" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Phone"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Phone"; }
-has_text "Tablet" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Tablet"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Tablet"; }
-has_text "\$999" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Laptop price"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Laptop price"; }
+echo "--- Name Entry ---"
+assert_label "Name entry prompt" "Enter Your Name"
+assert_label "Name text field" "Name"
+assert_label "OK button" "OK"
+assert_label "Cancel button" "Cancel"
 
-echo "Step 2: Add Laptop to cart"
-# Laptop's "Add to Cart" button at ~(103, 248)
-R=$(run_iez $IEZ ui tap --coords 103,248); assert_ok "$R" "Add Laptop"
+R=$(run_iez "$IEZ" ui tap --label "Name"); assert_ok "Tap Name field" "$R"
 sleep 0.3
-has_text "Qty: 1" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Qty 1"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Qty 1"; }
+R=$(run_iez "$IEZ" ui type "TestUser"); assert_ok "Type name" "$R"
+sleep 0.3
+R=$(run_iez "$IEZ" ui tap --label "OK"); assert_ok "Confirm name" "$R"
+sleep 2
 
-echo "Step 3: Add Phone"
-# Phone's "Add to Cart" button at ~(300, 248)
-R=$(run_iez $IEZ ui tap --coords 300,248); assert_ok "$R" "Add Phone"
+echo "--- Home Screen ---"
+assert_label "Home heading" "HOME"
+assert_label "Select Section label" "Select Section"
+assert_label "Settings button" "Settings"
+assert_label "Open navigation menu" "Open navigation menu"
+screenshot "quizflick_home"
+
+# Check categories
+assert_label "Category: General Knowledge" "General Knowledge"
+assert_label "Category: Science" "Science"
+assert_label "Category: History" "History"
+assert_label "Category: Geography" "Geography"
+assert_label "Category: Computer" "Computer"
+
+# Check bottom tabs
+assert_label "Notifications button" "Notifications"
+
+echo "--- Quiz Flow ---"
+# Tap General Knowledge by coords (StaticText, not Button)
+R=$(run_iez "$IEZ" ui tap --coords 100,490); assert_ok "Tap General Knowledge" "$R"
+sleep 1
+
+# Quiz screen
+assert_label "Quiz heading" "Quiz App"
+assert_label "Back button" "Back"
+assert_label "Next button" "Next"
+screenshot "quizflick_quiz"
+
+# Check question is displayed
+TREE3=$(run_iez "$IEZ" ui tree --compact)
+TOTAL=$((TOTAL + 1))
+Q_COUNT=$(echo "$TREE3" | jq '[.data.elements[] | select(.label | test("^[1-4]\\)"))] | length' 2>/dev/null)
+if [ "$Q_COUNT" -ge 4 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ 4 answer options displayed"
+else
+  FAIL=$((FAIL + 1)); echo "  ✗ Expected 4 answer options, got $Q_COUNT"
+fi
+
+# Select an answer (first option)
+FIRST_ANS=$(echo "$TREE3" | jq -r '.data.elements[] | select(.label | test("^1\\)")) | .frame' 2>/dev/null)
+ANS_Y=$(echo "$FIRST_ANS" | jq '.y + 20' 2>/dev/null)
+ANS_X=$(echo "$FIRST_ANS" | jq '.x + 100' 2>/dev/null)
+R=$(run_iez "$IEZ" ui tap --coords "${ANS_X:-200},${ANS_Y:-400}"); assert_ok "Select answer option" "$R"
+sleep 0.5
+
+# Tap Next
+R=$(run_iez "$IEZ" ui tap --label "Next"); assert_ok "Tap Next" "$R"
+sleep 0.5
+screenshot "quizflick_q2"
+
+# Go back to home
+R=$(run_iez "$IEZ" ui tap --label "Back"); assert_ok "Back to home" "$R"
+sleep 0.5
+
+echo "--- Navigation Drawer ---"
+R=$(run_iez "$IEZ" ui tap --label "Open navigation menu"); assert_ok "Open nav drawer" "$R"
+sleep 0.5
+screenshot "quizflick_drawer"
+
+assert_label "Drawer: HOME" "HOME"
+assert_label "Drawer: TestUser" "TestUser"
+assert_label "Drawer: Leaderboard" "Leaderboard"
+assert_label "Drawer: DAILY QUIZ" "DAILY QUIZ"
+assert_label "Drawer: About Us" "About Us"
+assert_label "Drawer: Toggle Theme" "Toggle Theme"
+
+# Close drawer
+R=$(run_iez "$IEZ" ui tap --coords 380,400); assert_ok "Close drawer" "$R"
 sleep 0.3
 
-echo "Step 4: Add more Laptop"
-# After adding, Laptop card now shows "Qty: 1" so button shifts down a bit
-R=$(run_iez $IEZ ui tap --coords 103,262); assert_ok "$R" "Add more Laptop"
+echo "--- Profile Tab ---"
+R=$(run_iez "$IEZ" ui tap --coords 335,790); assert_ok "Tap Profile tab" "$R"
+sleep 0.5
+assert_label "Profile heading" "Profile"
+assert_label "Settings in profile" "Settings"
+screenshot "quizflick_profile"
+
+echo "--- Settings Screen ---"
+R=$(run_iez "$IEZ" ui tap --label "Settings"); assert_ok "Tap Settings" "$R"
+sleep 0.5
+assert_label "Settings heading" "Settings"
+screenshot "quizflick_settings"
+
+echo "  QuizFlick: $PASS/$TOTAL passed"
+QUIZ_PASS=$PASS; QUIZ_TOTAL=$TOTAL
+
+########################################
+# APP 79: ExpenseApp
+########################################
+echo ""
+echo "=== APP 79: ExpenseApp ==="
+PASS=0; FAIL=0; TOTAL=0
+install_and_launch "/Users/rudy/Developer/i_ez/test_app/expense_app/build/ios/iphonesimulator/Runner.app" "com.example.expenseapp"
+
+echo "--- Home Screen ---"
+assert_label "App title" "Expense Tracker"
+assert_label "Total Balance label" "Total Balance"
+assert_label 'Amount: $167.48' '$167.48'
+assert_label "Recent Transactions label" "Recent Transactions"
+assert_label "FAB Add Expense" "Add Expense"
+screenshot "expense_home"
+
+# Check transactions
+TREE4=$(run_iez "$IEZ" ui tree --compact)
+TOTAL=$((TOTAL + 1))
+TXN_COUNT=$(echo "$TREE4" | jq '[.data.elements[] | select(.role == "AXStaticText" and (.label | test("Coffee|Uber|Amazon|Electric|Netflix")))] | length' 2>/dev/null)
+if [ "$TXN_COUNT" -ge 5 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ All 5 transactions displayed"
+else
+  FAIL=$((FAIL + 1)); echo "  ✗ Expected 5 transactions, got $TXN_COUNT"
+fi
+
+echo "--- Add Expense Screen ---"
+R=$(run_iez "$IEZ" ui tap --label "Add Expense"); assert_ok "Tap Add Expense FAB" "$R"
+sleep 0.5
+assert_label "Add Expense heading" "Add Expense"
+assert_label "Description field" "Description"
+assert_label "Amount field" "Amount"
+assert_label "Save Expense button" "Save Expense"
+assert_label "Back button" "Back"
+screenshot "expense_add"
+
+# Check category dropdown
+TREE5=$(run_iez "$IEZ" ui tree --compact)
+TOTAL=$((TOTAL + 1))
+HAS_CATEGORY=$(echo "$TREE5" | jq '[.data.elements[] | select(.role == "AXButton" and (.label | test("Category")))] | length' 2>/dev/null)
+if [ "$HAS_CATEGORY" -ge 1 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ Category dropdown present"
+else
+  FAIL=$((FAIL + 1)); echo "  ✗ Category dropdown not found"
+fi
+
+# Check date selector
+TOTAL=$((TOTAL + 1))
+HAS_DATE=$(echo "$TREE5" | jq '[.data.elements[] | select(.role == "AXButton" and (.label | test("Select Date")))] | length' 2>/dev/null)
+if [ "$HAS_DATE" -ge 1 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ Date selector present"
+else
+  FAIL=$((FAIL + 1)); echo "  ✗ Date selector not found"
+fi
+
+# Fill in expense
+R=$(run_iez "$IEZ" ui tap --label "Description"); assert_ok "Tap Description field" "$R"
+sleep 0.3
+R=$(run_iez "$IEZ" ui type "Test expense"); assert_ok "Type description" "$R"
+sleep 0.3
+R=$(run_iez "$IEZ" ui tap --label "Amount"); assert_ok "Tap Amount field" "$R"
+sleep 0.3
+R=$(run_iez "$IEZ" ui type "25.50"); assert_ok "Type amount" "$R"
 sleep 0.3
 
-echo "Step 5: Open cart"
-R=$(run_iez $IEZ ui tap --label "Cart"); assert_ok "$R" "Open cart"
+# Save expense
+R=$(run_iez "$IEZ" ui tap --label "Save Expense"); assert_ok "Tap Save Expense" "$R"
 sleep 0.5
-has_text "Shopping Cart" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Cart title"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Cart title"; }
-has_text "Laptop" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Laptop in cart"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Laptop in cart"; }
-has_text "Phone" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Phone in cart"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Phone in cart"; }
-has_label "Checkout" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Checkout btn"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Checkout btn"; }
 
-echo "Step 6: Checkout"
-R=$(run_iez $IEZ ui tap --label "Checkout"); assert_ok "$R" "Checkout"
+# Should be back on home with updated total
+assert_label "Back on home screen" "Expense Tracker"
+screenshot "expense_after_save"
+
+echo "--- Charts Tab ---"
+R=$(run_iez "$IEZ" ui tap --coords 200,790); assert_ok "Tap Charts tab" "$R"
 sleep 0.5
-has_text "Order placed" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Order snackbar"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Order snackbar"; }
+assert_label "Charts heading" "Category Breakdown"
+screenshot "expense_charts"
 
-echo "Step 7: Verify empty cart"
-sleep 3
-R=$(run_iez $IEZ ui tap --label "Cart"); assert_ok "$R" "Open empty cart"
+# Check category breakdown items
+TREE6=$(run_iez "$IEZ" ui tree --compact)
+TOTAL=$((TOTAL + 1))
+CHART_ITEMS=$(echo "$TREE6" | jq '[.data.elements[] | select(.role == "AXStaticText" and (.label | test("Food|Transport|Shopping|Bills|Entertainment")))] | length' 2>/dev/null)
+if [ "$CHART_ITEMS" -ge 5 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ All 5 categories in chart ($CHART_ITEMS)"
+else
+  FAIL=$((FAIL + 1)); echo "  ✗ Expected 5 chart categories, got $CHART_ITEMS"
+fi
+
+echo "--- Profile Tab ---"
+R=$(run_iez "$IEZ" ui tap --coords 335,790); assert_ok "Tap Profile tab" "$R"
 sleep 0.5
-has_text "Cart is empty" && { TOTAL=$((TOTAL+1)); PASS=$((PASS+1)); echo "  ✓ Cart empty"; } || { TOTAL=$((TOTAL+1)); FAIL=$((FAIL+1)); echo "  ✗ Cart empty"; }
+assert_label "Profile heading" "Profile"
+assert_label "User name: Test User" "Test User"
+assert_tree_has "Currency option" "Currency"
+assert_tree_has "Export Data option" "Export Data"
+assert_tree_has "Clear All option" "Clear All"
+screenshot "expense_profile"
 
-END=$(date +%s)
+# Tap Currency to open dialog (multi-line label)
+R=$(run_iez "$IEZ" ui tap --label $'Currency\nUSD'); assert_ok "Tap Currency" "$R"
+sleep 0.5
+screenshot "expense_currency_dialog"
+
+# Check currency dialog has options
+TREE7=$(run_iez "$IEZ" ui tree --compact)
+TOTAL=$((TOTAL + 1))
+CURRENCY_OPTS=$(echo "$TREE7" | jq '[.data.elements[] | select(.label | test("USD|EUR|GBP"))] | length' 2>/dev/null)
+if [ "$CURRENCY_OPTS" -ge 3 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ Currency dialog has 3 options"
+else
+  FAIL=$((FAIL + 1)); echo "  ✗ Currency options: $CURRENCY_OPTS"
+fi
+
+# Close currency dialog
+R=$(run_iez "$IEZ" ui tap --label "Cancel"); assert_ok "Close currency dialog" "$R"
+sleep 0.3
+
+# Test Clear All confirmation (multi-line label)
+R=$(run_iez "$IEZ" ui tap --label $'Clear All\nRemove all expenses'); assert_ok "Tap Clear All" "$R"
+sleep 0.5
+assert_label "Clear confirmation dialog" "Clear All"
+screenshot "expense_clear_dialog"
+
+# Cancel clear
+R=$(run_iez "$IEZ" ui tap --label "Cancel"); assert_ok "Cancel clear" "$R"
+sleep 0.3
+
+echo "  ExpenseApp: $PASS/$TOTAL passed"
+EXP_PASS=$PASS; EXP_TOTAL=$TOTAL
+
+########################################
+# SUMMARY
+########################################
 echo ""
 echo "========================================"
-echo "=== TOTAL: $PASS/$TOTAL passed ($FAIL failed) — T-100%: $((END-START))s ==="
+GRAND_PASS=$((TASKAPP_PASS + QUIZ_PASS + EXP_PASS))
+GRAND_TOTAL=$((TASKAPP_TOTAL + QUIZ_TOTAL + EXP_TOTAL))
+echo "TOTAL: $GRAND_PASS/$GRAND_TOTAL assertions passed"
+echo "  App 77 TaskApp:     $TASKAPP_PASS/$TASKAPP_TOTAL"
+echo "  App 78 QuizFlick:   $QUIZ_PASS/$QUIZ_TOTAL"
+echo "  App 79 ExpenseApp:  $EXP_PASS/$EXP_TOTAL"
 echo "========================================"
+
+if [ "$GRAND_PASS" -ne "$GRAND_TOTAL" ]; then
+  exit 1
+fi
