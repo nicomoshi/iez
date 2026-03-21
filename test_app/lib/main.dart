@@ -1,226 +1,168 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-void main() => runApp(const CupertinoFormApp());
+void main() => runApp(const ExpandablePanelApp());
 
-class CupertinoFormApp extends StatelessWidget {
-  const CupertinoFormApp({super.key});
+class ExpandablePanelApp extends StatelessWidget {
+  const ExpandablePanelApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const CupertinoApp(
-      title: 'Cupertino Form Test',
-      theme: CupertinoThemeData(brightness: Brightness.light),
-      home: FormPage(),
+    return MaterialApp(
+      title: 'Expandable Panel Test',
+      theme: ThemeData(colorSchemeSeed: Colors.amber, useMaterial3: true),
+      home: const FAQPage(),
     );
   }
 }
 
-class FormPage extends StatefulWidget {
-  const FormPage({super.key});
+class FAQPage extends StatefulWidget {
+  const FAQPage({super.key});
   @override
-  State<FormPage> createState() => _FormPageState();
+  State<FAQPage> createState() => _FAQPageState();
 }
 
-class _FormPageState extends State<FormPage> {
-  final _nameCtrl = TextEditingController(text: '');
-  final _emailCtrl = TextEditingController(text: '');
-  bool _newsletter = true;
-  bool _darkMode = false;
-  double _fontSize = 16;
-  int _selectedPlan = 0;
-  final _plans = ['Free', 'Basic', 'Premium'];
+class _FAQPageState extends State<FAQPage> {
+  final _faqs = [
+    _FAQ('What is Flutter?', 'Flutter is a UI toolkit for building natively compiled applications.'),
+    _FAQ('How do I install Flutter?', 'Download the SDK from flutter.dev and add it to your PATH.'),
+    _FAQ('What is Dart?', 'Dart is a client-optimized programming language for apps on multiple platforms.'),
+    _FAQ('Is Flutter free?', 'Yes, Flutter is free and open source.'),
+    _FAQ('What platforms does Flutter support?', 'Flutter supports iOS, Android, Web, Windows, macOS, and Linux.'),
+  ];
+
+  String _searchQuery = '';
+
+  List<_FAQ> get _filtered =>
+    _searchQuery.isEmpty ? _faqs : _faqs.where((f) =>
+      f.question.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+      f.answer.toLowerCase().contains(_searchQuery.toLowerCase())
+    ).toList();
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoPageScaffold(
-      navigationBar: CupertinoNavigationBar(
-        middle: const Text('Cupertino Form'),
-        trailing: CupertinoButton(
-          padding: EdgeInsets.zero,
-          child: const Text('Save'),
-          onPressed: () {
-            showCupertinoDialog(
-              context: context,
-              builder: (ctx) => CupertinoAlertDialog(
-                title: const Text('Saved'),
-                content: Text('Name: ${_nameCtrl.text}\nEmail: ${_emailCtrl.text}'),
-                actions: [
-                  CupertinoDialogAction(
-                    child: const Text('OK'),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('FAQ'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About',
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutPage()));
+            },
+          ),
+        ],
       ),
-      child: SafeArea(
-        child: ListView(
-          children: [
-            CupertinoFormSection.insetGrouped(
-              header: const Text('PERSONAL'),
-              children: [
-                CupertinoTextFormFieldRow(
-                  controller: _nameCtrl,
-                  prefix: const Text('Name'),
-                  placeholder: 'Enter your name',
-                ),
-                CupertinoTextFormFieldRow(
-                  controller: _emailCtrl,
-                  prefix: const Text('Email'),
-                  placeholder: 'Enter your email',
-                  keyboardType: TextInputType.emailAddress,
-                ),
-              ],
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: SearchBar(
+              hintText: 'Search FAQ...',
+              leading: const Icon(Icons.search),
+              onChanged: (v) => setState(() => _searchQuery = v),
             ),
-            CupertinoFormSection.insetGrouped(
-              header: const Text('PREFERENCES'),
-              children: [
-                CupertinoFormRow(
-                  prefix: const Text('Newsletter'),
-                  child: CupertinoSwitch(
-                    value: _newsletter,
-                    onChanged: (v) => setState(() => _newsletter = v),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text('${_filtered.length} questions'),
+          ),
+          Expanded(
+            child: ListView(
+              children: _filtered.map((faq) => ExpansionTile(
+                title: Text(faq.question),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(faq.answer),
                   ),
-                ),
-                CupertinoFormRow(
-                  prefix: const Text('Dark Mode'),
-                  child: CupertinoSwitch(
-                    value: _darkMode,
-                    onChanged: (v) => setState(() => _darkMode = v),
-                  ),
-                ),
-                CupertinoFormRow(
-                  prefix: const Text('Font Size'),
-                  child: SizedBox(
-                    width: 200,
-                    child: CupertinoSlider(
-                      value: _fontSize,
-                      min: 10,
-                      max: 24,
-                      divisions: 7,
-                      onChanged: (v) => setState(() => _fontSize = v),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 16, bottom: 16),
+                    child: Row(
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => setState(() => faq.helpful = !faq.helpful),
+                          icon: Icon(faq.helpful ? Icons.thumb_up : Icons.thumb_up_outlined),
+                          label: Text(faq.helpful ? 'Helpful' : 'Was this helpful?'),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                ],
+              )).toList(),
             ),
-            CupertinoFormSection.insetGrouped(
-              header: const Text('PLAN'),
-              children: [
-                CupertinoFormRow(
-                  prefix: const Text('Subscription'),
-                  child: CupertinoSlidingSegmentedControl<int>(
-                    groupValue: _selectedPlan,
-                    children: {
-                      0: const Text('Free'),
-                      1: const Text('Basic'),
-                      2: const Text('Premium'),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          showDialog(
+            context: context,
+            builder: (ctx) {
+              final qCtrl = TextEditingController();
+              return AlertDialog(
+                title: const Text('Ask a Question'),
+                content: TextField(
+                  controller: qCtrl,
+                  decoration: const InputDecoration(labelText: 'Your question'),
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                  FilledButton(
+                    onPressed: () {
+                      if (qCtrl.text.isNotEmpty) {
+                        setState(() => _faqs.add(_FAQ(qCtrl.text, 'Answer pending...')));
+                      }
+                      Navigator.pop(ctx);
                     },
-                    onValueChanged: (v) => setState(() => _selectedPlan = v!),
+                    child: const Text('Submit'),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                'Current Plan: ${_plans[_selectedPlan]}',
-                style: const TextStyle(fontSize: 16),
-              ),
-            ),
-            const SizedBox(height: 16),
-            CupertinoFormSection.insetGrouped(
-              header: const Text('ACTIONS'),
-              children: [
-                CupertinoListTile(
-                  title: const Text('View Profile'),
-                  trailing: const CupertinoListTileChevron(),
-                  onTap: () {
-                    Navigator.push(context, CupertinoPageRoute(builder: (_) => ProfilePage(
-                      name: _nameCtrl.text.isEmpty ? 'User' : _nameCtrl.text,
-                      email: _emailCtrl.text.isEmpty ? 'N/A' : _emailCtrl.text,
-                      plan: _plans[_selectedPlan],
-                    )));
-                  },
-                ),
-                CupertinoListTile(
-                  title: const Text('Reset All'),
-                  trailing: const Icon(CupertinoIcons.refresh, size: 20),
-                  onTap: () {
-                    showCupertinoModalPopup(
-                      context: context,
-                      builder: (ctx) => CupertinoActionSheet(
-                        title: const Text('Reset All Settings?'),
-                        message: const Text('This will clear all form data.'),
-                        actions: [
-                          CupertinoActionSheetAction(
-                            isDestructiveAction: true,
-                            onPressed: () {
-                              Navigator.pop(ctx);
-                              setState(() {
-                                _nameCtrl.clear();
-                                _emailCtrl.clear();
-                                _newsletter = true;
-                                _darkMode = false;
-                                _fontSize = 16;
-                                _selectedPlan = 0;
-                              });
-                            },
-                            child: const Text('Reset'),
-                          ),
-                        ],
-                        cancelButton: CupertinoActionSheetAction(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('Cancel'),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
+                ],
+              );
+            },
+          );
+        },
+        icon: const Icon(Icons.add),
+        label: const Text('Ask Question'),
       ),
     );
   }
 }
 
-class ProfilePage extends StatelessWidget {
-  final String name;
-  final String email;
-  final String plan;
+class _FAQ {
+  String question;
+  String answer;
+  bool helpful;
+  _FAQ(this.question, this.answer, {this.helpful = false});
+}
 
-  const ProfilePage({super.key, required this.name, required this.email, required this.plan});
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoPageScaffold(
-      navigationBar: const CupertinoNavigationBar(
-        middle: Text('Profile'),
-      ),
-      child: SafeArea(
-        child: ListView(
-          children: [
-            const SizedBox(height: 32),
-            const Center(
-              child: Icon(CupertinoIcons.person_circle, size: 80),
+    return Scaffold(
+      appBar: AppBar(title: const Text('About')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text('FAQ App', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          const Text('Version 1.0.0'),
+          const SizedBox(height: 16),
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.code),
+              title: Text('Built with Flutter'),
+              subtitle: Text('Material Design 3'),
             ),
-            const SizedBox(height: 16),
-            CupertinoFormSection.insetGrouped(
-              header: const Text('DETAILS'),
-              children: [
-                CupertinoFormRow(prefix: const Text('Name'), child: Text(name)),
-                CupertinoFormRow(prefix: const Text('Email'), child: Text(email)),
-                CupertinoFormRow(prefix: const Text('Plan'), child: Text(plan)),
-              ],
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Go Back'),
+          ),
+        ],
       ),
     );
   }

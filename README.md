@@ -243,8 +243,11 @@ iez is continuously tested against real-world open-source Flutter apps to valida
 | 45 | Chip & Wrap | custom | Chips/Wrap/Filter | 8 | 36 | **100%** | 19s | ChoiceChip, FilterChip, InputChip (deletable), ActionChip, Wrap layout, CheckboxListTile filter page, add-tag dialog |
 | 46 | Tab & PageView | custom | TabBar/PageView/Nav | 10 | 38 | **100%** | 19s | TabBar (3 tabs), TabBarView, PageView.builder, page indicators, Previous/Next buttons, swipe navigation, GridView gallery |
 | 47 | Cupertino Form | custom | CupertinoForm/Segments | 7 | 30 | **100%** | 25s | CupertinoFormSection.insetGrouped, CupertinoTextFormFieldRow, CupertinoSwitch, CupertinoSlider, CupertinoSlidingSegmentedControl, CupertinoAlertDialog, CupertinoActionSheet, CupertinoListTile |
+| 48 | Animated Container | custom | Animation/CrossFade/List | 10 | 33 | **100%** | 21s | AnimatedContainer, AnimatedOpacity, AnimatedRotation, AnimatedCrossFade, AnimatedList (add/remove), MaterialBanner dismiss |
+| 49 | Multi-Select List | custom | Filter/Sort/Select | 10 | 31 | **100%** | 18s | ChoiceChip filter, ListView.builder, PopupMenuButton sort, CircleAvatar, AlertDialog (add task), DropdownButtonFormField, StatefulBuilder |
+| 50 | Expandable Panel | custom | FAQ/ExpansionTile/Search | 7 | 27 | **100%** | 18s | ExpansionTile (expand/collapse), SearchBar with filtering, TextButton.icon helpful toggle, FAB.extended, AlertDialog (ask question) |
 
-**Summary:** 47 apps, 512 steps, 1631 assertions, **100% pass rate**
+**Summary:** 50 apps, 539 steps, 1722 assertions, **100% pass rate**
 
 **T-100% = Time from first app launch to 100% pass rate** (— = not measured for early apps)
 
