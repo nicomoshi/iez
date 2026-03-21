@@ -1,169 +1,112 @@
 import 'package:flutter/material.dart';
-
-void main() => runApp(const ExpandablePanelApp());
-
-class ExpandablePanelApp extends StatelessWidget {
-  const ExpandablePanelApp({super.key});
-
+void main() => runApp(const App61());
+class App61 extends StatelessWidget {
+  const App61({super.key});
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Expandable Panel Test',
-      theme: ThemeData(colorSchemeSeed: Colors.amber, useMaterial3: true),
-      home: const FAQPage(),
+      title: 'TaskBoard',
+      theme: ThemeData(colorSchemeSeed: Colors.deepOrange, useMaterial3: true),
+      home: const TaskBoardHome(),
     );
   }
 }
-
-class FAQPage extends StatefulWidget {
-  const FAQPage({super.key});
+class TaskBoardHome extends StatefulWidget {
+  const TaskBoardHome({super.key});
   @override
-  State<FAQPage> createState() => _FAQPageState();
+  State<TaskBoardHome> createState() => _TaskBoardHomeState();
 }
-
-class _FAQPageState extends State<FAQPage> {
-  final _faqs = [
-    _FAQ('What is Flutter?', 'Flutter is a UI toolkit for building natively compiled applications.'),
-    _FAQ('How do I install Flutter?', 'Download the SDK from flutter.dev and add it to your PATH.'),
-    _FAQ('What is Dart?', 'Dart is a client-optimized programming language for apps on multiple platforms.'),
-    _FAQ('Is Flutter free?', 'Yes, Flutter is free and open source.'),
-    _FAQ('What platforms does Flutter support?', 'Flutter supports iOS, Android, Web, Windows, macOS, and Linux.'),
+class _TaskBoardHomeState extends State<TaskBoardHome> {
+  final List<Map<String, dynamic>> _tasks = [
+    {'title': 'Buy groceries', 'category': 'Personal', 'done': false},
+    {'title': 'Fix login bug', 'category': 'Work', 'done': false},
+    {'title': 'Write tests', 'category': 'Work', 'done': true},
+    {'title': 'Call dentist', 'category': 'Personal', 'done': false},
+    {'title': 'Deploy v2', 'category': 'Work', 'done': false},
   ];
-
+  final Set<String> _selectedFilters = {};
   String _searchQuery = '';
-
-  List<_FAQ> get _filtered =>
-    _searchQuery.isEmpty ? _faqs : _faqs.where((f) =>
-      f.question.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-      f.answer.toLowerCase().contains(_searchQuery.toLowerCase())
-    ).toList();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('FAQ'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            tooltip: 'About',
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutPage()));
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: SearchBar(
-              hintText: 'Search FAQ...',
-              leading: const Icon(Icons.search),
-              onChanged: (v) => setState(() => _searchQuery = v),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text('${_filtered.length} questions'),
-          ),
-          Expanded(
-            child: ListView(
-              children: _filtered.map((faq) => ExpansionTile(
-                title: Text(faq.question),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(faq.answer),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 16, bottom: 16),
-                    child: Row(
-                      children: [
-                        TextButton.icon(
-                          onPressed: () => setState(() => faq.helpful = !faq.helpful),
-                          icon: Icon(faq.helpful ? Icons.thumb_up : Icons.thumb_up_outlined),
-                          label: Text(faq.helpful ? 'Helpful' : 'Was this helpful?'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              )).toList(),
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          showDialog(
-            context: context,
-            builder: (ctx) {
-              final qCtrl = TextEditingController();
-              return AlertDialog(
-                title: const Text('Ask a Question'),
-                content: TextField(
-                  controller: qCtrl,
-                  decoration: const InputDecoration(labelText: 'Your question'),
-                ),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                  FilledButton(
-                    onPressed: () {
-                      if (qCtrl.text.isNotEmpty) {
-                        setState(() => _faqs.add(_FAQ(qCtrl.text, 'Answer pending...')));
-                      }
-                      Navigator.pop(ctx);
-                    },
-                    child: const Text('Submit'),
-                  ),
-                ],
-              );
-            },
-          );
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Ask Question'),
+  List<Map<String, dynamic>> get _filteredTasks {
+    return _tasks.where((t) {
+      final matchesFilter = _selectedFilters.isEmpty || _selectedFilters.contains(t['category']);
+      final matchesSearch = _searchQuery.isEmpty || (t['title'] as String).toLowerCase().contains(_searchQuery.toLowerCase());
+      return matchesFilter && matchesSearch;
+    }).toList();
+  }
+  void _addTask(String title, String category) {
+    setState(() => _tasks.add({'title': title, 'category': category, 'done': false}));
+  }
+  void _showAddSheet() {
+    String newTitle = '';
+    String newCategory = 'Personal';
+    showModalBottomSheet(context: context, isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, left: 16, right: 16, top: 16),
+        child: StatefulBuilder(builder: (ctx, setSheetState) => Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Add Task', style: Theme.of(ctx).textTheme.titleLarge),
+          const SizedBox(height: 16),
+          TextField(decoration: const InputDecoration(labelText: 'Task Title'), onChanged: (v) => newTitle = v),
+          const SizedBox(height: 12),
+          Row(children: [
+            ChoiceChip(label: const Text('Personal'), selected: newCategory == 'Personal',
+              onSelected: (_) => setSheetState(() => newCategory = 'Personal')),
+            const SizedBox(width: 8),
+            ChoiceChip(label: const Text('Work'), selected: newCategory == 'Work',
+              onSelected: (_) => setSheetState(() => newCategory = 'Work')),
+          ]),
+          const SizedBox(height: 16),
+          FilledButton(onPressed: () { if (newTitle.isNotEmpty) { _addTask(newTitle, newCategory); Navigator.pop(ctx); } },
+            child: const Text('Add')),
+          const SizedBox(height: 16),
+        ])),
       ),
     );
   }
-}
-
-class _FAQ {
-  String question;
-  String answer;
-  bool helpful;
-  _FAQ(this.question, this.answer, {this.helpful = false});
-}
-
-class AboutPage extends StatelessWidget {
-  const AboutPage({super.key});
-
   @override
   Widget build(BuildContext context) {
+    final filtered = _filteredTasks;
+    final workCount = _tasks.where((t) => t['category'] == 'Work').length;
+    final personalCount = _tasks.where((t) => t['category'] == 'Personal').length;
     return Scaffold(
-      appBar: AppBar(title: const Text('About')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text('FAQ App', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          const Text('Version 1.0.0'),
-          const SizedBox(height: 16),
-          const Card(
-            child: ListTile(
-              leading: Icon(Icons.code),
-              title: Text('Built with Flutter'),
-              subtitle: Text('Material Design 3'),
+      appBar: AppBar(title: const Text('TaskBoard')),
+      floatingActionButton: FloatingActionButton(onPressed: _showAddSheet, child: const Icon(Icons.add)),
+      body: Column(children: [
+        Padding(padding: const EdgeInsets.all(12), child: TextField(
+          decoration: const InputDecoration(labelText: 'Search', prefixIcon: Icon(Icons.search)),
+          onChanged: (v) => setState(() => _searchQuery = v),
+        )),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Row(children: [
+          FilterChip(label: Text('Work ($workCount)'), selected: _selectedFilters.contains('Work'),
+            onSelected: (v) => setState(() { v ? _selectedFilters.add('Work') : _selectedFilters.remove('Work'); })),
+          const SizedBox(width: 8),
+          FilterChip(label: Text('Personal ($personalCount)'), selected: _selectedFilters.contains('Personal'),
+            onSelected: (v) => setState(() { v ? _selectedFilters.add('Personal') : _selectedFilters.remove('Personal'); })),
+        ])),
+        const SizedBox(height: 8),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text('${filtered.length} tasks', style: Theme.of(context).textTheme.bodySmall)),
+        Expanded(child: ListView.builder(itemCount: filtered.length, itemBuilder: (ctx, i) {
+          final task = filtered[i];
+          return Dismissible(
+            key: ValueKey(task['title']),
+            background: Container(color: Colors.red, alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 16), child: const Icon(Icons.delete, color: Colors.white)),
+            direction: DismissDirection.endToStart,
+            onDismissed: (_) {
+              setState(() => _tasks.remove(task));
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Deleted "${task['title']}"')));
+            },
+            child: ExpansionTile(
+              leading: Checkbox(value: task['done'] as bool, onChanged: (v) => setState(() => task['done'] = v)),
+              title: Text(task['title'] as String,
+                style: TextStyle(decoration: (task['done'] as bool) ? TextDecoration.lineThrough : null)),
+              subtitle: Text(task['category'] as String),
+              children: [Padding(padding: const EdgeInsets.all(16),
+                child: Text('Category: ${task['category']}\nStatus: ${task['done'] ? "Done" : "Pending"}'))],
             ),
-          ),
-          const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Go Back'),
-          ),
-        ],
-      ),
+          );
+        })),
+      ]),
     );
   }
 }
