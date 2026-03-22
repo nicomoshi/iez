@@ -1,0 +1,181 @@
+=== App 155: TimeCapsule ===
+com.iez.timeCapsule: 54686
+  ✔ Time Capsule is in foreground
+--- Capsules screen ---
+  ✓ App heading
+  ✓ College Memories capsule
+  ✓ New Year Goals capsule
+  ✓ Birthday Letter capsule
+  ✓ Create Capsule FAB
+--- Tab bar ---
+  ✓ Capsules tab
+  ✓ Opened tab
+  ✓ Timeline tab
+--- Tap capsule detail (coords) ---
+  ✓ Tap College Memories
+  ✓ Capsule Details title
+  ✓ Status section
+  ✓ Sealed status
+  ✓ Opens On section
+  ✓ Items section
+  ✓ Delete Capsule button
+--- Back to capsules ---
+  ✓ Back to capsules
+--- Tap Opened tab (coords) ---
+  ✓ Tap Opened tab
+  ✓ Opened heading
+  ✓ High School Photos
+  ✓ Time Capsule 2020
+--- Tap Timeline tab (coords) ---
+  ✓ Tap Timeline tab
+  ✓ Timeline heading
+  ✓ 2025 section
+  ✓ 2024 section
+--- Back to Capsules tab (coords) ---
+  ✓ Tap Capsules tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+--- Back from search ---
+  ✓ Back from search
+--- Tap Create Capsule ---
+  ✓ Tap Create Capsule FAB
+  ✓ Create Capsule page
+  ✓ Capsule Name field
+  ✓ Open Date field
+  ✓ Message field
+  ✓ Save Capsule button
+--- Fill capsule form ---
+  ✓ Type capsule name
+  ✓ Type open date
+--- Submit capsule ---
+  ✓ Tap Save Capsule
+--- Screenshot ---
+  ✓ Screenshot TimeCapsule
+
+=== App 156: SketchPad ===
+com.iez.sketchPad: 55873
+  ✔ Sketch Pad is in foreground
+--- Sketches screen ---
+  ✓ App heading
+  ✓ Sunset sketch
+  ✓ Mountain sketch
+  ✓ Cat Portrait sketch
+  ✓ City Skyline sketch
+  ✓ New Sketch FAB
+--- Tab bar ---
+  ✓ Sketches tab
+  ✓ Gallery tab
+  ✓ Tools tab
+--- Tap sketch detail (coords) ---
+  ✓ Tap Sunset
+  ✓ Sketch Details title
+  ✓ Created section
+  ✓ Tags section
+  ✓ Colors Used section
+  ✓ Delete Sketch button
+--- Back to sketches ---
+  ✓ Back to sketches
+--- Tap Gallery tab (coords) ---
+  ✓ Tap Gallery tab
+  ✓ Gallery heading
+  ✓ Sunset in gallery
+  ✓ Mountain in gallery
+  ✓ Cat Portrait in gallery
+--- Tap Tools tab (coords) ---
+  ✓ Tap Tools tab
+  ✓ Tools heading
+  ✓ Pencil tool
+  ✓ Brush tool
+  ✓ Eraser tool
+  ✓ Fill tool
+  ✓ Brush Size label
+--- Back to Sketches tab (coords) ---
+  ✓ Tap Sketches tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+--- Back from search ---
+  ✓ Back from search
+--- Tap New Sketch ---
+  ✓ Tap New Sketch FAB
+  ✓ New Sketch page
+  ✓ Sketch Name field
+  ✓ Tags field
+  ✓ Canvas Size dropdown
+  ✓ Start Drawing button
+--- Fill sketch form ---
+  ✓ Type sketch name
+--- Screenshot ---
+  ✓ Screenshot SketchPad
+--- Back from New Sketch ---
+  ✓ Back from New Sketch
+
+=== App 157: GiftTracker ===
+com.iez.giftTracker: 56735
+  ✔ Gift Tracker is in foreground
+--- Ideas screen ---
+  ✓ App title present
+  ✓ Wireless Earbuds idea
+  ✓ Book Set idea
+  ✓ Scented Candle idea
+  ✓ Gift Card idea
+  ✓ Board Game idea
+  ✓ Add Idea FAB
+--- Tab bar ---
+  ✓ Ideas tab
+  ✓ People tab
+  ✓ Budget tab
+--- Tap idea detail (coords) ---
+  ✓ Tap Wireless Earbuds
+  ✓ Gift Details title
+  ✓ Price Range section
+  ✓ For section
+  ✓ Status section
+  ✓ Delete Idea button
+--- Back to ideas ---
+  ✓ Back to ideas
+--- Tap People tab (coords) ---
+  ✓ Tap People tab
+  ✓ People heading
+  ✓ Mom
+  ✓ Dad
+  ✓ Sister
+  ✓ Best Friend
+--- Tap Budget tab (coords) ---
+  ✓ Tap Budget tab
+  ✓ Budget heading
+  ✓ Total Budget
+  ✓ Spent
+  ✓ Remaining
+--- Back to Ideas tab (coords) ---
+  ✓ Tap Ideas tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+  ✓ All filter
+  ✓ Under $25 filter
+  ✓ Under $50 filter
+  ✓ Over $50 filter
+--- Back from search ---
+  ✓ Back from search
+--- Tap Add Idea ---
+  ✓ Tap Add Idea FAB
+  ✓ Add Idea page
+  ✓ Gift Name field
+  ✓ Min Price field
+  ✓ Max Price field
+  ✓ Recipient dropdown
+  ✓ Save Idea button
+--- Fill idea form ---
+  ✓ Type gift name
+  ✓ Type min price
+  ✓ Type max price
+--- Submit idea ---
+  ✓ Tap Save Idea
+--- Screenshot ---
+  ✓ Screenshot GiftTracker
+
+========================================
+RESULTS: 127 passed / 127 total (0 failed)
+========================================
