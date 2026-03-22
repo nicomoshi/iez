@@ -1,0 +1,51 @@
+# iez configuration — Overlord Flutter (OpenClaw Mobile Command Center)
+# Usage: IEZ_CONFIG=config/overlord.yaml iez ...
+# Or: cp config/overlord.yaml ~/.config/iez/config.yaml
+version: 1
+
+# Backend priority (first available wins)
+backends:
+  ui:
+    - axe
+    - iosef
+    - xcodebuildmcp
+  build:
+    - flutter
+    - xcodebuild
+    - xcodebuildmcp
+  verify:
+    - peekaboo
+  flow:
+    - maestro
+  debug:
+    - xcodebuildmcp
+
+# Target simulator
+simulator:
+  device: "iPhone 16 Pro"
+  # udid: auto — resolved at runtime
+
+# Overlord Flutter app
+app:
+  bundle_id: "com.arguello.overlordFlutter"
+  platform: ios
+  project_path: "~/Developer/overlord_flutter"
+
+# Output preferences
+output:
+  json: true
+  compact: false
+  color: true
+
+# Peekaboo AI provider for verify commands
+verify:
+  provider: "anthropic/claude-sonnet-4.5"
+
+# Timeouts — tuned for Overlord (real network IO to gateway)
+timeouts:
+  tap_wait: 8
+  build: 600
+  screenshot: 10
+  verify: 30
+  gateway_connect: 15
+  message_response: 30

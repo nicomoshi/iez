@@ -37,29 +37,34 @@ export IEZ_UDID="${IEZ_UDID:-}"
 _IEZ_TIMER_START=""
 
 # =============================================================================
-# Timing
+# Timing — optimized for speed
 # =============================================================================
 
+# Detect best millisecond timer once at load time (avoids per-call `command -v`)
+if command -v gdate &>/dev/null; then
+    _IEZ_TIMER_CMD="gdate"
+elif [[ "$(uname)" == "Darwin" ]]; then
+    # macOS: perl is always available and ~10x faster than python3 for one-liners
+    _IEZ_TIMER_CMD="perl"
+else
+    _IEZ_TIMER_CMD="date"
+fi
+
+_iez_now_ms() {
+    case "$_IEZ_TIMER_CMD" in
+        gdate) gdate +%s%3N ;;
+        perl)  perl -MTime::HiRes=time -e 'printf "%d\n", time()*1000' ;;
+        date)  date +%s%3N ;;
+    esac
+}
+
 iez_timer_start() {
-    if command -v gdate &>/dev/null; then
-        _IEZ_TIMER_START=$(gdate +%s%3N)
-    elif [[ "$(uname)" == "Darwin" ]]; then
-        # macOS date doesn't support %N, use python as fallback
-        _IEZ_TIMER_START=$(python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null || date +%s)
-    else
-        _IEZ_TIMER_START=$(date +%s%3N)
-    fi
+    _IEZ_TIMER_START=$(_iez_now_ms)
 }
 
 iez_timer_elapsed() {
     local now
-    if command -v gdate &>/dev/null; then
-        now=$(gdate +%s%3N)
-    elif [[ "$(uname)" == "Darwin" ]]; then
-        now=$(python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null || date +%s)
-    else
-        now=$(date +%s%3N)
-    fi
+    now=$(_iez_now_ms)
     echo $(( now - _IEZ_TIMER_START ))
 }
 

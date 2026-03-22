@@ -65,7 +65,11 @@ has_label() { run_iez iez ui exists --label "$1" | jq -r '.ok' | grep -q true; }
 
 - `demo_app/` — Simple 4-screen Flutter app (Login → Home/Profile/Settings) built for iez testing
 - `test_app/` — Wonderous by gskinner (cloned, complex production app used for stress-testing)
-- Both have `test_automation.sh` scripts demonstrating full end-to-end flows
+- `overlord/` — **Overlord Flutter** (OpenClaw Mobile Command Center) at `~/Developer/overlord_flutter`
+  - Bundle: `com.arguello.overlordFlutter`
+  - Config: `config/overlord.yaml`
+  - Flows: launch+gateway, send message, tool call cards, model sheet, scroll, sub-agent overlay
+- Both demo_app and test_app have `test_automation.sh` scripts demonstrating full end-to-end flows
 
 ## Test Credentials
 

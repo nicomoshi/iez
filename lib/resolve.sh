@@ -19,10 +19,19 @@ declare -gA _IEZ_DEFAULT_BACKENDS=(
     [sim]="simctl xcodebuildmcp"
 )
 
+# Cache resolved backends per session to avoid repeated `command -v` calls
+declare -gA _IEZ_BACKEND_CACHE=()
+
 # Resolve the best available backend for a category
 # Usage: local backend; backend=$(iez_resolve_backend "ui")
 iez_resolve_backend() {
     local category="$1"
+
+    # Return cached result if available (avoids repeated command -v probes)
+    if [[ -n "${_IEZ_BACKEND_CACHE[$category]:-}" ]]; then
+        echo "${_IEZ_BACKEND_CACHE[$category]}"
+        return 0
+    fi
 
     # Try config-defined order first
     local configured_backends
@@ -37,6 +46,7 @@ iez_resolve_backend() {
     local tool
     for tool in $configured_backends; do
         if _iez_backend_available "$tool"; then
+            _IEZ_BACKEND_CACHE[$category]="$tool"
             echo "$tool"
             return 0
         fi

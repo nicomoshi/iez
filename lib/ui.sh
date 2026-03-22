@@ -284,7 +284,7 @@ cmd_ui_type() {
             # If a label is provided, tap the field first
             if [[ -n "$label" ]]; then
                 axe tap --label "$label" --udid "$udid" 2>/dev/null || true
-                sleep 0.3
+                sleep 0.15
             fi
 
             local output
@@ -300,7 +300,7 @@ cmd_ui_type() {
         iosef)
             if [[ -n "$label" ]]; then
                 iosef tap --name "$label" 2>/dev/null || true
-                sleep 0.3
+                sleep 0.15
             fi
             iosef type "$text" 2>/dev/null
             iez_response "ui.type" "$(jq -n --arg text "$text" '{text: $text, typed: true}')" "$backend"
@@ -781,7 +781,7 @@ cmd_ui_wait() {
     backend=$(iez_resolve_backend "ui") || return $EXIT_NO_BACKEND
 
     local elapsed=0
-    local interval="0.5"
+    local interval="0.2"
 
     while (( $(echo "$elapsed < $timeout" | bc -l 2>/dev/null || echo 0) )); do
         local raw
