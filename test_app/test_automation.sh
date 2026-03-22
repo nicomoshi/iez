@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test automation for Apps 179-181: BucketList/MealLog/AttendanceTracker
+# Test automation for Apps 182-184: PollBooth/FlashSale/PetAdopt
 set -uo pipefail
 
 IEZ="/Users/rudy/Developer/i_ez/bin/iez"
@@ -51,16 +51,20 @@ kill_runners() {
 
 fresh_launch() {
   local bid="$1" app_path="$2" expected="$3"
-  xcrun simctl terminate "$DEVICE_ID" com.iez.bucketList 2>/dev/null || true
-  xcrun simctl terminate "$DEVICE_ID" com.iez.mealLog 2>/dev/null || true
-  xcrun simctl terminate "$DEVICE_ID" com.iez.attendanceTracker 2>/dev/null || true
-  sleep 2
+  # Kill all Runner processes first
   kill_runners
   sleep 2
-  xcrun simctl uninstall "$DEVICE_ID" com.iez.bucketList 2>/dev/null || true
-  xcrun simctl uninstall "$DEVICE_ID" com.iez.mealLog 2>/dev/null || true
-  xcrun simctl uninstall "$DEVICE_ID" com.iez.attendanceTracker 2>/dev/null || true
+  # Uninstall ALL non-Apple apps
+  local all_bids
+  all_bids=$(xcrun simctl listapps "$DEVICE_ID" 2>/dev/null | grep CFBundleIdentifier | grep -v apple | sed 's/.*"\(.*\)".*/\1/' || true)
+  for b in $all_bids; do
+    xcrun simctl terminate "$DEVICE_ID" "$b" 2>/dev/null || true
+    xcrun simctl uninstall "$DEVICE_ID" "$b" 2>/dev/null || true
+  done
+  sleep 3
+  kill_runners
   sleep 2
+  # Install and launch
   xcrun simctl install "$DEVICE_ID" "$app_path"
   sleep 2
   xcrun simctl launch "$DEVICE_ID" "$bid"
@@ -72,361 +76,319 @@ fresh_launch() {
       echo "  ✔ $expected is in foreground"
       return 0
     fi
+    # If on home screen, try launching again
+    if [ "$app_name" = " " ] || [ -z "$app_name" ]; then
+      xcrun simctl launch "$DEVICE_ID" "$bid" 2>/dev/null || true
+    fi
   done
   echo "  ❌ Failed to launch $expected (saw: '$app_name')"
 }
 
 tap_by_coords() {
   local label_grep="$1"
-  local coords
-  coords=$(run_iez "$IEZ" ui tree --compact | jq -r --arg g "$label_grep" '.data.elements[] | select(.label | test($g; "s")) | "\(.frame.x + .frame.width/2 | floor),\(.frame.y + .frame.height/2 | floor)"' 2>/dev/null | head -1)
-  if [ -n "$coords" ]; then
-    run_iez "$IEZ" ui tap --coords "$coords"
+  local result
+  result=$(run_iez "$IEZ" ui tree --compact)
+  local x y w h
+  read -r x y w h < <(echo "$result" | jq -r ".data.elements[] | select(.label | test(\"$label_grep\")) | \"\(.frame.x) \(.frame.y) \(.frame.width) \(.frame.height)\"" 2>/dev/null | head -1)
+  if [ -n "$x" ] && [ "$x" != "null" ]; then
+    local cx cy
+    cx=$(echo "$x $w" | awk '{printf "%.0f", $1 + $2/2}')
+    cy=$(echo "$y $h" | awk '{printf "%.0f", $1 + $2/2}')
+    run_iez "$IEZ" ui tap --coords "$cx,$cy"
   else
     echo '{"ok":false,"error":"element not found"}'
   fi
 }
 
-# ============================================================
-echo "=== App 179: BucketList ==="
-# ============================================================
-# 3-tab layout: Tab1=67,800 Tab2=201,800 Tab3=335,800
+echo "============================================================"
+echo "  App 182: PollBooth"
+echo "============================================================"
 
-APP179_PATH="$SCRIPT_DIR/bucket_list/build/ios/iphonesimulator/Runner.app"
-fresh_launch "com.iez.bucketList" "$APP179_PATH" "Bucket List"
+fresh_launch "com.iez.pollBooth" "$SCRIPT_DIR/poll_booth/build/ios/iphonesimulator/Runner.app" "Poll Booth"
 sleep 2
 
-# --- All Items tab (default) ---
+# --- Polls Tab ---
 refresh_tree
-assert_tree_has "179.01 My Bucket List heading" "My Bucket List"
-assert_tree_has "179.02 Counter" "0/8"
-assert_tree_has "179.03 Northern Lights" "Visit the Northern Lights"
-assert_tree_has "179.04 Learn Guitar" "Learn to Play Guitar"
-assert_tree_has "179.05 Skydiving" "Skydiving"
-assert_tree_has "179.06 Write a Novel" "Write a Novel"
-assert_tree_has "179.07 Run a Marathon" "Run a Marathon"
-assert_tree_has "179.08 Machu Picchu" "Visit Machu Picchu"
-assert_tree_has "179.09 Learn Japanese" "Learn Japanese"
-assert_tree_has "179.10 Scuba Diving" "Go Scuba Diving"
-assert_tree_has "179.11 Add Goal FAB" "Add Goal"
+assert_tree_has "182.01 App title" "Poll Booth"
+assert_tree_has "182.02 Polls tab visible" "Polls"
+assert_tree_has "182.03 Stats tab visible" "Stats"
+assert_tree_has "182.04 Create tab visible" "Create"
+assert_tree_has "182.05 Technology poll" "Technology"
+assert_tree_has "182.06 Best programming language" "Best programming language?"
+assert_tree_has "182.07 Dart option" "Dart"
+assert_tree_has "182.08 Python option" "Python"
+assert_tree_has "182.09 Rust option" "Rust"
+assert_tree_has "182.10 TypeScript option" "TypeScript"
+assert_tree_has "182.11 Lifestyle poll" "Lifestyle"
+assert_tree_has "182.12 Favorite season" "Favorite season?"
+assert_tree_has "182.13 Show menu button" "Show menu"
 
-# Tap into Northern Lights detail
-R=$(tap_by_coords "Northern Lights")
-assert_ok "179.12 Tap Northern Lights" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "179.13 Goal Details heading" "Goal Details"
-assert_tree_has "179.14 Travel chip" "Travel"
-assert_tree_has "179.15 High priority chip" "High"
-assert_tree_has "179.16 Pending chip" "Pending"
-assert_tree_has "179.17 Notes section" "Notes"
-assert_tree_has "179.18 Notes content" "Iceland or Norway"
-assert_tree_has "179.19 Delete button" "Delete"
-
-R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "179.20 Tap Back from detail" "$R"
-sleep 1
-
-# Navigate to Categories tab
-R=$(run_iez "$IEZ" ui tap --coords 201,800)
-assert_ok "179.21 Tap Categories tab" "$R"
+# Vote on Dart
+R=$(run_iez "$IEZ" ui tap --label "Dart")
+assert_ok "182.14 Tap Dart to vote" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "179.22 Categories heading" "Categories"
-assert_tree_has "179.23 Travel category" "Travel"
-assert_tree_has "179.24 Adventure category" "Adventure"
-assert_tree_has "179.25 Learning category" "Learning"
-assert_tree_has "179.26 Personal category" "Personal"
-assert_tree_has "179.27 Creative category" "Creative"
+assert_tree_has "182.15 Results show percentages" "29."
 
-# Tap into Travel category
-R=$(tap_by_coords "^Travel")
-assert_ok "179.28 Tap Travel category" "$R"
+# Scroll down to see Work poll
+R=$(run_iez "$IEZ" ui swipe up)
+assert_ok "182.16 Swipe up to scroll" "$R"
+sleep 1
+
+R=$(run_iez "$IEZ" ui swipe up)
+assert_ok "182.17 Swipe up again" "$R"
+sleep 1
+
+R=$(run_iez "$IEZ" ui swipe up)
 sleep 1
 
 refresh_tree
-assert_tree_has "179.29 Travel heading" "Travel"
-assert_tree_has "179.30 Northern Lights in Travel" "Visit the Northern Lights"
-assert_tree_has "179.31 Machu Picchu in Travel" "Visit Machu Picchu"
+assert_tree_has "182.18 Work poll visible" "Remote or Office?"
 
-R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "179.32 Tap Back from Travel" "$R"
-sleep 1
+# Screenshot polls
+R=$(run_iez "$IEZ" ui screenshot --out /tmp/iez_182_polls.png)
+assert_ok "182.19 Screenshot polls" "$R"
 
-# Navigate to Stats tab
-R=$(run_iez "$IEZ" ui tap --coords 335,800)
-assert_ok "179.33 Tap Stats tab" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "179.34 Progress heading" "Progress"
-assert_tree_has "179.35 Overall Progress" "Overall Progress"
-assert_tree_has "179.36 Goals completed" "goals completed"
-assert_tree_has "179.37 By Category" "By Category"
-assert_tree_has "179.38 Total stat" "Total"
-assert_tree_has "179.39 Pending stat" "Pending"
-
-# Back to All tab and add new goal
-R=$(run_iez "$IEZ" ui tap --coords 67,800)
-assert_ok "179.40 Tap All tab" "$R"
-sleep 1
-
-R=$(run_iez "$IEZ" ui tap --label "Add Goal")
-assert_ok "179.41 Tap Add Goal FAB" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "179.42 New Goal dialog" "New Goal"
-assert_tree_has "179.43 Goal Title field" "Goal Title"
-assert_tree_has "179.44 Notes field" "Notes"
-
-R=$(run_iez "$IEZ" ui type "Visit Tokyo" --label "Goal Title")
-assert_ok "179.45 Type goal title" "$R"
+# --- Stats Tab --- (scroll back to top first so tab bar is stable)
+R=$(run_iez "$IEZ" ui swipe down)
+assert_ok "182.20a Scroll back to top" "$R"
+sleep 0.5
+R=$(run_iez "$IEZ" ui swipe down)
 sleep 0.5
 
-R=$(run_iez "$IEZ" ui tap --label "Add")
-assert_ok "179.46 Tap Add" "$R"
+R=$(tap_by_coords "^Stats")
+assert_ok "182.20 Tap Stats tab" "$R"
+sleep 1.5
+
+refresh_tree
+assert_tree_has "182.21 Statistics heading" "Statistics"
+assert_tree_has "182.22 Total Polls stat" "Total Polls"
+assert_tree_has "182.23 Total Votes stat" "Total Votes"
+assert_tree_has "182.24 Active Polls stat" "Active Polls"
+assert_tree_has "182.25 Most Popular stat" "Most Popular"
+assert_tree_has "182.26 Fully Remote top" "Fully Remote"
+assert_tree_has "182.27 Votes by Category" "Votes by Category"
+assert_tree_has "182.28 Technology category" "Technology"
+assert_tree_has "182.29 Food category votes" "Food"
+
+# --- Create Tab ---
+R=$(tap_by_coords "^Create")
+assert_ok "182.30 Tap Create tab" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "179.47 New goal appears" "Visit Tokyo"
+assert_tree_has "182.31 Create Poll heading" "Create Poll"
+assert_tree_has "182.32 Question field" "Question"
+assert_tree_has "182.33 Category dropdown" "Technology"
+assert_tree_has "182.34 Option 1 field" "Option 1"
+assert_tree_has "182.35 Option 2 field" "Option 2"
+assert_tree_has "182.36 Option 3 field" "Option 3 (optional)"
 
-# Screenshot
-R=$(run_iez "$IEZ" ui screenshot --out /tmp/iez_179_bucket.png)
-assert_ok "179.48 Screenshot bucket list" "$R"
+# Create a new poll
+R=$(run_iez "$IEZ" ui type "Best fruit?" --label "Question")
+assert_ok "182.37 Type question" "$R"
+sleep 0.5
+
+R=$(run_iez "$IEZ" ui type "Apple" --label "Option 1")
+assert_ok "182.38 Type option 1" "$R"
+sleep 0.5
+
+R=$(run_iez "$IEZ" ui type "Banana" --label "Option 2")
+assert_ok "182.39 Type option 2" "$R"
+sleep 0.5
+
+R=$(run_iez "$IEZ" ui type "Cherry" --label "Option 3 (optional)")
+assert_ok "182.40 Type option 3" "$R"
+sleep 0.5
+
+# Screenshot create form
+R=$(run_iez "$IEZ" ui screenshot --out /tmp/iez_182_create.png)
+assert_ok "182.41 Screenshot create form" "$R"
 
 echo ""
-echo "  App 179 subtotal: $PASS/$TOTAL passed"
-echo ""
+echo "============================================================"
+echo "  App 183: FlashSale"
+echo "============================================================"
 
-# ============================================================
-echo "=== App 180: MealLog ==="
-# ============================================================
-# 3-tab layout: Tab1=67,800 Tab2=201,800 Tab3=335,800
-
-APP180_PATH="$SCRIPT_DIR/meal_log/build/ios/iphonesimulator/Runner.app"
-fresh_launch "com.iez.mealLog" "$APP180_PATH" "Meal Log"
+fresh_launch "com.iez.flashSale" "$SCRIPT_DIR/flash_sale/build/ios/iphonesimulator/Runner.app" "Flash Sale"
 sleep 2
 
-# --- Today tab ---
+# --- Deals Tab ---
 refresh_tree
-assert_tree_has "180.01 Today heading" "Today"
-assert_tree_has "180.02 Calorie summary" "2000 cal"
-assert_tree_has "180.03 Remaining calories" "remaining"
-assert_tree_has "180.04 Meals section" "Meals"
-assert_tree_has "180.05 Oatmeal" "Oatmeal with Berries"
-assert_tree_has "180.06 Chicken Salad" "Grilled Chicken Salad"
-assert_tree_has "180.07 Salmon" "Salmon with Rice"
-assert_tree_has "180.08 Greek Yogurt" "Greek Yogurt"
-assert_tree_has "180.09 Log Meal FAB" "Log Meal"
+assert_tree_has "183.01 App title Flash Sale" "Flash Sale"
+assert_tree_has "183.02 Flash Sales heading" "Flash Sales"
+assert_tree_has "183.03 Up to 60% OFF banner" "Up to 60% OFF"
+assert_tree_has "183.04 Limited time text" "Limited time deals"
+assert_tree_has "183.05 Deals tab" "Deals"
+assert_tree_has "183.06 Saved tab" "Saved"
+assert_tree_has "183.07 Profile tab" "Profile"
+assert_tree_has "183.08 Wireless Earbuds Pro" "Wireless Earbuds Pro"
+assert_tree_has "183.09 Running Shoes Elite" "Running Shoes Elite"
+assert_tree_has "183.10 Smart Watch Band" "Smart Watch Band"
+assert_tree_has "183.11 Show menu filter" "Show menu"
 
-# Tap into Oatmeal detail
-R=$(tap_by_coords "Oatmeal")
-assert_ok "180.10 Tap Oatmeal detail" "$R"
+# Tap on Wireless Earbuds Pro deal (first card around y=290)
+R=$(run_iez "$IEZ" ui tap --coords 201,290)
+assert_ok "183.12 Tap Wireless Earbuds deal" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "180.11 Meal Details heading" "Meal Details"
-assert_tree_has "180.12 Meal name" "Oatmeal with Berries"
-assert_tree_has "180.13 Type Breakfast" "Breakfast"
-assert_tree_has "180.14 Calories" "350 cal"
-assert_tree_has "180.15 Notes" "Added honey"
-assert_tree_has "180.16 Delete button" "Delete"
+assert_tree_has "183.13 Deal detail - title" "Wireless Earbuds Pro"
+assert_tree_has "183.14 Deal detail - description" "Active noise cancellation"
+assert_tree_has "183.15 Deal detail - category" "Electronics"
+assert_tree_has "183.16 Deal detail - time" "3 hours"
+assert_tree_has "183.17 Deal detail - stock" "22 of 100"
+assert_tree_has "183.18 Deal detail - claimed" "78% claimed"
+assert_tree_has "183.19 Deal detail - Save %" "Save 60%"
+assert_tree_has "183.20 Claim Deal button" "Claim Deal"
 
+# Screenshot deal detail
+R=$(run_iez "$IEZ" ui screenshot --out /tmp/iez_183_detail.png)
+assert_ok "183.21 Screenshot deal detail" "$R"
+
+# Go back
 R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "180.17 Tap Back from detail" "$R"
+assert_ok "183.22 Tap Back" "$R"
 sleep 1
 
-# Navigate to History tab
-R=$(run_iez "$IEZ" ui tap --coords 201,800)
-assert_ok "180.18 Tap History tab" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "180.19 History heading" "History"
-assert_tree_has "180.20 Summary card" "Summary"
-assert_tree_has "180.21 Total Meals" "Total Meals"
-assert_tree_has "180.22 Total Calories" "Total Calories"
-assert_tree_has "180.23 All Meals section" "All Meals"
-assert_tree_has "180.24 Scrambled Eggs" "Scrambled Eggs"
-assert_tree_has "180.25 Turkey Sandwich" "Turkey Sandwich"
-assert_tree_has "180.26 Pasta Primavera" "Pasta Primavera"
-assert_tree_has "180.27 Yesterday label" "Yesterday"
-
-# Navigate to Settings tab
-R=$(run_iez "$IEZ" ui tap --coords 335,800)
-assert_ok "180.28 Tap Settings tab" "$R"
+# --- Saved Tab ---
+R=$(tap_by_coords "^Saved")
+assert_ok "183.23 Tap Saved tab" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "180.29 Daily Calorie Goal" "Daily Calorie Goal"
-assert_tree_has "180.30 2000 calories" "2000 calories"
-assert_tree_has "180.31 Reminders" "Reminders"
-assert_tree_has "180.32 About" "Meal Log v1.0"
+assert_tree_has "183.24 Saved Deals heading" "Saved Deals"
+assert_tree_has "183.25 No saved deals text" "No saved deals yet"
+assert_tree_has "183.26 Bookmark hint" "Tap the bookmark icon"
 
-# Tap About
-R=$(tap_by_coords "Meal Log v1.0")
-assert_ok "180.33 Tap About" "$R"
+# --- Profile Tab ---
+R=$(tap_by_coords "^Profile")
+assert_ok "183.27 Tap Profile tab" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "180.34 About content" "food intake"
-assert_tree_has "180.35 Close button" "Close"
+assert_tree_has "183.28 Profile heading" "Profile"
+assert_tree_has "183.29 User name" "Jane Doe"
+assert_tree_has "183.30 User email" "jane.doe@email.com"
+assert_tree_has "183.31 Saved count" "Saved"
+assert_tree_has "183.32 Avg Discount" "Avg Discount"
+assert_tree_has "183.33 Notifications" "Notifications"
+assert_tree_has "183.34 Payment Methods" "Payment Methods"
+assert_tree_has "183.35 Help Center" "Help Center"
+assert_tree_has "183.36 About" "About"
 
-R=$(run_iez "$IEZ" ui tap --label "Close")
-assert_ok "180.36 Close About" "$R"
-sleep 1
-
-# Tap Daily Calorie Goal
-R=$(tap_by_coords "2000 calories")
-assert_ok "180.37 Tap Daily Calorie Goal" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "180.38 Set Calorie Goal dialog" "Set Calorie Goal"
-assert_tree_has "180.39 Daily calories field" "Daily calories"
-
-R=$(run_iez "$IEZ" ui type "2200" --label "Daily calories")
-assert_ok "180.40 Type new goal" "$R"
-sleep 0.5
-
-R=$(run_iez "$IEZ" ui tap --label "Save")
-assert_ok "180.41 Tap Save" "$R"
-sleep 1
-
-# Back to Today tab and log a meal
-R=$(run_iez "$IEZ" ui tap --coords 67,800)
-assert_ok "180.42 Tap Today tab" "$R"
-sleep 1
-
-R=$(run_iez "$IEZ" ui tap --label "Log Meal")
-assert_ok "180.43 Tap Log Meal FAB" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "180.44 Log Meal dialog" "Log Meal"
-assert_tree_has "180.45 Meal Name field" "Meal Name"
-assert_tree_has "180.46 Calories field" "Calories"
-
-R=$(run_iez "$IEZ" ui type "Apple Pie" --label "Meal Name")
-assert_ok "180.47 Type meal name" "$R"
-sleep 0.5
-
-R=$(run_iez "$IEZ" ui type "320" --label "Calories")
-assert_ok "180.48 Type calories" "$R"
-sleep 0.5
-
-R=$(run_iez "$IEZ" ui tap --label "Save")
-assert_ok "180.49 Tap Save" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "180.50 New meal appears" "Apple Pie"
-
-# Screenshot
-R=$(run_iez "$IEZ" ui screenshot --out /tmp/iez_180_meallog.png)
-assert_ok "180.51 Screenshot meal log" "$R"
+# Screenshot profile
+R=$(run_iez "$IEZ" ui screenshot --out /tmp/iez_183_profile.png)
+assert_ok "183.37 Screenshot profile" "$R"
 
 echo ""
-echo "  App 180 cumulative: $PASS/$TOTAL passed"
-echo ""
+echo "============================================================"
+echo "  App 184: PetAdopt"
+echo "============================================================"
 
-# ============================================================
-echo "=== App 181: AttendanceTracker ==="
-# ============================================================
-# 3-tab layout: Tab1=67,800 Tab2=201,800 Tab3=335,800
-
-APP181_PATH="$SCRIPT_DIR/attendance_tracker/build/ios/iphonesimulator/Runner.app"
-fresh_launch "com.iez.attendanceTracker" "$APP181_PATH" "Attendance Tracker"
+fresh_launch "com.iez.petAdopt" "$SCRIPT_DIR/pet_adopt/build/ios/iphonesimulator/Runner.app" "Pet Adopt"
 sleep 2
 
-# --- Attendance tab ---
+# --- Browse Tab ---
 refresh_tree
-assert_tree_has "181.01 Attendance heading" "Attendance"
-assert_tree_has "181.02 Date display" "3/22/2026"
-assert_tree_has "181.03 Present count" "Present"
-assert_tree_has "181.04 Absent count" "Absent"
-assert_tree_has "181.05 Late count" "Late"
-assert_tree_has "181.06 Excused count" "Excused"
-assert_tree_has "181.07 Emma Wilson" "Emma Wilson"
-assert_tree_has "181.08 James Chen" "James Chen"
-assert_tree_has "181.09 Sofia Rodriguez" "Sofia Rodriguez"
-assert_tree_has "181.10 Liam Johnson" "Liam Johnson"
-assert_tree_has "181.11 Olivia Brown" "Olivia Brown"
-assert_tree_has "181.12 Noah Davis" "Noah Davis"
+assert_tree_has "184.01 App title Pet Adopt" "Pet Adopt"
+assert_tree_has "184.02 Find a Pet heading" "Find a Pet"
+assert_tree_has "184.03 Browse tab" "Browse"
+assert_tree_has "184.04 Favorites tab" "Favorites"
+assert_tree_has "184.05 Add Pet tab" "Add Pet"
+assert_tree_has "184.06 Search field" "Search by name or breed"
+assert_tree_has "184.07 All filter chip" "All"
+assert_tree_has "184.08 Dog filter chip" "Dog"
+assert_tree_has "184.09 Cat filter chip" "Cat"
+assert_tree_has "184.10 Rabbit filter chip" "Rabbit"
+assert_tree_has "184.11 Bird filter chip" "Bird"
+assert_tree_has "184.12 8 pets available" "8 pets available"
+assert_tree_has "184.13 Buddy listing" "Buddy"
+assert_tree_has "184.14 Luna listing" "Luna"
+assert_tree_has "184.15 Max listing" "Max"
+assert_tree_has "184.16 Coco listing" "Coco"
+assert_tree_has "184.17 Kiwi listing" "Kiwi"
 
-# Navigate to Students tab
-R=$(run_iez "$IEZ" ui tap --coords 201,800)
-assert_ok "181.13 Tap Students tab" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "181.14 Students heading" "Students"
-assert_tree_has "181.15 Emma Wilson" "Emma Wilson"
-assert_tree_has "181.16 Grade A" "Grade: A"
-assert_tree_has "181.17 Add Student FAB" "Add Student"
-
-# Tap into Emma Wilson detail
-R=$(run_iez "$IEZ" ui tap --coords 200,176)
-assert_ok "181.18 Tap Emma Wilson" "$R"
+# Tap Buddy to see detail
+R=$(run_iez "$IEZ" ui tap --coords 201,330)
+assert_ok "184.18 Tap Buddy card" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "181.19 Emma Wilson heading" "Emma Wilson"
-assert_tree_has "181.20 Student Info section" "Student Info"
-assert_tree_has "181.21 Grade value" "Grade"
+assert_tree_has "184.19 Detail - Buddy heading" "Buddy"
+assert_tree_has "184.20 Detail - breed info" "Golden Retriever"
+assert_tree_has "184.21 Detail - shelter" "Happy Paws Shelter"
+assert_tree_has "184.22 Detail - Dog chip" "Dog"
 
-R=$(run_iez "$IEZ" ui tap --label "Back")
-assert_ok "181.22 Tap Back from detail" "$R"
-sleep 1
-
-# Navigate to Reports tab
-R=$(run_iez "$IEZ" ui tap --coords 335,800)
-assert_ok "181.23 Tap Reports tab" "$R"
+# Scroll down to see more detail elements
+R=$(run_iez "$IEZ" ui swipe up)
+assert_ok "184.23 Scroll detail down" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "181.24 Reports heading" "Reports"
-assert_tree_has "181.25 Attendance Rate" "Attendance Rate"
-assert_tree_has "181.26 83% rate" "83%"
-assert_tree_has "181.27 Students present text" "students present"
-assert_tree_has "181.28 Breakdown section" "Breakdown"
-assert_tree_has "181.29 Total Students" "Total Students"
+assert_tree_has "184.24 Detail - description" "Friendly and playful"
+assert_tree_has "184.25 Detail - Vaccinated chip" "Vaccinated"
+assert_tree_has "184.26 Detail - Neutered chip" "Neutered"
+assert_tree_has "184.27 About section" "About"
+assert_tree_has "184.28 Adopt Me button" "Adopt Me"
 
-# Back to Students tab to add student
-R=$(run_iez "$IEZ" ui tap --coords 201,800)
-assert_ok "181.30 Tap Students tab" "$R"
-sleep 1
+# Tap Adopt Me to see dialog
+R=$(run_iez "$IEZ" ui tap --label "Adopt Me")
+assert_ok "184.29 Tap Adopt Me" "$R"
+sleep 2
 
-R=$(run_iez "$IEZ" ui tap --label "Add Student")
-assert_ok "181.31 Tap Add Student FAB" "$R"
+refresh_tree
+assert_tree_has "184.30 Adoption dialog title" "Adoption Request"
+assert_tree_has "184.31 Dialog message" "Your request to adopt Buddy"
+assert_tree_has "184.32 OK button" "OK"
+
+# Dismiss dialog — OK dismisses and pops back to browse
+R=$(run_iez "$IEZ" ui tap --label "OK")
+assert_ok "184.33 Dismiss adoption dialog" "$R"
+sleep 2
+
+# Screenshot browse
+R=$(run_iez "$IEZ" ui screenshot --out /tmp/iez_184_browse.png)
+assert_ok "184.34 Screenshot browse" "$R"
+
+# --- Favorites Tab ---
+R=$(tap_by_coords "^Favorites")
+assert_ok "184.35 Tap Favorites tab" "$R"
 sleep 1
 
 refresh_tree
-assert_tree_has "181.32 Add Student dialog" "Add Student"
-assert_tree_has "181.33 Student Name field" "Student Name"
-assert_tree_has "181.34 Grade field" "Grade"
+assert_tree_has "184.36 Favorites heading" "Favorites"
+assert_tree_has "184.37 No favorites yet" "No favorites yet"
+assert_tree_has "184.38 Heart hint text" "Heart a pet to save it here"
 
-R=$(run_iez "$IEZ" ui type "Mia Thompson" --label "Student Name")
-assert_ok "181.35 Type student name" "$R"
+# --- Add Pet Tab ---
+R=$(tap_by_coords "^Add Pet")
+assert_ok "184.39 Tap Add Pet tab" "$R"
+sleep 1
+
+refresh_tree
+assert_tree_has "184.40 List a Pet heading" "List a Pet"
+assert_tree_has "184.41 Pet Name field" "Pet Name"
+assert_tree_has "184.42 Type dropdown" "Dog"
+assert_tree_has "184.43 Breed field" "Breed"
+assert_tree_has "184.44 Gender dropdown" "Male"
+assert_tree_has "184.45 Description field" "Description"
+assert_tree_has "184.46 Shelter Name field" "Shelter Name"
+assert_tree_has "184.47 List Pet button" "List Pet"
+
+# Fill in new pet form
+R=$(run_iez "$IEZ" ui type "Daisy" --label "Pet Name")
+assert_ok "184.48 Type pet name" "$R"
 sleep 0.5
 
-R=$(run_iez "$IEZ" ui type "A" --label "Grade")
-assert_ok "181.36 Type grade" "$R"
+R=$(run_iez "$IEZ" ui type "Poodle" --label "Breed")
+assert_ok "184.49 Type breed" "$R"
 sleep 0.5
 
-R=$(run_iez "$IEZ" ui tap --label "Add")
-assert_ok "181.37 Tap Add button" "$R"
-sleep 1
-
-refresh_tree
-assert_tree_has "181.38 New student appears" "Mia Thompson"
-
-# Screenshot
-R=$(run_iez "$IEZ" ui screenshot --out /tmp/iez_181_attendance.png)
-assert_ok "181.39 Screenshot students list" "$R"
+# Screenshot add pet form
+R=$(run_iez "$IEZ" ui screenshot --out /tmp/iez_184_addpet.png)
+assert_ok "184.50 Screenshot add pet form" "$R"
 
 # ============================================================
 echo ""
