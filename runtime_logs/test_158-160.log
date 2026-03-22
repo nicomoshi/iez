@@ -1,0 +1,162 @@
+=== App 158: QuoteWall ===
+com.iez.quoteWall: 63431
+  ✔ Quote Wall is in foreground
+--- Quotes screen ---
+  ✓ App heading
+  ✓ Steve Jobs quote
+  ✓ Oscar Wilde quote
+  ✓ Einstein quote
+  ✓ Stay hungry quote
+  ✓ Add Quote FAB
+--- Tab bar ---
+  ✓ Quotes tab
+  ✓ Authors tab
+  ✓ Tags tab
+--- Tap quote detail (coords) ---
+  ✓ Tap first quote
+  ✓ Quote Details title
+  ✓ Author section
+  ✓ Source section
+  ✓ Tags section
+  ✓ Delete Quote button
+--- Back to quotes ---
+  ✓ Back to quotes
+--- Tap Authors tab (coords) ---
+  ✓ Tap Authors tab
+  ✓ Authors heading
+  ✓ Steve Jobs author
+  ✓ Oscar Wilde author
+  ✓ Einstein author
+--- Tap Tags tab (coords) ---
+  ✓ Tap Tags tab
+  ✓ Tags heading
+  ✓ Inspiration tag
+  ✓ Life tag
+  ✓ Success tag
+  ✓ Wisdom tag
+--- Back to Quotes tab (coords) ---
+  ✓ Tap Quotes tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+--- Back from search ---
+  ✓ Back from search
+--- Tap Add Quote ---
+  ✓ Tap Add Quote FAB
+  ✓ Add Quote page
+  ✓ Quote Text field
+  ✓ Author field
+  ✓ Source field
+  ✓ Save Quote button
+--- Screenshot ---
+  ✓ Screenshot QuoteWall
+--- Back from Add Quote ---
+  ✓ Back from Add Quote
+
+=== App 159: VocabBuilder ===
+com.iez.vocabBuilder: 64490
+  ✔ Vocab Builder is in foreground
+--- Words screen ---
+  ✓ App heading
+  ✓ Ephemeral word
+  ✓ Ubiquitous word
+  ✓ Serendipity word
+  ✓ Eloquent word
+  ✓ Add Word FAB
+--- Tab bar ---
+  ✓ Words tab
+  ✓ Quiz tab
+  ✓ Progress tab
+--- Tap word detail (coords) ---
+  ✓ Tap Ephemeral
+  ✓ Word Details title
+  ✓ Definition section
+  ✓ Example section
+  ✓ Part of Speech section
+  ✓ Delete Word button
+--- Back to words ---
+  ✓ Back to words
+--- Tap Quiz tab (coords) ---
+  ✓ Tap Quiz tab
+  ✓ Quiz heading
+  ✓ Start Quiz button
+  ✓ Daily Challenge card
+  ✓ Best Streak
+--- Tap Progress tab (coords) ---
+  ✓ Tap Progress tab
+  ✓ Progress heading
+  ✓ Words Learned
+  ✓ Mastered
+  ✓ Review Needed
+--- Back to Words tab (coords) ---
+  ✓ Tap Words tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+--- Back from search ---
+  ✓ Back from search
+--- Tap Add Word ---
+  ✓ Tap Add Word FAB
+  ✓ Add Word page
+  ✓ Word field
+  ✓ Definition field
+  ✓ Example Sentence field
+  ✓ Part of Speech dropdown
+  ✓ Save Word button
+--- Screenshot ---
+  ✓ Screenshot VocabBuilder
+--- Back from Add Word ---
+  ✓ Back from Add Word
+
+=== App 160: EventRSVP ===
+com.iez.eventRsvp: 65449
+  ✔ Event Rsvp is in foreground
+--- Events screen ---
+  ✓ Events heading
+  ✓ Birthday Party event
+  ✓ Team Lunch event
+  ✓ Movie Night event
+  ✓ Book Club event
+  ✓ Create Event FAB
+--- Tab bar ---
+  ✓ Events tab
+  ✓ My RSVPs tab
+  ✓ Hosting tab
+--- Tap event detail (coords) ---
+  ✓ Tap Birthday Party
+  ✓ Event Details title
+  ✓ Date section
+  ✓ Location section
+  ✓ Guests section
+  ✓ Delete Event button
+--- Back to events ---
+  ✓ Back to events
+--- Tap My RSVPs tab (coords) ---
+  ✓ Tap My RSVPs tab
+  ✓ My RSVPs heading
+  ✓ Birthday Party RSVP
+  ✓ Going status
+  ✓ Book Club RSVP
+  ✓ Maybe status
+--- Tap Hosting tab (coords) ---
+  ✓ Tap Hosting tab
+  ✓ Hosting heading
+  ✓ Movie Night hosting
+  ✓ Team Lunch hosting
+--- Back to Events tab (coords) ---
+  ✓ Tap Events tab
+--- Tap Create Event ---
+  ✓ Tap Create Event FAB
+  ✓ Create Event page
+  ✓ Event Name field
+  ✓ Date field
+  ✓ Location field
+  ✓ Description field
+--- Screenshot ---
+  ✓ Screenshot EventRSVP
+--- Back from Create Event ---
+  ✓ Back from Create Event
+
+========================================
+RESULTS: 113 passed / 113 total (0 failed)
+========================================
