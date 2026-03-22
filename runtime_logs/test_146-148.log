@@ -1,0 +1,204 @@
+=== App 146: SleepTracker ===
+com.iez.sleepTracker: 23694
+  ✔ Sleep Tracker is in foreground
+--- Log screen ---
+  ✓ App title present
+  ✓ March 20 entry
+  ✓ March 19 entry
+  ✓ March 18 entry
+  ✓ Add Entry FAB
+--- Tab bar ---
+  ✓ Log tab
+  ✓ Stats tab
+  ✓ Settings tab
+--- Tap entry detail (coords) ---
+  ✓ Tap March 20 entry
+  ✓ Sleep Details title
+  ✓ Duration section
+  ✓ Quality section
+  ✓ Delete Entry button
+--- Back to log ---
+  ✓ Back to log
+--- Tap Stats tab (coords) ---
+  ✓ Tap Stats tab
+  ✓ Stats heading
+  ✓ Average Sleep
+  ✓ Best Night
+  ✓ Weekly Summary
+--- Tap Settings tab (coords) ---
+  ✓ Tap Settings tab
+  ✓ Settings heading
+  ✓ Sleep Reminders switch
+  ✓ Dark Mode switch
+  ✓ Track Naps switch
+--- Toggle Sleep Reminders ---
+  ✓ Toggle Sleep Reminders
+--- Back to Log tab (coords) ---
+  ✓ Tap Log tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+  ✓ Type search query
+  ✓ March 20 result
+--- Back from search ---
+  ✓ Back from search
+--- Tap Add Entry ---
+  ✓ Tap Add Entry FAB
+  ✓ Add Entry page
+  ✓ Date field
+  ✓ Bedtime field
+  ✓ Wake Time field
+  ✓ Quality dropdown
+  ✓ Save Entry button
+--- Screenshot ---
+  ✓ Screenshot SleepTracker
+--- Back from Add Entry ---
+  ✓ Back from Add Entry
+
+=== App 147: ContactBook ===
+com.iez.contactBook: 24635
+  ✔ Contact Book is in foreground
+--- Contacts screen ---
+  ✓ App title present
+  ✓ Alice Johnson contact
+  ✓ Bob Smith contact
+  ✓ Carol White contact
+  ✓ David Brown contact
+  ✓ Eve Davis contact
+  ✓ Add Contact FAB
+--- Filter chips ---
+  ✓ All filter
+  ✓ Family filter
+  ✓ Work filter
+  ✓ Friends filter
+--- Tab bar ---
+  ✓ Contacts tab
+  ✓ Groups tab
+  ✓ Favorites tab
+--- Tap Family filter ---
+  ✓ Tap Family filter
+  ✓ Alice in Family
+--- Tap All filter ---
+  ✓ Tap All filter
+--- Tap contact detail (coords) ---
+  ✓ Tap Alice Johnson
+  ✓ Contact Details title
+  ✓ Phone section
+  ✓ Email section
+  ✓ Address section
+  ✓ Delete Contact button
+--- Back to list ---
+  ✓ Back to list
+--- Tap Groups tab (coords) ---
+  ✓ Tap Groups tab
+  ✓ Groups heading
+  ✓ Family group
+  ✓ Work group
+  ✓ Friends group
+--- Tap Favorites tab (coords) ---
+  ✓ Tap Favorites tab
+  ✓ Favorites heading
+  ✓ Alice in favorites
+  ✓ Carol in favorites
+--- Back to Contacts tab (coords) ---
+  ✓ Tap Contacts tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+  ✓ Type search query
+  ✓ Bob Smith result
+--- Back from search ---
+  ✓ Back from search
+--- Tap Add Contact ---
+  ✓ Tap Add Contact FAB
+  ✓ Add Contact page
+  ✓ First Name field
+  ✓ Last Name field
+  ✓ Phone field
+  ✓ Email field
+  ✓ Save Contact button
+--- Fill contact form ---
+  ✓ Type first name
+  ✓ Type last name
+  ✓ Type phone
+--- Submit contact ---
+  ✓ Tap Save Contact
+  ✓ New contact in list
+--- Screenshot ---
+  ✓ Screenshot ContactBook
+
+=== App 148: MovieList ===
+com.iez.movieList: 25887
+  ✔ Movie List is in foreground
+--- Watchlist screen ---
+  ✓ App heading present
+  ✓ Inception movie
+  ✓ The Matrix movie
+  ✓ Parasite movie
+  ✓ Spirited Away movie
+  ✓ Add Movie FAB
+--- Filter chips ---
+  ✓ All filter
+  ✓ Sci-Fi filter
+  ✓ Thriller filter
+  ✓ Animation filter
+--- Tab bar ---
+  ✓ Watchlist tab
+  ✓ Watched tab
+  ✓ Discover tab
+--- Tap Sci-Fi filter ---
+  ✓ Tap Sci-Fi filter
+  ✓ Inception shown
+  ✓ The Matrix shown
+--- Tap All filter ---
+  ✓ Tap All filter
+--- Tap movie detail (coords) ---
+  ✓ Tap Inception
+  ✓ Movie Details title
+  ✓ Genre section
+  ✓ Year section
+  ✓ Rating section
+  ✓ Notes section
+  ✓ Delete Movie button
+--- Back to list ---
+  ✓ Back to list
+--- Tap Watched tab (coords) ---
+  ✓ Tap Watched tab
+  ✓ Watched heading
+  ✓ The Godfather
+  ✓ Pulp Fiction
+--- Tap Discover tab (coords) ---
+  ✓ Tap Discover tab
+  ✓ Discover heading
+  ✓ Trending section
+  ✓ Top Rated section
+  ✓ Oppenheimer in trending
+  ✓ Shawshank in top rated
+--- Back to Watchlist tab (coords) ---
+  ✓ Tap Watchlist tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+  ✓ Type search query
+  ✓ The Matrix result
+--- Back from search ---
+  ✓ Back from search
+--- Tap Add Movie ---
+  ✓ Tap Add Movie FAB
+  ✓ Add Movie page
+  ✓ Movie Title field
+  ✓ Genre dropdown
+  ✓ Year field
+  ✓ Save Movie button
+--- Fill movie form ---
+  ✓ Type movie title
+  ✓ Type year
+--- Submit movie ---
+  ✓ Tap Save Movie
+  ✓ New movie in list
+--- Screenshot ---
+  ✓ Screenshot MovieList
+
+========================================
+RESULTS: 144 passed / 144 total (0 failed)
+========================================
