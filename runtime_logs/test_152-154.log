@@ -1,0 +1,174 @@
+=== App 152: WaterIntake ===
+com.iez.waterIntake: 42399
+  ✔ Water Intake is in foreground
+--- Today screen ---
+  ✓ App title present
+  ✓ Today heading
+  ✓ Progress display
+  ✓ 250ml button
+  ✓ 500ml button
+  ✓ Custom button
+  ✓ Add Water FAB
+  ✓ Today's Drinks section
+--- Tab bar ---
+  ✓ Today tab
+  ✓ History tab
+  ✓ Goals tab
+--- Tap 250ml quick add ---
+  ✓ Tap 250ml
+--- Tap History tab (coords) ---
+  ✓ Tap History tab
+  ✓ History heading
+  ✓ March 20 entry
+  ✓ March 19 entry
+  ✓ March 18 entry
+  ✓ March 17 entry
+--- Tap Goals tab (coords) ---
+  ✓ Tap Goals tab
+  ✓ Goals heading
+  ✓ Daily Target
+  ✓ Reminder Interval
+  ✓ Notifications switch
+--- Back to Today tab (coords) ---
+  ✓ Tap Today tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+--- Back from search ---
+  ✓ Back from search
+--- Tap Add Water ---
+  ✓ Tap Add Water FAB
+  ✓ Add Water page
+  ✓ Amount field
+  ✓ Drink Type dropdown
+  ✓ Save button
+--- Fill form ---
+  ✓ Type amount
+--- Screenshot ---
+  ✓ Screenshot WaterIntake
+--- Back from Add Water ---
+  ✓ Back from Add Water
+
+=== App 153: PasswordVault ===
+com.iez.passwordVault: 43348
+  ✔ Password Vault is in foreground
+--- Passwords screen ---
+  ✓ App title present
+  ✓ Gmail entry
+  ✓ GitHub entry
+  ✓ Netflix entry
+  ✓ Slack entry
+  ✓ Add Password FAB
+--- Tab bar ---
+  ✓ Passwords tab
+  ✓ Categories tab
+  ✓ Generator tab
+--- Tap password detail (coords) ---
+  ✓ Tap Gmail
+  ✓ Password Details title
+  ✓ Username section
+  ✓ Website section
+  ✓ Notes section
+  ✓ Delete Password button
+--- Back to passwords ---
+  ✓ Back to passwords
+--- Tap Categories tab (coords) ---
+  ✓ Tap Categories tab
+  ✓ Categories heading
+  ✓ Social category
+  ✓ Work category
+  ✓ Entertainment category
+--- Tap Generator tab (coords) ---
+  ✓ Tap Generator tab
+  ✓ Generator heading
+  ✓ Generated Password
+  ✓ Length label
+  ✓ Uppercase switch
+  ✓ Numbers switch
+  ✓ Symbols switch
+  ✓ Generate button
+--- Tap Generate ---
+  ✓ Tap Generate
+--- Back to Passwords tab (coords) ---
+  ✓ Tap Passwords tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+--- Back from search ---
+  ✓ Back from search
+--- Tap Add Password ---
+  ✓ Tap Add Password FAB
+  ✓ Add Password page
+  ✓ Site Name field
+  ✓ Username field
+  ✓ Password field
+  ✓ Category dropdown
+  ✓ Save Password button
+--- Fill password form ---
+  ✓ Type site name
+  ✓ Type username
+  ✓ Type password
+--- Submit password ---
+  ✓ Tap Save Password
+  ✓ New password in list
+--- Screenshot ---
+  ✓ Screenshot PasswordVault
+
+=== App 154: PlantShop ===
+com.iez.plantShop: 44611
+  ✔ Plant Shop is in foreground
+--- Shop screen ---
+  ✓ Shop heading
+  ✓ Monstera plant
+  ✓ Snake Plant
+  ✓ Pothos plant
+  ✓ Peace Lily
+  ✓ Fern plant
+--- Filter chips ---
+  ✓ All filter
+  ✓ Indoor filter
+  ✓ Outdoor filter
+  ✓ Low Light filter
+--- Tab bar ---
+  ✓ Shop tab
+  ✓ Cart tab
+  ✓ Orders tab
+--- Tap Indoor filter ---
+  ✓ Tap Indoor filter
+  ✓ Monstera in Indoor
+--- Tap All filter ---
+  ✓ Tap All filter
+--- Tap plant detail (coords) ---
+  ✓ Tap Monstera
+  ✓ Plant Details title
+  ✓ Price section
+  ✓ Description section
+  ✓ Care Level section
+  ✓ Add to Cart button
+--- Back to shop ---
+  ✓ Back to shop
+--- Tap Cart tab (coords) ---
+  ✓ Tap Cart tab
+  ✓ Cart heading
+  ✓ Monstera in cart
+  ✓ Snake Plant in cart
+  ✓ Total label
+  ✓ Checkout button
+--- Tap Orders tab (coords) ---
+  ✓ Tap Orders tab
+  ✓ Orders heading
+  ✓ Order 1001
+  ✓ Order 1002
+--- Back to Shop tab (coords) ---
+  ✓ Tap Shop tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+--- Back from search ---
+  ✓ Back from search
+--- Screenshot ---
+  ✓ Screenshot PlantShop
+
+========================================
+RESULTS: 120 passed / 120 total (0 failed)
+========================================
