@@ -1,0 +1,199 @@
+=== CoffeeJournal Test Suite ===
+com.iez.coffeeJournal: 76150
+--- Home Screen ---
+  ✓ App title visible
+  ✓ Add Coffee FAB
+  ✓ All filter chip
+  ✓ Pour Over filter chip
+  ✓ Espresso filter chip
+  ✓ French Press filter chip
+  ✓ Ethiopian Yirgacheffe in list
+  ✓ Sumatra Mandheling in list
+  ✓ Colombia Supremo in list
+--- Filter Chips ---
+  ✓ Tap Pour Over filter
+  ✓ Ethiopian visible after Pour Over filter
+  ✓ Sumatra hidden after Pour Over filter
+  ✓ Tap Espresso filter
+  ✓ Colombia visible after Espresso filter
+  ✓ Tap All filter to reset
+--- Detail Screen ---
+  ✓ Tap Ethiopian Yirgacheffe
+  ✓ Coffee Details heading
+  ✓ Coffee name on detail
+  ✓ Roaster visible
+  ✓ Origin visible
+  ✓ Brew method chip
+  ✓ Roast level chip
+  ✓ Tasting Notes label
+  ✓ Delete Entry button
+  ✓ Back from detail
+--- Add Coffee Screen ---
+  ✓ Tap Add Coffee FAB
+  ✓ Add Coffee screen
+  ✓ Coffee Name field
+  ✓ Roaster field
+  ✓ Origin field
+  ✓ Brew Method dropdown
+  ✓ Roast Level dropdown
+  ✓ Save Coffee button
+  ✓ Type coffee name
+  ✓ Type roaster
+  ✓ Tap Save Coffee
+  ✓ New coffee in list
+--- Popup Menu: Roasters ---
+  ✓ Tap popup menu
+  ✓ Tap Roasters
+  ✓ Roasters screen
+  ✓ Blue Bottle roaster
+  ✓ Stumptown roaster
+  ✓ Back from Roasters
+--- Popup Menu: Brew Stats ---
+  ✓ Tap popup menu again
+  ✓ Tap Brew Stats
+  ✓ Brew Stats screen
+  ✓ Total Coffees label
+  ✓ Average Rating label
+  ✓ By Brew Method section
+  ✓ By Roast Level section
+  ✓ Back from Brew Stats
+--- Delete Coffee ---
+  ✓ Swipe up to find Test Brew
+  ✓ Test Brew visible after scroll
+  ✓ Tap Test Brew
+  ✓ Tap Delete Entry
+  ✓ Test Brew deleted
+
+=========================================
+  RESULTS: 56/56 passed, 0 failed
+=========================================
+=== GardenPlanner Test Suite ===
+com.iez.gardenPlanner: 78943
+--- Home Screen ---
+  ✓ App title visible
+  ✓ Add Plant FAB
+  ✓ All filter chip
+  ✓ Vegetables filter chip
+  ✓ Fruits filter chip
+  ✓ Herbs filter chip
+  ✓ Tomato in list
+  ✓ Strawberry in list
+  ✓ Basil in list
+--- Filter Chips ---
+  ✓ Tap Vegetables filter
+  ✓ Tomato visible after Vegetables filter
+  ✓ Strawberry hidden after Vegetables filter
+  ✓ Tap Fruits filter
+  ✓ Strawberry visible after Fruits filter
+  ✓ Reset to All filter
+--- Detail Screen ---
+  ✓ Tap Tomato
+  ✓ Tomato name on detail
+  ✓ Category chip
+  ✓ Planted date
+  ✓ Expected Harvest
+  ✓ Location
+  ✓ Status
+  ✓ Update Status button
+  ✓ Delete Item button
+--- Update Status ---
+  ✓ Tap Update Status
+  ✓ Status changed to Flowering
+  ✓ Back from detail
+--- Add Plant Screen ---
+  ✓ Tap Add Plant FAB
+  ✓ Add Plant screen
+  ✓ Plant Name field
+  ✓ Category dropdown
+  ✓ Location dropdown
+  ✓ Status dropdown
+  ✓ Type plant name
+  ✓ Scroll down to see Add Plant button
+  ✓ Tap Add Plant save button
+  ✓ New plant in list
+--- Popup Menu: Calendar ---
+  ✓ Tap popup menu
+  ✓ Tap Calendar
+  ✓ Calendar screen
+  ✓ Planted dates visible
+  ✓ Back from Calendar
+--- Popup Menu: Harvest Log ---
+  ✓ Tap popup menu again
+  ✓ Tap Harvest Log
+  ✓ Harvest Log screen
+  ✓ Lemon Tree in harvest log
+  ✓ Back from Harvest Log
+
+=========================================
+  RESULTS: 47/47 passed, 0 failed
+=========================================
+=== PetCare Test Suite ===
+com.iez.petCare: 81148
+--- Home Screen ---
+  ✓ App title visible
+  ✓ Add Pet FAB
+  ✓ All filter chip
+  ✓ Dog filter chip
+  ✓ Cat filter chip
+  ✓ Buddy in list
+  ✓ Whiskers in list
+  ✓ Kiwi in list
+--- Filter Chips ---
+  ✓ Tap Dog filter
+  ✓ Buddy visible after Dog filter
+  ✓ Max visible after Dog filter
+  ✓ Whiskers hidden after Dog filter
+  ✓ Tap Cat filter
+  ✓ Whiskers visible after Cat filter
+  ✓ Reset to All filter
+--- Detail Screen ---
+  ✓ Tap Buddy
+  ✓ Buddy detail screen
+  ✓ Breed visible
+  ✓ Species chip
+  ✓ Age info
+  ✓ Weight info
+  ✓ Last Vet Visit
+  ✓ Log Vet Visit button
+  ✓ Edit Notes button
+--- Log Vet Visit ---
+  ✓ Tap Log Vet Visit
+  ✓ Vet visit updated to today
+--- Edit Notes Dialog ---
+  ✓ Tap Edit Notes
+  ✓ Edit Notes dialog
+  ✓ Cancel button in dialog
+  ✓ Save button in dialog
+  ✓ Tap Cancel
+  ✓ Back from detail
+--- Add Pet Screen ---
+  ✓ Tap Add Pet FAB
+  ✓ Add Pet screen
+  ✓ Pet Name field
+  ✓ Species dropdown
+  ✓ Breed field
+  ✓ Age field
+  ✓ Type pet name
+  ✓ Type breed
+  ✓ Scroll to see Add Pet button
+  ✓ Tap Add Pet save
+  ✓ New pet in list
+--- Popup Menu: Vet Schedule ---
+  ✓ Tap popup menu
+  ✓ Tap Vet Schedule
+  ✓ Vet Schedule screen
+  ✓ Buddy in vet schedule
+  ✓ Last visit info
+  ✓ Back from Vet Schedule
+--- Popup Menu: Care Tips ---
+  ✓ Tap popup menu again
+  ✓ Tap Care Tips
+  ✓ Care Tips screen
+  ✓ Nutrition tip
+  ✓ Exercise tip
+  ✓ Grooming tip
+  ✓ Back from Care Tips
+
+=========================================
+  RESULTS: 56/56 passed, 0 failed
+=========================================
