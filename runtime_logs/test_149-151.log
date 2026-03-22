@@ -1,0 +1,197 @@
+=== App 149: DailyJournal ===
+com.iez.dailyJournal: 35908
+  ✔ Daily Journal is in foreground
+--- Entries screen ---
+  ✓ App title present
+  ✓ March 20 entry
+  ✓ March 19 entry
+  ✓ March 18 entry
+  ✓ New Entry FAB
+--- Tag filters ---
+  ✓ All filter
+  ✓ Personal filter
+  ✓ Work filter
+  ✓ Travel filter
+--- Tab bar ---
+  ✓ Entries tab
+  ✓ Calendar tab
+  ✓ Moods tab
+--- Tap entry detail (coords) ---
+  ✓ Tap March 20 entry
+  ✓ Entry Details title
+  ✓ Content section
+  ✓ Mood section
+  ✓ Delete Entry button
+--- Back to entries ---
+  ✓ Back to entries
+--- Tap Calendar tab (coords) ---
+  ✓ Tap Calendar tab
+  ✓ Calendar heading
+  ✓ Month name
+--- Tap Moods tab (coords) ---
+  ✓ Tap Moods tab
+  ✓ Moods heading
+  ✓ Happy mood
+  ✓ Neutral mood
+  ✓ Sad mood
+  ✓ Mood Trend section
+--- Back to Entries tab (coords) ---
+  ✓ Tap Entries tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+  ✓ Type search query
+  ✓ March 20 result
+--- Back from search ---
+  ✓ Back from search
+--- Tap New Entry ---
+  ✓ Tap New Entry FAB
+  ✓ New Entry page
+  ✓ Title field
+  ✓ Content field
+  ✓ Mood dropdown
+  ✓ Save Entry button
+--- Fill entry form ---
+  ✓ Type title
+  ✓ Type content
+--- Submit entry ---
+  ✓ Tap Save Entry
+  ✓ New entry in list
+--- Screenshot ---
+  ✓ Screenshot DailyJournal
+
+=== App 150: FitnessGoals ===
+com.iez.fitnessGoals: 36933
+  ✔ Fitness Goals is in foreground
+--- Goals screen ---
+  ✓ App title present
+  ✓ Run 5K goal
+  ✓ 100 Push-ups goal
+  ✓ Lose 5kg goal
+  ✓ Swim 1km goal
+  ✓ Add Goal FAB
+--- Filter chips ---
+  ✓ All filter
+  ✓ Cardio filter
+  ✓ Strength filter
+  ✓ Flexibility filter
+--- Tab bar ---
+  ✓ Goals tab
+  ✓ Progress tab
+  ✓ Achievements tab
+--- Tap Cardio filter ---
+  ✓ Tap Cardio filter
+  ✓ Run 5K shown
+--- Tap All filter ---
+  ✓ Tap All filter
+--- Tap goal detail (coords) ---
+  ✓ Tap Run 5K
+  ✓ Goal Details title
+  ✓ Target section
+  ✓ Progress section
+  ✓ Delete Goal button
+--- Back to goals ---
+  ✓ Back to goals
+--- Tap Progress tab (coords) ---
+  ✓ Tap Progress tab
+  ✓ Progress heading
+  ✓ Weekly Activity
+  ✓ Calories Burned
+  ✓ Distance
+--- Tap Achievements tab (coords) ---
+  ✓ Tap Achievements tab
+  ✓ Achievements heading
+  ✓ First Run achievement
+  ✓ Week Streak achievement
+  ✓ Early Bird achievement
+--- Back to Goals tab (coords) ---
+  ✓ Tap Goals tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+  ✓ Type search query
+--- Back from search ---
+  ✓ Back from search
+--- Tap Add Goal ---
+  ✓ Tap Add Goal FAB
+  ✓ Add Goal page
+  ✓ Goal Name field
+  ✓ Category dropdown
+  ✓ Target field
+  ✓ Deadline field
+  ✓ Save Goal button
+--- Fill goal form ---
+  ✓ Type goal name
+  ✓ Type target
+--- Submit goal ---
+  ✓ Tap Save Goal
+  ✓ New goal in list
+--- Screenshot ---
+  ✓ Screenshot FitnessGoals
+
+=== App 151: BookShelf ===
+com.iez.bookShelf: 38060
+  ✔ Book Shelf is in foreground
+--- Reading screen ---
+  ✓ App heading present
+  ✓ Dune book
+  ✓ 1984 book
+  ✓ Sapiens book
+  ✓ Add Book FAB
+--- Tab bar ---
+  ✓ Reading tab
+  ✓ Finished tab
+  ✓ Wishlist tab
+--- Tap book detail (coords) ---
+  ✓ Tap Dune
+  ✓ Book Details title
+  ✓ Author section
+  ✓ Pages section
+  ✓ Progress section
+  ✓ Delete Book button
+--- Back to reading ---
+  ✓ Back to reading
+--- Tap Finished tab (coords) ---
+  ✓ Tap Finished tab
+  ✓ Finished heading
+  ✓ The Hobbit
+  ✓ Atomic Habits
+--- Tap Wishlist tab (coords) ---
+  ✓ Tap Wishlist tab
+  ✓ Wishlist heading
+  ✓ Project Hail Mary
+  ✓ Educated
+--- Back to Reading tab (coords) ---
+  ✓ Tap Reading tab
+--- Tap Search ---
+  ✓ Tap Search icon
+  ✓ Search page
+  ✓ All filter
+  ✓ Fiction filter
+  ✓ Non-Fiction filter
+  ✓ Science filter
+  ✓ Type search query
+  ✓ Dune result
+--- Back from search ---
+  ✓ Back from search
+--- Tap Add Book ---
+  ✓ Tap Add Book FAB
+  ✓ Add Book page
+  ✓ Book Title field
+  ✓ Author field
+  ✓ Total Pages field
+  ✓ Genre dropdown
+  ✓ Save Book button
+--- Fill book form ---
+  ✓ Type book title
+  ✓ Type author
+  ✓ Type total pages
+--- Submit book ---
+  ✓ Tap Save Book
+  ✓ New book in list
+--- Screenshot ---
+  ✓ Screenshot BookShelf
+
+========================================
+RESULTS: 139 passed / 139 total (0 failed)
+========================================
