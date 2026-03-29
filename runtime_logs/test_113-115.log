@@ -1,0 +1,142 @@
+=== App 113: PodcastPlayer ===
+com.test.podcastPlayer: 25873
+  ❌ Failed to launch Podcast Player (saw: 'Travel Log')
+--- Episodes Tab (Home) ---
+  ✗ App title ('Podcast Player' not in tree)
+  ✗ Future of AI ('The Future of AI' not in tree)
+  ✗ Deep Work ('Deep Work Habits' not in tree)
+  ✗ Startup Secrets ('Startup Secrets' not in tree)
+  ✗ Flutter State ('Flutter State Management' not in tree)
+  ✗ Mindful Morning ('Mindful Morning' not in tree)
+  ✗ Market Trends ('Market Trends 2026' not in tree)
+  ✗ Downloads button ('Downloads' not in tree)
+  ✗ Queue button ('Queue' not in tree)
+--- Switch to Shows tab (coords — NavigationBar) ---
+  ✓ Tap Shows tab
+  ✗ Tech Talk show ('Tech Talk' not in tree)
+  ✗ Productivity Pod ('Productivity Pod' not in tree)
+  ✗ Business Weekly ('Business Weekly' not in tree)
+  ✗ Code Radio ('Code Radio' not in tree)
+  ✗ Wellness Hour ('Wellness Hour' not in tree)
+--- Switch back to Episodes (coords) ---
+  ✓ Tap Episodes tab
+--- Tap episode to see detail (coords) ---
+  ✗ Could not find Deep Work coords (skipping 7 assertions)
+--- Navigate to Downloads (empty) ---
+  ✗ Tap Downloads
+  ✗ Downloads heading ('Downloads' not in tree)
+  ✗ No downloads ('No downloads yet' not in tree)
+  ✓ Back from Downloads
+--- Navigate to Queue ---
+  ✗ Tap Queue
+  ✗ Queue heading ('Up Next' not in tree)
+  ✗ AI in queue ('The Future of AI' not in tree)
+  ✗ Deep Work in queue ('Deep Work Habits' not in tree)
+  ✗ Back from Queue
+  ✓ Screenshot PodcastPlayer
+
+=== App 114: ProjectBoard ===
+com.test.projectBoard: 27727
+  ✔ Project Board is in foreground
+--- Todo Tab (Home) ---
+  ✓ App title
+  ✓ Todo tab
+  ✓ In Progress tab
+  ✓ Done tab
+  ✓ Design Login
+  ✓ Setup CI
+  ✓ Write Unit Tests
+  ✓ Stats button
+  ✓ Add Card FAB
+--- Switch to In Progress tab (coords — TabBar multi-line labels) ---
+  ✓ Tap In Progress tab
+  ✓ API Auth
+  ✓ Database Schema
+--- Switch to Done tab (coords) ---
+  ✓ Tap Done tab
+  ✓ Project Setup
+  ✓ Requirements Doc
+--- Switch back to Todo (coords) ---
+  ✓ Tap Todo tab
+--- Navigate to Stats ---
+  ✓ Tap Stats
+  ✓ Stats heading
+  ✓ Overview
+  ✓ Total Cards
+  ✓ By Priority
+  ✓ Back from Stats
+--- Navigate to Add Card ---
+  ✓ Tap Add Card
+  ✓ Add heading
+  ✓ Card title field
+  ✓ Assignee field
+  ✓ Priority dropdown
+  ✓ Save button
+--- Add a new card ---
+  ✓ Type card title
+  ✗ Tap Save Card
+--- Verify new card in Todo ---
+  ✗ Back on board ('Project Board' not in tree)
+  ✗ New card visible ('Review PR' not in tree)
+  ✓ Screenshot ProjectBoard
+
+=== App 115: TravelLog ===
+com.test.travelLog: 28548
+  ✔ Travel Log is in foreground
+--- Home Screen ---
+  ✓ App title
+  ✓ Kyoto
+  ✓ Barcelona
+  ✓ Reykjavik
+  ✓ Machu Picchu
+  ✓ Cape Town
+  ✓ Santorini
+  ✓ All filter
+  ✓ 5 Stars filter
+  ✓ Favorites filter
+  ✓ Stats button
+  ✓ Add Trip FAB
+--- Filter by 5 Stars ---
+  ✓ Tap 5 Stars filter
+  ✓ Kyoto (5 stars)
+  ✓ Reykjavik (5 stars)
+  ✓ Machu Picchu (5 stars)
+--- Reset to All ---
+  ✓ Tap All filter
+--- Tap trip to see detail (coords) ---
+  ✓ Tap Kyoto
+  ✓ Detail title
+  ✓ Country
+  ✓ Date chip
+  ✓ Photos chip
+  ✓ Highlight heading
+  ✓ Highlight text
+  ✓ Back from detail
+--- Navigate to Stats ---
+  ✓ Tap Stats
+  ✓ Stats heading
+  ✓ Overview
+  ✓ Total Trips
+  ✓ Countries heading
+  ✓ Japan
+  ✓ Spain
+  ✓ Back from Stats
+--- Navigate to Add Trip ---
+  ✓ Tap Add Trip
+  ✓ Add heading
+  ✓ Destination field
+  ✓ Country field
+  ✓ Highlight field
+  ✓ Save button
+--- Add a new trip ---
+  ✓ Type destination
+  ✓ Type country
+  ✓ Tap Save Trip
+--- Verify new trip ---
+  ✓ Back on home
+  ✓ New trip visible
+  ✓ Screenshot TravelLog
+
+=========================================
+  RESULTS: 79/111 passed, 32 failed
+=========================================

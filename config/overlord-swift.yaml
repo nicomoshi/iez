@@ -1,0 +1,52 @@
+# iez configuration — Overlord Swift (Native iOS app)
+# Usage: IEZ_CONFIG=config/overlord-swift.yaml iez ...
+# Or: cp config/overlord-swift.yaml ~/.config/iez/config.yaml
+version: 1
+
+# Backend priority (first available wins)
+backends:
+  ui:
+    - axe
+    - iosef
+    - xcodebuildmcp
+  build:
+    - xcodebuild
+    - xcodebuildmcp
+  verify:
+    - peekaboo
+  flow:
+    - maestro
+  debug:
+    - xcodebuildmcp
+
+# Target simulator
+simulator:
+  device: "iPhone 17 Pro"
+  # udid: auto — resolved at runtime
+
+# Overlord Swift app
+app:
+  bundle_id: "com.arguello.overlord"
+  platform: ios
+  project_path: "~/Developer/overlord_swift/Overlord"
+  build_system: xcode
+  scheme: "Overlord-iOS"
+
+# Output preferences
+output:
+  json: true
+  compact: false
+  color: true
+
+# Peekaboo AI provider for verify commands
+verify:
+  provider: "anthropic/claude-sonnet-4.5"
+
+# Timeouts — tuned for Overlord (real network IO to gateway)
+timeouts:
+  tap_wait: 8
+  build: 600
+  screenshot: 10
+  verify: 30
+  gateway_connect: 15
+  message_response: 30

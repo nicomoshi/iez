@@ -126,8 +126,9 @@ _app_build_flutter() {
 }
 
 _app_build_xcode() {
-    local scheme
+    local scheme destination
     scheme=$(iez_parse_flag "--scheme" "$@" 2>/dev/null) || true
+    destination=$(iez_parse_flag "--destination" "$@" 2>/dev/null) || true
 
     local project
     project=$(_iez_find_xcode_project)
@@ -149,15 +150,58 @@ _app_build_xcode() {
         return $EXIT_USAGE
     fi
 
-    iez_log info "Building $project with scheme $scheme..."
+    # Resolve destination — use provided, config, or auto-detect booted simulator
+    if [[ -z "$destination" ]]; then
+        local sim_name
+        sim_name=$(iez_config_get "simulator.device" "")
+        if [[ -n "$sim_name" ]]; then
+            destination="platform=iOS Simulator,name=$sim_name"
+        else
+            destination="generic/platform=iOS Simulator"
+        fi
+    fi
+
+    iez_log info "Building $project with scheme $scheme for $destination..."
     local output
-    output=$(xcodebuild build $project_flag -scheme "$scheme" -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' 2>&1) || {
-        iez_error "app.build" "BUILD_FAILED" "Xcode build failed" "xcodebuild"
+    output=$(xcodebuild build $project_flag -scheme "$scheme" \
+        -destination "$destination" \
+        CODE_SIGNING_ALLOWED=NO \
+        2>&1) || {
+        local error_lines
+        error_lines=$(echo "$output" | grep -E "error:" | tail -5)
+        iez_error "app.build" "BUILD_FAILED" "Xcode build failed: $error_lines" "xcodebuild"
         return $EXIT_FAIL
     }
 
-    iez_response "app.build" "$(jq -n --arg project "$project" --arg scheme "$scheme" \
-        '{project: $project, scheme: $scheme, success: true}')" "xcodebuild"
+    # Extract the built .app path from the build log
+    local app_path
+    app_path=$(echo "$output" | grep -oE '/[^ ]*\.app' | grep -i 'Build/Products' | head -1)
+
+    # Fallback: search DerivedData for the .app
+    if [[ -z "$app_path" || ! -d "$app_path" ]]; then
+        app_path=$(_iez_find_xcode_app "$scheme")
+    fi
+
+    iez_response "app.build" "$(jq -n --arg project "$project" --arg scheme "$scheme" --arg app_path "${app_path:-}" \
+        '{project: $project, scheme: $scheme, app_path: $app_path, success: true}')" "xcodebuild"
+}
+
+# Find the most recently built .app in DerivedData for a given scheme
+_iez_find_xcode_app() {
+    local scheme="$1"
+    local search_dir="$HOME/Library/Developer/Xcode/DerivedData"
+
+    # Search for .app bundles matching the scheme in Build/Products
+    local app_path
+    app_path=$(find "$search_dir" -path "*/Build/Products/*-iphonesimulator/${scheme}.app" -type d 2>/dev/null | head -1)
+
+    # If not found by scheme name, try broader search
+    if [[ -z "$app_path" ]]; then
+        app_path=$(find "$search_dir" -path "*/Build/Products/*-iphonesimulator/*.app" -type d -newer "$search_dir" 2>/dev/null | \
+            sort -t/ -k10 | tail -1)
+    fi
+
+    echo "$app_path"
 }
 
 # =============================================================================
@@ -214,22 +258,102 @@ cmd_app_build_run() {
             --arg udid "$udid" \
             '{app_path: $app_path, bundle_id: $bundle_id, udid: $udid, success: true}')" "flutter"
     else
-        # Delegate to XcodeBuildMCP if available
-        if command -v xcodebuildmcp &>/dev/null; then
-            local scheme
-            scheme=$(iez_parse_flag "--scheme" "$@" 2>/dev/null) || true
-            if [[ -z "$scheme" ]]; then
-                iez_error "app.build-run" "USAGE" "Provide --scheme for Xcode projects" ""
-                return $EXIT_USAGE
-            fi
-            iez_log info "Delegating to XcodeBuildMCP build_run_sim..."
-            # TODO: integrate XcodeBuildMCP CLI when available
-            iez_error "app.build-run" "NOT_IMPLEMENTED" "XcodeBuildMCP CLI integration pending" "xcodebuildmcp"
+        # Native xcodebuild build-run for Swift/Xcode projects
+        local scheme
+        scheme=$(iez_parse_flag "--scheme" "$@" 2>/dev/null) || true
+
+        if [[ -z "$scheme" ]]; then
+            iez_error "app.build-run" "USAGE" "Provide --scheme for Xcode projects" ""
+            return $EXIT_USAGE
+        fi
+
+        local udid
+        udid=$(iez_resolve_udid "$@" 2>/dev/null) || true
+        if [[ -z "$udid" ]]; then
+            iez_error "app.build-run" "NO_SIMULATOR" "No booted simulator" ""
+            return $EXIT_NO_SIM
+        fi
+
+        # Get the simulator name for the destination
+        local sim_name
+        sim_name=$(xcrun simctl list devices -j 2>/dev/null | jq -r --arg udid "$udid" \
+            '[.devices[][] | select(.udid == $udid)] | first | .name // empty' 2>/dev/null)
+
+        local project
+        project=$(_iez_find_xcode_project)
+
+        if [[ -z "$project" ]]; then
+            iez_error "app.build-run" "NO_PROJECT" "No Xcode project found in current directory" ""
             return $EXIT_FAIL
         fi
 
-        iez_error "app.build-run" "NO_PROJECT" "No Flutter or Xcode project found" ""
-        return $EXIT_FAIL
+        local project_flag
+        if [[ "$project" == *.xcworkspace ]]; then
+            project_flag="-workspace $project"
+        else
+            project_flag="-project $project"
+        fi
+
+        # Build for simulator
+        local destination="platform=iOS Simulator,id=$udid"
+        iez_log info "Building $scheme for simulator $sim_name ($udid)..."
+
+        local output
+        output=$(xcodebuild build $project_flag -scheme "$scheme" \
+            -destination "$destination" \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1) || {
+            local error_lines
+            error_lines=$(echo "$output" | grep -E "error:" | tail -5)
+            iez_error "app.build-run" "BUILD_FAILED" "Xcode build failed: $error_lines" "xcodebuild"
+            return $EXIT_FAIL
+        }
+
+        # Find the built .app
+        local app_path
+        app_path=$(_iez_find_xcode_app "$scheme")
+
+        if [[ -z "$app_path" || ! -d "$app_path" ]]; then
+            # Try alternate scheme name (e.g., "Overlord-iOS" → look for both)
+            local base_name
+            base_name=$(echo "$scheme" | sed 's/-.*$//')
+            app_path=$(_iez_find_xcode_app "$base_name")
+        fi
+
+        if [[ -z "$app_path" || ! -d "$app_path" ]]; then
+            iez_error "app.build-run" "APP_NOT_FOUND" "Built .app not found in DerivedData" "xcodebuild"
+            return $EXIT_FAIL
+        fi
+
+        # Install
+        iez_log info "Installing $app_path to $udid..."
+        xcrun simctl install "$udid" "$app_path" 2>/dev/null || {
+            iez_error "app.build-run" "INSTALL_FAILED" "Failed to install .app to simulator" "xcodebuild"
+            return $EXIT_FAIL
+        }
+
+        # Extract bundle ID
+        local bundle_id
+        bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app_path/Info.plist" 2>/dev/null)
+
+        if [[ -z "$bundle_id" ]]; then
+            iez_error "app.build-run" "BUNDLE_ID_NOT_FOUND" "Could not extract bundle ID from built .app" "xcodebuild"
+            return $EXIT_FAIL
+        fi
+
+        # Launch
+        iez_log info "Launching $bundle_id..."
+        xcrun simctl launch "$udid" "$bundle_id" 2>/dev/null || {
+            iez_error "app.build-run" "LAUNCH_FAILED" "Failed to launch $bundle_id" "xcodebuild"
+            return $EXIT_FAIL
+        }
+
+        iez_response "app.build-run" "$(jq -n \
+            --arg app_path "$app_path" \
+            --arg bundle_id "$bundle_id" \
+            --arg udid "$udid" \
+            --arg scheme "$scheme" \
+            '{app_path: $app_path, bundle_id: $bundle_id, udid: $udid, scheme: $scheme, success: true}')" "xcodebuild"
     fi
 }
 
