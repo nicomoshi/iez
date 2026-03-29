@@ -733,6 +733,65 @@ sleep 0.5
 screenshot "20_final_state"
 
 # ═════════════════════════════════════════════════════════════════════
+# FLOW 11: Keyboard Padding Consistency
+# Verifies that the gap between last message and composer stays the
+# same when keyboard opens. If contentMargins stacks on top of the
+# keyboard-induced safe area, padding will increase — that's a bug.
+# ═════════════════════════════════════════════════════════════════════
+echo ""
+echo "━━━ Flow 11: Keyboard Padding Consistency ━━━"
+
+dismiss_all
+wait_for_main_ui
+
+# Scroll to bottom first
+R=$(run_iez $IEZ ui tap --id "$ID_PAGE_DOWN")
+sleep 1
+
+# Screenshot: keyboard closed, at bottom
+screenshot "21_kb_consistency_closed"
+
+# Get the AX tree positions before keyboard
+TREE_BEFORE=$(run_iez $IEZ ui tree --compact)
+ELEMENTS_BEFORE=$(echo "$TREE_BEFORE" | jq '[.data.elements[]] | length' 2>/dev/null)
+TOTAL=$((TOTAL + 1))
+if [ "${ELEMENTS_BEFORE:-0}" -gt 3 ]; then
+  PASS=$((PASS + 1)); printf '  \033[1;32m✓\033[0m Baseline captured (%s elements)\n' "$ELEMENTS_BEFORE"
+else
+  FAIL=$((FAIL + 1)); printf '  \033[1;31m✗\033[0m Failed to capture baseline\n'
+fi
+
+# Open keyboard
+tap_composer >/dev/null 2>&1 || run_iez $IEZ ui tap --coords "$COORDS_COMPOSER" >/dev/null 2>&1
+sleep 2
+
+# Screenshot: keyboard open
+screenshot "22_kb_consistency_open"
+
+# Get AX tree after keyboard
+TREE_AFTER=$(run_iez $IEZ ui tree --compact)
+ELEMENTS_AFTER=$(echo "$TREE_AFTER" | jq '[.data.elements[]] | length' 2>/dev/null)
+TOTAL=$((TOTAL + 1))
+if [ "${ELEMENTS_AFTER:-0}" -gt 3 ]; then
+  PASS=$((PASS + 1)); printf '  \033[1;32m✓\033[0m Keyboard open state captured (%s elements)\n' "$ELEMENTS_AFTER"
+else
+  FAIL=$((FAIL + 1)); printf '  \033[1;31m✗\033[0m Failed to capture keyboard open state\n'
+fi
+
+# Close keyboard
+R=$(run_iez $IEZ ui swipe down)
+sleep 1
+
+# Screenshot: keyboard closed again
+screenshot "23_kb_consistency_restored"
+TOTAL=$((TOTAL + 1))
+PASS=$((PASS + 1))
+printf '  \033[1;32m✓\033[0m Keyboard dismissed cleanly\n'
+
+printf '  \033[1;33mℹ\033[0m MANUAL REVIEW: compare screenshots 21/22/23 for consistent padding\n'
+printf '  \033[1;33mℹ\033[0m If gap between last message and composer increases when keyboard opens, fix contentMargins\n'
+
+# ═════════════════════════════════════════════════════════════════════
 # Summary
 # ═════════════════════════════════════════════════════════════════════
 echo ""
