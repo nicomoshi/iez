@@ -14,9 +14,27 @@ AXe + Peekaboo + Maestro behind a single JSON-outputting interface.
    cd ~/Developer/sestuary
    melos run ios:install-dev
    ```
-4. **Test credentials (optional but recommended):** create a test Google
-   account that's already signed in on the simulator, OR set
-   `USE_MOCK_DATA=true` in `.env.dev` to bypass real OAuth.
+4. **Test credentials (recommended):** the Stuari dev flavor ships a
+   built-in email/password **Dev magic login** form that bypasses the
+   Apple/Google identity webviews (which live outside the Flutter AX
+   tree). Seed the three fixture users with a known password by running
+   the admin seeder once:
+   ```bash
+   cd ~/Developer/sestuary/scripts/seed && npm install
+   SUPABASE_URL=https://jqqseyekxdgnsxxppfjx.supabase.co \
+   SUPABASE_SERVICE_ROLE_KEY=<service-role-key> \
+   npx tsx admin_seed_users.ts
+   ```
+   Then export for iEZ:
+   ```bash
+   export STUARI_TEST_EMAIL=alice@seed.dev
+   export STUARI_TEST_PASSWORD=iez-test-password-2026
+   ```
+   Flows drive the form via the AX labels `Dev email`, `Dev password`,
+   `Dev sign in`. The form is only rendered when the app is built
+   against `.env.dev` (`APP_ENV=dev`) — prod/stg builds still show only
+   the Apple/Google buttons. Alternatively, set `USE_MOCK_DATA=true` in
+   `.env.dev` to bypass auth entirely.
 5. **Bundle ID (default: dev flavor):** `com.stuari.stuari.dev`.
    Override with `STUARI_BUNDLE_ID=com.stuari.stuari` for prod.
 
