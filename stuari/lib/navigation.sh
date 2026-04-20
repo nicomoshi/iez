@@ -27,12 +27,32 @@ TAB_NOTIFICATIONS="Notifications tab"
 TAB_PROFILE="Profile tab"
 TAB_SETTINGS="Settings tab"
 
+# ── Coordinate fallbacks for the HOME TAB ───────────────────────────
+#
+# On Stuari's home tab, the top nav bar is rendered inside a
+# ClipRect + Align wrapper (see `_buildHomeLayout` in app_shell.dart)
+# that currently swallows the `TopNavItem` semantics. Other tabs use
+# the standard `AppBar` layout and expose them fine. Until the home
+# layout is fixed, tap by screen coordinates.
+#
+# Coordinates are in points on iPhone 17 (402pt wide). The toolbar sits
+# at y~60–115 (kToolbarHeight 56 under the 62pt status bar). The two
+# leading icons (Home, Notifications) are left-aligned at ~28 / ~85,
+# the two trailing icons (Profile, Settings) right-aligned at ~318 / ~374.
+# Discover is disabled in the current build.
+TAB_COORDS_HOME="28,88"
+TAB_COORDS_NOTIFICATIONS="85,88"
+TAB_COORDS_PROFILE="318,88"
+TAB_COORDS_SETTINGS="374,88"
+
 # ── Tab navigation ──────────────────────────────────────────────────
 
-# nav_to_tab BASE_LABEL DESCRIPTION
-#   Tries plain label, then ", selected" suffix (for re-tap), then substring match
+# nav_to_tab BASE_LABEL DESCRIPTION [FALLBACK_COORDS]
+#   Tries plain label, then ", selected" suffix (for re-tap), then substring
+#   match, then a coordinate-based fallback (for the home-tab semantic
+#   swallow bug — see TAB_COORDS_* constants above).
 nav_to_tab() {
-  local base="$1" desc="${2:-$1}"
+  local base="$1" desc="${2:-$1}" coords="${3:-}"
   local r
 
   # Try plain label
@@ -68,15 +88,25 @@ nav_to_tab() {
     fi
   fi
 
+  # Coordinate fallback (home-tab semantic swallow workaround)
+  if [ -n "$coords" ]; then
+    r=$(run_iez "$IEZ" ui tap --coords "$coords")
+    if [ "$(json_ok "$r")" = "true" ]; then
+      pass "Nav: $desc (coord fallback $coords)"
+      sleep 1.2
+      return 0
+    fi
+  fi
+
   fail "Nav: $desc — tab label not found ($base)"
   return 1
 }
 
-go_home()          { nav_to_tab "$TAB_HOME" "Home"; }
-go_discover()      { nav_to_tab "$TAB_DISCOVER" "Discover"; }
-go_notifications() { nav_to_tab "$TAB_NOTIFICATIONS" "Notifications"; }
-go_profile()       { nav_to_tab "$TAB_PROFILE" "Profile"; }
-go_settings()      { nav_to_tab "$TAB_SETTINGS" "Settings"; }
+go_home()          { nav_to_tab "$TAB_HOME"          "Home"          "$TAB_COORDS_HOME"; }
+go_discover()      { nav_to_tab "$TAB_DISCOVER"      "Discover"; }
+go_notifications() { nav_to_tab "$TAB_NOTIFICATIONS" "Notifications" "$TAB_COORDS_NOTIFICATIONS"; }
+go_profile()       { nav_to_tab "$TAB_PROFILE"       "Profile"       "$TAB_COORDS_PROFILE"; }
+go_settings()      { nav_to_tab "$TAB_SETTINGS"      "Settings"      "$TAB_COORDS_SETTINGS"; }
 
 # ── Assertions ──────────────────────────────────────────────────────
 

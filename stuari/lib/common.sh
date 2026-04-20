@@ -252,22 +252,41 @@ dismiss_all() {
 }
 
 # wait_for_main_ui — wait until a known always-present home element shows up.
-# Stuari's top bar has "Home tab" / "Settings tab" labels after auth.
+# Stuari's top bar normally exposes "Home tab" / "Settings tab" labels, but
+# on the Home tab itself the top nav is currently semantic-invisible (see
+# navigation.sh for the workaround). So we also accept any of the
+# bottom-sheet sub-tabs ("Feed", "Journal", "Stats") or the "Create new
+# habit" / "Create Habit" affordance as evidence of a successful auth.
 wait_for_main_ui() {
   local timeout="${1:-10}"
   local r
-  # Prefer Home tab (only present when signed in)
-  r=$(run_iez "$IEZ" ui wait --label "Home tab" --timeout "$timeout")
+  # Prefer Home tab label (other tabs)
+  r=$(run_iez "$IEZ" ui wait --label "Home tab" --timeout 3)
   [ "$(json_ok "$r")" = "true" ] && return 0
-  r=$(run_iez "$IEZ" ui wait --label "Home tab, selected" --timeout 3)
+  r=$(run_iez "$IEZ" ui wait --label "Home tab, selected" --timeout 2)
   [ "$(json_ok "$r")" = "true" ] && return 0
-  # Try selected variants for other tabs
-  r=$(run_iez "$IEZ" ui wait --label "Settings tab" --timeout 3)
+  r=$(run_iez "$IEZ" ui wait --label "Settings tab" --timeout 2)
+  [ "$(json_ok "$r")" = "true" ] && return 0
+  # Home tab fallbacks
+  r=$(run_iez "$IEZ" ui wait --label "Create new habit" --timeout 2)
+  [ "$(json_ok "$r")" = "true" ] && return 0
+  r=$(run_iez "$IEZ" ui wait --label "Create Habit" --timeout 2)
   [ "$(json_ok "$r")" = "true" ] && return 0
   dismiss_all
   sleep 1
-  r=$(run_iez "$IEZ" ui wait --label "Home tab" --timeout 5)
-  [ "$(json_ok "$r")" = "true" ]
+  # Final broad sweep
+  local i=0
+  while [ $i -lt "$timeout" ]; do
+    if has_label "Home tab" \
+      || has_label "Settings tab" \
+      || has_label "Create new habit" \
+      || has_label "Create Habit" \
+      || tree_contains "Tab 1 of 3"; then
+      return 0
+    fi
+    sleep 1; i=$((i + 1))
+  done
+  return 1
 }
 
 # wait_for_auth_ui — on sign-in screen, wait for one of the OAuth buttons.

@@ -2,15 +2,19 @@
 # ──────────────────────────────────────────────────────────────────────
 # Stuari — Authentication Helpers
 #
-# Stuari auth is OAuth-only: "Sign in with Apple" and "Sign in with Google".
-# There is no email/password form. Sign-up and sign-in are the same flow;
-# the onboarding step only runs for users who haven't completed it.
+# Stuari dev flavor ships a **Dev magic login** form (`Dev email`,
+# `Dev password`, `Dev sign in` AX labels) that iEZ can drive without
+# bouncing through the system Apple/Google OAuth webviews (which live
+# outside the Flutter AX tree). These helpers prefer that form.
 #
-# For automated testing we tap the Google OAuth button and assume one of:
-#   a) A test Google account is already signed in on the simulator, OR
-#   b) The USE_MOCK_DATA=true flavor bypasses real OAuth (check .env.dev).
-# If neither, the flow will fail at the ASWebAuthenticationSession stage
-# (system webview, outside Flutter AX tree) and the test skips gracefully.
+# For release/stg builds (or when `DevMagicLogin` is not rendered) we
+# fall back to the OAuth buttons. The OAuth path will typically fail
+# inside a simulator; tests should flag with `skip` in that case.
+#
+# Expected env:
+#   STUARI_TEST_EMAIL    (default: alice@seed.dev)
+#   STUARI_TEST_PASSWORD (default: iez-test-password-2026)
+#   STUARI_TEST_NAME     (optional; used for onboarding profile step)
 # ──────────────────────────────────────────────────────────────────────
 
 if [ "${STUARI_AUTH_LOADED:-}" = "1" ]; then return 0; fi
@@ -21,7 +25,13 @@ _AUTH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common.sh
 source "$_AUTH_DIR/common.sh"
 
-# Labels on the authentication page
+# ── Labels ──────────────────────────────────────────────────────────
+# Dev magic login form (dev flavor only)
+LABEL_DEV_EMAIL="Dev email"
+LABEL_DEV_PASSWORD="Dev password"
+LABEL_DEV_SIGN_IN="Dev sign in"
+
+# Fallback OAuth buttons (prod/stg)
 LABEL_SIGN_IN_APPLE="Sign in with Apple"
 LABEL_SIGN_IN_GOOGLE="Sign in with Google"
 LABEL_PRIVACY="Privacy Policy"
@@ -30,38 +40,53 @@ LABEL_TERMS="Terms of Use"
 # ── Detection ────────────────────────────────────────────────────────
 
 on_auth_page() {
-  has_label "$LABEL_SIGN_IN_APPLE" || has_label "$LABEL_SIGN_IN_GOOGLE"
+  has_label "$LABEL_DEV_SIGN_IN" \
+    || has_label "$LABEL_SIGN_IN_APPLE" \
+    || has_label "$LABEL_SIGN_IN_GOOGLE"
 }
 
 on_onboarding_page() {
   has_label "Get Started" || has_label "Skip" || tree_contains "Your name"
 }
 
+# Stuari's top nav exposes Home/Discover/Notifications/Profile/Settings
+# tabs with labels like "Home tab" and "Home tab, selected". The home
+# screen also has characteristic elements like "Create new habit" when
+# the habit carousel renders. We treat any of those as "signed in".
 on_home_page() {
-  has_label "Home tab" || has_label "Home tab, selected"
+  has_label "Home tab" \
+    || has_label "Home tab, selected" \
+    || has_label "Home tab, selected tab" \
+    || has_label "Create new habit" \
+    || has_label "Create Habit" \
+    || has_label "Feed tab" \
+    || tree_contains "Tab 1 of 3"
+}
+
+has_dev_magic_login() {
+  has_label "$LABEL_DEV_SIGN_IN"
 }
 
 # ── Actions ──────────────────────────────────────────────────────────
 
-# sign_in_google — tap the Google OAuth button.
-# Returns 0 if tap succeeded (OAuth sheet may still fail in system webview).
+# sign_in_google — tap the Google OAuth button (simulator will typically
+# fail to complete the webview flow).
 sign_in_google() {
-  if ! on_auth_page; then
-    info "Not on auth page — skipping sign-in"
+  if ! has_label "$LABEL_SIGN_IN_GOOGLE"; then
+    info "Google OAuth button not visible"
     return 1
   fi
   capture "auth_pre_google"
   local r
   r=$(run_iez "$IEZ" ui tap --label "$LABEL_SIGN_IN_GOOGLE")
   assert_ok "$r" "Tap Sign in with Google"
-  sleep 3  # System webview takes a moment to appear
+  sleep 3
   capture "auth_post_google_tap"
 }
 
-# sign_in_apple — tap the Apple OAuth button.
 sign_in_apple() {
-  if ! on_auth_page; then
-    info "Not on auth page — skipping sign-in"
+  if ! has_label "$LABEL_SIGN_IN_APPLE"; then
+    info "Apple OAuth button not visible"
     return 1
   fi
   capture "auth_pre_apple"
@@ -72,43 +97,109 @@ sign_in_apple() {
   capture "auth_post_apple_tap"
 }
 
-# login_with_test_user — tap Google OAuth, assume test creds are handled either
-# by a pre-signed-in sim account or by the USE_MOCK_DATA flavor.
-# Env vars (optional, reserved for future mock-bridge integration):
-#   STUARI_TEST_EMAIL, STUARI_TEST_PASSWORD
-login_with_test_user() {
-  local email="${STUARI_TEST_EMAIL:-}"
-  if [ -z "$email" ]; then
-    info "STUARI_TEST_EMAIL not set — relying on existing sim account or mock flavor"
-  else
-    info "Using test account: $email"
+# login_with_dev_magic — drive the dev-flavor email+password form.
+# Returns 0 on reaching home/onboarding, 1 otherwise.
+login_with_dev_magic() {
+  local email="${STUARI_TEST_EMAIL:-alice@seed.dev}"
+  local password="${STUARI_TEST_PASSWORD:-iez-test-password-2026}"
+
+  info "Dev magic login as $email"
+  capture "auth_pre_dev_magic"
+
+  # The form ships with pre-filled default values, but we set them
+  # explicitly for safety (e.g., when using a non-Alice account).
+  # The DevMagicLogin form initialises the controllers with the default
+  # alice@seed.dev credentials. For the common case (STUARI_TEST_EMAIL
+  # unset OR == alice@seed.dev) we can skip typing entirely — just tap
+  # Dev sign in. For any other account, overwrite the fields.
+  local default_email="alice@seed.dev"
+  local default_password="iez-test-password-2026"
+  local need_email_type=1
+  local need_password_type=1
+  [ "$email" = "$default_email" ] && need_email_type=0
+  [ "$password" = "$default_password" ] && need_password_type=0
+
+  local r
+  if [ "$need_email_type" = "1" ]; then
+    r=$(run_iez "$IEZ" ui tap --label "$LABEL_DEV_EMAIL")
+    assert_ok "$r" "Focus Dev email"
+    sleep 0.3
+    # No --clear flag available; type appends. For non-default emails this
+    # may concatenate — acceptable risk until iEZ ships a clear primitive.
+    r=$(run_iez "$IEZ" ui type "$email")
+    assert_ok "$r" "Type Dev email"
+    sleep 0.3
+    run_iez "$IEZ" ui swipe down >/dev/null 2>&1
+    sleep 0.3
   fi
 
-  # Already signed in?
+  if [ "$need_password_type" = "1" ]; then
+    r=$(run_iez "$IEZ" ui tap --label "$LABEL_DEV_PASSWORD")
+    assert_ok "$r" "Focus Dev password"
+    sleep 0.3
+    r=$(run_iez "$IEZ" ui type "$password")
+    assert_ok "$r" "Type Dev password"
+    sleep 0.3
+    run_iez "$IEZ" ui swipe down >/dev/null 2>&1
+    sleep 0.3
+  fi
+
+  r=$(run_iez "$IEZ" ui tap --label "$LABEL_DEV_SIGN_IN")
+  assert_ok "$r" "Tap Dev sign in"
+
+  # Wait up to 20s for post-auth state (home or onboarding)
+  local i=0
+  while [ $i -lt 20 ]; do
+    if on_home_page || on_onboarding_page; then
+      pass "Dev magic login reached Home or Onboarding (t=${i}s)"
+      capture "auth_post_dev_magic"
+      return 0
+    fi
+    sleep 1; i=$((i + 1))
+  done
+  fail "Dev magic login did not reach Home/Onboarding within 20s"
+  capture "auth_dev_magic_timeout"
+  return 1
+}
+
+# login_with_test_user — unified entry point used by every flow.
+# 1) If already on Home → return.
+# 2) Else if Dev magic login form is visible → drive it.
+# 3) Else fall back to Google OAuth (best-effort; usually fails in sim).
+login_with_test_user() {
   if on_home_page; then
     pass "Already signed in (Home tab visible)"
     return 0
   fi
 
-  # On auth page?
+  # If we're not on auth page, try to get there (cold launch may still
+  # be on splash screen).
+  local wait_i=0
+  while [ $wait_i -lt 6 ]; do
+    if on_auth_page; then break; fi
+    sleep 1; wait_i=$((wait_i + 1))
+  done
   if ! on_auth_page; then
     fail "Expected auth page but it was not visible"
     return 1
   fi
 
-  sign_in_google
+  if has_dev_magic_login; then
+    login_with_dev_magic
+    return $?
+  fi
 
-  # Give the OAuth flow up to 20s to complete
+  info "Dev magic login not visible — falling back to Google OAuth"
+  sign_in_google
   local i=0
   while [ $i -lt 20 ]; do
     if on_home_page || on_onboarding_page; then
-      pass "Sign-in completed (reached Home or Onboarding)"
+      pass "OAuth sign-in reached Home or Onboarding"
       return 0
     fi
     sleep 1; i=$((i + 1))
   done
-
-  fail "Sign-in did not reach Home within 20s (OAuth webview likely blocked)"
+  fail "OAuth sign-in did not reach Home within 20s"
   return 1
 }
 
@@ -135,12 +226,10 @@ complete_onboarding() {
   # Profile step: display name + username
   if tree_contains "Your name"; then
     type_into "Your name" "${STUARI_TEST_NAME:-Stu Ari}"
-    # Try to dismiss keyboard before the username field
     run_iez "$IEZ" ui swipe down >/dev/null 2>&1
     sleep 0.5
     type_into "username" "stuari_test_$(date +%s)"
     sleep 0.5
-    # Continue button
     if has_label "Continue"; then
       tap_element "Continue" "label" "Profile → Continue"
       sleep 1.5
@@ -148,13 +237,13 @@ complete_onboarding() {
   fi
   capture "onboarding_interests"
 
-  # Interests step: pick any and continue
+  # Interests step
   if has_label "Continue"; then
     tap_element "Continue" "label" "Interests → Continue"
     sleep 1.5
   fi
 
-  # Completion: Create Habit
+  # Completion
   if has_label "Create Habit"; then
     tap_element "Create Habit" "label" "Completion → Create Habit"
     sleep 2
@@ -163,17 +252,26 @@ complete_onboarding() {
 }
 
 # sign_out — navigate Settings → Sign out. Best-effort.
+#
+# Implementation notes:
+#  • The top nav "Settings tab" label is not exposed on the home tab (see
+#    navigation.sh). Use the `go_settings` helper, which has a coordinate
+#    fallback baked in.
+#  • The Sign-Out confirm dialog produces TWO "Sign Out" labels (the
+#    dialog title + the confirm button). We disambiguate by tapping the
+#    last one — the button is laid out lower on the screen.
 sign_out() {
-  # Navigate to Settings tab
-  if has_label "Settings tab"; then
-    tap_element "Settings tab" "label" "Open Settings tab"
-    sleep 1.2
-  elif has_label "Settings tab, selected"; then
-    pass "Settings tab already selected"
-  else
-    fail "Settings tab not visible — can't sign out"
-    return 1
+  # Load navigation helper lazily (don't force at sourcing time).
+  if ! declare -F go_settings >/dev/null 2>&1; then
+    # shellcheck source=navigation.sh
+    source "$_AUTH_DIR/navigation.sh"
   fi
+
+  go_settings || {
+    fail "Could not open Settings tab — can't sign out"
+    return 1
+  }
+  sleep 1.2
   capture "settings_page"
 
   # Scroll to find Sign Out (settings pages are long)
@@ -199,11 +297,17 @@ sign_out() {
   fi
   sleep 1.5
 
-  # Confirm dialog (if any): "Sign out" / "Confirm"
-  if has_label "Confirm"; then
+  # Confirm dialog shows "Sign Out" twice: once as the title text, once as
+  # the red confirm button. Read the tree and pick the button (highest y).
+  local confirm_coords
+  confirm_coords=$(run_iez "$IEZ" ui tree \
+    | jq -r '[.data.tree[].children[]? | select(.role == "AXButton" and (.AXLabel == "Sign Out" or .AXLabel == "Sign out" or .AXLabel == "Confirm"))] | sort_by(.frame.y) | last | "\(.frame.x + (.frame.width / 2) | floor),\(.frame.y + (.frame.height / 2) | floor)"' 2>/dev/null)
+  if [ -n "$confirm_coords" ] && [ "$confirm_coords" != "null" ] && [ "$confirm_coords" != "," ]; then
+    local r
+    r=$(run_iez "$IEZ" ui tap --coords "$confirm_coords")
+    assert_ok "$r" "Confirm sign out ($confirm_coords)"
+  elif has_label "Confirm"; then
     tap_element "Confirm" "label" "Confirm sign out"
-  elif has_label "Sign out"; then
-    tap_element "Sign out" "label" "Confirm sign out"
   fi
 
   sleep 3  # Give auth state time to clear
@@ -212,7 +316,31 @@ sign_out() {
   # Verify we're back on auth page
   if on_auth_page; then
     pass "Signed out (auth page visible)"
+    return 0
   else
     fail "Sign-out did not return to auth page"
+    return 1
   fi
+}
+
+# reset_auth_state — ensure the app starts each flow at the login screen.
+# Used at the top of flows that need a clean slate.
+reset_auth_state() {
+  # Close the app if running
+  xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" 2>/dev/null || true
+  sleep 0.5
+  xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID" >/dev/null 2>&1
+  sleep 5
+  if on_auth_page; then
+    pass "Auth state reset (already on auth page)"
+    return 0
+  fi
+  # Signed in from a previous run — sign out first.
+  if on_home_page; then
+    info "Previous session active — signing out"
+    sign_out && return 0
+    return 1
+  fi
+  skip "reset_auth_state" "neither auth nor home visible"
+  return 1
 }
