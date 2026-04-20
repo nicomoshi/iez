@@ -50,18 +50,22 @@ r=$(run_iez "$IEZ" ui swipe up)
 assert_ok "$r" "Scroll feed further"
 sleep 0.8
 
-# Tap the first post with a "comments" label (feed_post_card_last_comment)
+# Tap the first post with a "comments" label (feed_post_card_last_comment).
+# These labels are rendered inside a scrolling ListView so the element
+# may have frame={{0,0},{0,0}} and the tap-by-label can silently fail
+# even when a subsequent tree inspection shows the detail page. Tap
+# tolerantly and verify by post-tap state instead of the tap return.
 comment_label=$(run_iez "$IEZ" ui tree --compact \
   | jq -r '.data.elements[] | select(.label != null) | select(.label | test("^\\d+ comments")) | .label' | head -1)
 if [ -n "$comment_label" ]; then
-  tap_element "$comment_label" "label" "Open post detail via comment count"
+  r=$(run_iez "$IEZ" ui tap --label "$comment_label")
   sleep 1.5
   capture "07_post_detail"
-  # Verify post detail opened
+  # Verify post detail opened (authoritative)
   if tree_contains "Post image" || tree_contains "Post video" || has_label "Post"; then
-    pass "Post detail loaded"
+    pass "Post detail loaded via '$comment_label'"
   else
-    skip "Post detail verification" "no explicit Post* label found"
+    fail "Post detail did not load after tapping '$comment_label'"
   fi
   # Back
   go_back

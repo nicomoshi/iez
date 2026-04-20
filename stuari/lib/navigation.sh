@@ -40,10 +40,16 @@ TAB_SETTINGS="Settings tab"
 # leading icons (Home, Notifications) are left-aligned at ~28 / ~85,
 # the two trailing icons (Profile, Settings) right-aligned at ~318 / ~374.
 # Discover is disabled in the current build.
-TAB_COORDS_HOME="28,88"
-TAB_COORDS_NOTIFICATIONS="85,88"
-TAB_COORDS_PROFILE="318,88"
-TAB_COORDS_SETTINGS="374,88"
+# Precise centers read off a settings-page AX tree dump on iPhone 17:
+#   Home tab:           x=16,  w=40  -> center 36
+#   Notifications tab:  x=64,  w=40  -> center 84
+#   Profile tab:        x=298, w=40  -> center 318
+#   Settings tab:       x=346, w=40  -> center 366
+# Icons sit at y=70, height 40, so center y=90.
+TAB_COORDS_HOME="36,90"
+TAB_COORDS_NOTIFICATIONS="84,90"
+TAB_COORDS_PROFILE="318,90"
+TAB_COORDS_SETTINGS="366,90"
 
 # ── Tab navigation ──────────────────────────────────────────────────
 

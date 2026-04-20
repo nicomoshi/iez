@@ -147,9 +147,23 @@ login_with_dev_magic() {
   r=$(run_iez "$IEZ" ui tap --label "$LABEL_DEV_SIGN_IN")
   assert_ok "$r" "Tap Dev sign in"
 
-  # Wait up to 20s for post-auth state (home or onboarding)
+  # Wait up to 20s for post-auth state (home or onboarding). The iOS
+  # push-notification permission alert ("Would Like to Send You
+  # Notifications") steals focus immediately after sign-in — dismiss
+  # with "Allow" as soon as it appears so the AX tree can settle on
+  # the app again.
   local i=0
   while [ $i -lt 20 ]; do
+    if has_label "Allow" && has_label "Don't Allow"; then
+      run_iez "$IEZ" ui tap --label "Allow" >/dev/null 2>&1
+      sleep 1
+    fi
+    # Some iOS builds use a curly apostrophe in "Don't" (U+2019); guard
+    # against the permission alert being mid-animation.
+    if has_label "Allow" && tree_contains "Allow"; then
+      run_iez "$IEZ" ui tap --label "Allow" >/dev/null 2>&1
+      sleep 1
+    fi
     if on_home_page || on_onboarding_page; then
       pass "Dev magic login reached Home or Onboarding (t=${i}s)"
       capture "auth_post_dev_magic"
@@ -205,6 +219,12 @@ login_with_test_user() {
 
 # complete_onboarding — walk through the onboarding steps if present.
 # Welcome → Profile (name, username) → Interests → Completion → Home.
+#
+# Each step is guarded so that running the helper on a page that is
+# NOT onboarding becomes a no-op instead of emitting a cascade of
+# spurious `fail` lines. `complete_onboarding` returns 0 if we walked
+# the flow, 0 if we never needed to, and only reports failures for
+# steps that started (the page was present) but didn't succeed.
 complete_onboarding() {
   if ! on_onboarding_page; then
     info "Not on onboarding page — skipping"
@@ -212,7 +232,8 @@ complete_onboarding() {
   fi
   capture "onboarding_welcome"
 
-  # Welcome: skip to final slide then tap Get Started (or tap Skip)
+  # Welcome carousel: Skip → Get Started (either may be absent depending
+  # on the carousel index).
   if has_label "Skip"; then
     tap_element "Skip" "label" "Skip welcome carousel"
     sleep 1
@@ -223,27 +244,31 @@ complete_onboarding() {
   fi
   capture "onboarding_profile"
 
-  # Profile step: display name + username
+  # Profile step: display name + username. Only runs if the name field
+  # exists — prevents failures when a returning user skips this page.
   if tree_contains "Your name"; then
     type_into "Your name" "${STUARI_TEST_NAME:-Stu Ari}"
     run_iez "$IEZ" ui swipe down >/dev/null 2>&1
     sleep 0.5
-    type_into "username" "stuari_test_$(date +%s)"
-    sleep 0.5
+    if tree_contains "username" || has_label "username"; then
+      type_into "username" "stuari_test_$(date +%s)"
+      sleep 0.5
+    fi
     if has_label "Continue"; then
       tap_element "Continue" "label" "Profile → Continue"
       sleep 1.5
     fi
-  fi
-  capture "onboarding_interests"
+    capture "onboarding_interests"
 
-  # Interests step
-  if has_label "Continue"; then
-    tap_element "Continue" "label" "Interests → Continue"
-    sleep 1.5
+    # Interests step — only tap Continue if it exists (we're on that page).
+    if has_label "Continue"; then
+      tap_element "Continue" "label" "Interests → Continue"
+      sleep 1.5
+    fi
   fi
 
-  # Completion
+  # Completion step: only tap "Create Habit" if it exists. Suppress for
+  # users whose onboarding short-circuits (e.g., pre-seeded profile).
   if has_label "Create Habit"; then
     tap_element "Create Habit" "label" "Completion → Create Habit"
     sleep 2
@@ -310,17 +335,21 @@ sign_out() {
     tap_element "Confirm" "label" "Confirm sign out"
   fi
 
-  sleep 3  # Give auth state time to clear
+  # Give auth state time to clear. The auth page re-renders the dev
+  # magic login form + the privacy footer — on a signed-out simulator
+  # this can take 5–7s under Impeller.
+  local wait_i=0
+  while [ $wait_i -lt 10 ]; do
+    if on_auth_page; then
+      pass "Signed out (auth page visible)"
+      capture "post_sign_out"
+      return 0
+    fi
+    sleep 1; wait_i=$((wait_i + 1))
+  done
   capture "post_sign_out"
-
-  # Verify we're back on auth page
-  if on_auth_page; then
-    pass "Signed out (auth page visible)"
-    return 0
-  else
-    fail "Sign-out did not return to auth page"
-    return 1
-  fi
+  fail "Sign-out did not return to auth page"
+  return 1
 }
 
 # reset_auth_state — ensure the app starts each flow at the login screen.

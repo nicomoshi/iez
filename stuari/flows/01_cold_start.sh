@@ -23,10 +23,12 @@ section "Flow 01: Cold Start"
 fresh_launch
 capture "01_cold_launch"
 
-# Wait up to 10s for either auth or home UI to appear
+# Wait up to 20s for either auth or home UI to appear. A fresh install
+# or first-run after a sign-out may take a few seconds to render the
+# login form under Impeller.
 REACHED=""
 i=0
-while [ $i -lt 10 ]; do
+while [ $i -lt 20 ]; do
   if on_auth_page; then REACHED="auth"; break; fi
   if on_home_page; then REACHED="home"; break; fi
   sleep 1

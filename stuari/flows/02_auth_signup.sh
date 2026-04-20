@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
 # Flow 02: Auth Sign-Up + Profile Setup
 #
-# Goal: take a fresh install through OAuth sign-in and the onboarding flow
+# Goal: take a fresh install through the Dev magic login + onboarding flow
 # (welcome carousel → profile → interests → completion).
 #
-# NOTE: Stuari uses OAuth only (Apple/Google). There is NO email/password
-# signup. This flow assumes either:
-#   - USE_MOCK_DATA=true is set in .env.dev (bypasses real OAuth), OR
-#   - The simulator already has a Google account ready to auto-accept.
-#
-# If OAuth pops a system webview that iez can't interact with, the test
-# will log "skip" on auth steps and still verify UI elements it can see.
+# If we start with a prior session cached (`on_home_page`), the sign-up
+# path is skipped and marked `skip` — the flow does not masquerade as
+# passing when it couldn't exercise the onboarding path.
 
 set +e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -21,36 +17,47 @@ source "$SCRIPT_DIR/../lib/fixtures.sh"
 section "Flow 02: Auth Sign-Up + Profile Setup"
 
 fresh_launch
+sleep 2
 
-# Ensure we start unauthed
+# If a prior run left us signed in, skip the whole flow rather than force
+# a brittle sign-out→sign-in sequence — flow 03 covers that path.
 if on_home_page; then
-  info "Already signed in — skipping sign-up path"
-  skip "OAuth sign-in" "user already authenticated"
-else
-  assert_element "$LABEL_SIGN_IN_GOOGLE" "label" 10 "Google OAuth button"
-  assert_element "$LABEL_SIGN_IN_APPLE" "label" 5 "Apple OAuth button"
-  capture "02_auth_landing"
-
-  # Tap Google — the mock-data flavor should short-circuit OAuth
-  login_with_test_user
+  info "Already signed in — skipping sign-up (this flow tests a fresh user)"
+  skip "Dev magic login" "prior session still active"
+  skip "Onboarding carousel"       "prior session still active"
+  skip "Profile page"              "prior session still active"
+  skip "Interests page"            "prior session still active"
+  skip "Completion → Home"         "prior session still active"
+  print_summary
+  exit 0
 fi
 
-# If we reached onboarding, walk through it using fixtures
+# Must be on auth page — assert both forms are visible.
+assert_element "$LABEL_DEV_SIGN_IN"     "label" 10 "Dev magic login visible"
+assert_element "$LABEL_SIGN_IN_GOOGLE"  "label" 5  "Google OAuth button"
+assert_element "$LABEL_SIGN_IN_APPLE"   "label" 5  "Apple OAuth button"
+capture "02_auth_landing"
+
+# Drive the dev magic login.
+login_with_test_user
+
+# If we reached onboarding, walk through it using fixtures.
+sleep 2
 if on_onboarding_page; then
   info "Onboarding detected — running through steps"
-  # Override the helper's default name with a unique fixture
   export STUARI_TEST_NAME="$(test_display_name)"
   complete_onboarding
   capture "02_post_onboarding"
 fi
 
-# Verify we landed on home
+# Verify we landed on home.
 sleep 2
 if on_home_page; then
-  pass "Reached Home after onboarding"
+  pass "Reached Home after sign-in"
   capture "02_home_after_signup"
 else
-  fail "Did not reach Home after onboarding"
+  fail "Did not reach Home after sign-in"
+  capture "02_post_signin_failed"
 fi
 
 print_summary

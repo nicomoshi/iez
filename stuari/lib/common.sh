@@ -106,12 +106,18 @@ assert_fail() {
 
 # ── Existence Checks ────────────────────────────────────────────────
 
+# `iez ui exists` reports command-success under `.ok` (always true on a
+# running simulator) and element-presence under `.data.exists`. Early
+# versions of this suite conflated the two — every `has_label` call
+# returned 0 (truthy) regardless of whether the label was in the AX
+# tree, which produced cascades of spurious `fail` lines in every flow.
+# Always read `.data.exists`.
 has_id() {
-  run_iez "$IEZ" ui exists --id "$1" | jq -r '.ok' 2>/dev/null | grep -q true
+  run_iez "$IEZ" ui exists --id "$1" | jq -r '.data.exists' 2>/dev/null | grep -q true
 }
 
 has_label() {
-  run_iez "$IEZ" ui exists --label "$1" | jq -r '.ok' 2>/dev/null | grep -q true
+  run_iez "$IEZ" ui exists --label "$1" | jq -r '.data.exists' 2>/dev/null | grep -q true
 }
 
 # Substring match against AX tree labels. Use for dynamic labels (e.g., "5 new").

@@ -59,7 +59,10 @@ test_habit_name() {
     "Gratitude Log"
   )
   local idx=$(( RANDOM % ${#names[@]} ))
-  printf '%s — %s' "${names[$idx]}" "$(rand_tail)"
+  # AXe's `ui type` appears to truncate at certain non-ASCII codepoints
+  # (em-dash U+2014, emoji, etc), which in turn breaks the typed-text
+  # round-trip assertion. Stick to ASCII separators in every fixture.
+  printf '%s %s' "${names[$idx]}" "$(rand_tail)"
 }
 
 # test_chat_message — short deterministic message
@@ -69,7 +72,8 @@ test_chat_message() {
 
 # test_comment — short comment text
 test_comment() {
-  printf 'nice 👊 %s' "$(rand_tail)"
+  # ASCII-only: emoji trip up simctl/AXe's text injection.
+  printf 'nice %s' "$(rand_tail)"
 }
 
 # test_journal_entry — multi-line journal entry
@@ -79,12 +83,12 @@ test_journal_entry() {
 
 # test_bio — one-liner bio
 test_bio() {
-  printf 'building stuari — %s' "$(rand_tail)"
+  printf 'building stuari %s' "$(rand_tail)"
 }
 
 # test_post_description — caption for a check-in
 test_post_description() {
-  printf 'day %s ✓' "$(rand_tail)"
+  printf 'day %s ok' "$(rand_tail)"
 }
 
 # test_invite_code — bogus invite code for negative-path tests

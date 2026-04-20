@@ -52,11 +52,16 @@ else
   skip "Reaction tap" "no reaction buttons visible in current feed"
 fi
 
-# Sanity: UI should still be responsive
-if has_label "Home tab, selected" || has_label "Home tab"; then
-  pass "Home tab still present after reaction"
+# Sanity: UI should still be responsive. Home-tab top-nav semantics are
+# not exposed on the home page (see navigation.sh), so fall back to any
+# always-present home marker.
+if has_label "Home tab, selected" \
+  || has_label "Home tab" \
+  || has_label "Create new habit" \
+  || tree_contains "Tab 1 of 3"; then
+  pass "Home still present after reaction"
 else
-  fail "Home tab lost after reaction"
+  fail "Home lost after reaction"
 fi
 
 print_summary

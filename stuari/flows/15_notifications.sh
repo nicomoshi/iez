@@ -27,12 +27,22 @@ go_notifications
 sleep 1.5
 capture "15_notifications_list"
 
-# Verify the list area has content — any non-tab element
+# Verify the list area has SOME content. An empty-state stub (no
+# notifications yet) is a legitimate state for a freshly-seeded user
+# and should not flag as a fail — treat it as skip instead. We
+# consider the page "loaded" if we can see either notification items
+# OR an empty-state message.
 tree=$(run_iez "$IEZ" ui tree --compact)
 count=$(echo "$tree" | jq '[.data.elements[]] | length' 2>/dev/null)
+has_empty_marker="false"
+if echo "$tree" | jq -e '.data.elements[] | select(.label and (.label | test("no notifications|nothing here|all caught up|empty"; "i")))' >/dev/null 2>&1; then
+  has_empty_marker="true"
+fi
 TOTAL=$((TOTAL + 1))
 if [ "${count:-0}" -gt 5 ]; then
   pass "Notifications list has $count elements"
+elif [ "$has_empty_marker" = "true" ]; then
+  skip "Notifications list content" "empty state shown (user has no notifications)"
 else
   fail "Notifications list looks empty ($count elements)"
 fi
