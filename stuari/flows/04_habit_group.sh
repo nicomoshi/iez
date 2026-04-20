@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # Flow 04: Create Habit Group + Invite + Browse Members
 #
-# Walks: Home → Create Habit → name → schedule → frequency → milestone
-#         → check-ins → image → review → Create. Then opens the group's
-#         members list and verifies it opened.
+# Walks the 7-page wizard in its actual PageView order (see
+# lib/habit_group/view/create_habit_page.dart):
 #
-# Create flow pages (from lib/habit_group/widgets/):
-#   create_habit_name_page.dart        — name field "e.g. Morning Run", Continue
-#   create_habit_schedule_page.dart    — Continue
-#   create_habit_frequency_page.dart   — Continue
-#   create_habit_milestone_page.dart   — Continue
-#   create_habit_check_ins_page.dart   — Continue
-#   create_habit_image_page.dart       — Continue
-#   create_habit_review_page.dart      — label: "Create Habit" (or "Save Changes" when editing)
+#   1. Name       → Continue
+#   2. Image      → Continue (enabled once a cover image is selected;
+#                   in SIMULATOR_MOCK_CAMERA=true builds, tapping
+#                   "Add cover image" auto-loads a bundled sample)
+#   3. Frequency  → Continue (default=daily, so schedule is skipped)
+#   4. CheckIns   → Continue (a default check-in time exists)
+#   5. Milestone  → Continue
+#   6. Review     → "Create Habit" submit button
+#
+# After creating, navigates to the group's members list as a smoke check.
 
 set +e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -66,15 +67,49 @@ else
   skip "Name step" "hint 'e.g. Morning Run' not found"
 fi
 
-capture "04_schedule_page"
+capture "04_image_page"
 
-# Walk through the remaining Continue-gated steps: schedule, frequency,
-# milestone, check-ins, image. Tap Continue up to 6 times if visible.
-for step in schedule frequency milestone checkins image; do
+# Step 2: Image — Continue is gated on selecting a cover image.
+#
+# In dev builds with SIMULATOR_MOCK_CAMERA=true, the CreateHabitImagePage
+# short-circuits the Pexels gallery route and loads a bundled sample
+# asset into the cubit when the placeholder is tapped. The placeholder's
+# Semantics node is merged with its siblings on this page, so exact-label
+# matching doesn't work — we detect the page via tree_contains and tap
+# at the placeholder's known center coordinates (mid-screen, ~y=400).
+#
+# If the mock isn't active (e.g. staging build) Continue stays disabled
+# and we fall back to the Skip button which advances without a cover.
+if tree_contains "Add cover image"; then
+  tap_element "200,400" "coords" "Image → tap placeholder (mock selects bundled sample)"
+  sleep 1.5
+  capture "04_image_selected"
+fi
+
+if tree_contains "Change cover image" || tree_contains "Change Image"; then
+  # Mock succeeded — Continue is now enabled.
+  tap_element "Continue" "label" "Image → Continue (cover image selected)"
+  sleep 1
+elif has_label "Skip"; then
+  tap_element "Skip" "label" "Image → Skip (no cover image selected)"
+  sleep 1
+elif has_label "Continue"; then
+  # Last-resort: try Continue anyway. This is usually a no-op when
+  # disabled but keeps the flow compatible with any future UX where
+  # the image step is optional-but-default-Continue.
+  tap_element "Continue" "label" "Image → Continue (fallback)"
+  sleep 1
+else
+  skip "Image step" "neither Continue nor Skip reachable"
+fi
+
+# Walk through the remaining Continue-gated steps in wizard order:
+# frequency (default=daily skips schedule) → checkins → milestone.
+for step in frequency checkins milestone; do
+  capture "04_${step}_page"
   if has_label "Continue"; then
     tap_element "Continue" "label" "Step '$step' → Continue"
     sleep 1
-    capture "04_${step}_page"
   else
     info "Continue button not visible on '$step' step — may need to scroll or fill form"
     run_iez "$IEZ" ui swipe up >/dev/null 2>&1
