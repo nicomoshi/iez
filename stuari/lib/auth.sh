@@ -120,12 +120,18 @@ login_with_dev_magic() {
   [ "$password" = "$default_password" ] && need_password_type=0
 
   local r
+  # Clear a focused field by sending backspace 40x (HID keycode 42).
+  _clear_field() {
+    for _ in $(seq 1 40); do
+      run_iez "$IEZ" ui key 42 >/dev/null 2>&1
+    done
+  }
+
   if [ "$need_email_type" = "1" ]; then
     r=$(run_iez "$IEZ" ui tap --label "$LABEL_DEV_EMAIL")
     assert_ok "$r" "Focus Dev email"
     sleep 0.3
-    # No --clear flag available; type appends. For non-default emails this
-    # may concatenate — acceptable risk until iEZ ships a clear primitive.
+    _clear_field
     r=$(run_iez "$IEZ" ui type "$email")
     assert_ok "$r" "Type Dev email"
     sleep 0.3
@@ -137,6 +143,7 @@ login_with_dev_magic() {
     r=$(run_iez "$IEZ" ui tap --label "$LABEL_DEV_PASSWORD")
     assert_ok "$r" "Focus Dev password"
     sleep 0.3
+    _clear_field
     r=$(run_iez "$IEZ" ui type "$password")
     assert_ok "$r" "Type Dev password"
     sleep 0.3
@@ -244,23 +251,43 @@ complete_onboarding() {
   fi
   capture "onboarding_profile"
 
-  # Profile step: display name + username. Only runs if the name field
-  # exists — prevents failures when a returning user skips this page.
-  if tree_contains "Your name"; then
-    type_into "Your name" "${STUARI_TEST_NAME:-Stu Ari}"
+  # Profile step: display name + username. The Display Name field has
+  # no AX label (Flutter TextField without hint + with a section header
+  # above); we tap by coordinates. Username field has hint="username".
+  if tree_contains "Display Name" || tree_contains "Set up your profile"; then
+    # Both TextFields lack stable AX labels once populated; tap by coords.
+    # On iPhone 17 the Display Name field frame.y≈455, Username y≈563.
+    # Tap middle, clear, type.
+    run_iez "$IEZ" ui tap --coords "200,485" >/dev/null 2>&1
+    sleep 0.3
+    for _ in $(seq 1 30); do run_iez "$IEZ" ui key 42 >/dev/null 2>&1; done
+    run_iez "$IEZ" ui type "${STUARI_TEST_NAME:-Stu Ari}" >/dev/null 2>&1
+    sleep 0.3
     run_iez "$IEZ" ui swipe down >/dev/null 2>&1
+    sleep 0.3
+    # Username field
+    run_iez "$IEZ" ui tap --coords "200,595" >/dev/null 2>&1
+    sleep 0.3
+    for _ in $(seq 1 30); do run_iez "$IEZ" ui key 42 >/dev/null 2>&1; done
+    # Username must be ≤ 20 chars. Use short prefix + 6-digit tail.
+    run_iez "$IEZ" ui type "stu_$(date +%s | tail -c 7)" >/dev/null 2>&1
     sleep 0.5
-    if tree_contains "username" || has_label "username"; then
-      type_into "username" "stuari_test_$(date +%s)"
-      sleep 0.5
-    fi
+    run_iez "$IEZ" ui swipe down >/dev/null 2>&1
+    sleep 0.3
     if has_label "Continue"; then
       tap_element "Continue" "label" "Profile → Continue"
       sleep 1.5
     fi
     capture "onboarding_interests"
 
-    # Interests step — only tap Continue if it exists (we're on that page).
+    # Interests step — pick one to enable Continue, then tap.
+    for pick in "Fitness" "Productivity" "Social" "Creativity" "Learning"; do
+      if has_label "$pick"; then
+        tap_element "$pick" "label" "Select interest: $pick"
+        sleep 0.3
+        break
+      fi
+    done
     if has_label "Continue"; then
       tap_element "Continue" "label" "Interests → Continue"
       sleep 1.5
