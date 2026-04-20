@@ -18,13 +18,30 @@ if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
 go_home
 
-# Open camera (same as photo flow)
-dyn=$(run_iez "$IEZ" ui tree --compact \
-  | jq -r '.data.elements[] | select(.label != null) | select(.label | startswith("Check In")) | .label' | head -1)
-if [ -n "$dyn" ]; then
-  tap_element "$dyn" "label" "Tap Check In"
+# Open camera by tapping a habit card (same approach as flow 05).
+# See 05_checkin_photo.sh for the rationale behind matching " habit, ".
+habit_label=$(run_iez "$IEZ" ui tree --compact \
+  | jq -r '.data.elements[]
+             | select(.label != null)
+             | select(.label | test(" habit, Tap to check in$"))
+             | .label' | head -1)
+if [ -z "$habit_label" ]; then
+  habit_label=$(run_iez "$IEZ" ui tree --compact \
+    | jq -r '.data.elements[]
+               | select(.label != null)
+               | select(.label | test(" habit, "))
+               | .label' | head -1)
+fi
+if [ -n "$habit_label" ]; then
+  tap_element "$habit_label" "label" "Tap habit card ('$habit_label')"
 else
-  skip "Check In entry" "no Check In button visible"
+  dyn=$(run_iez "$IEZ" ui tree --compact \
+    | jq -r '.data.elements[] | select(.label != null) | select(.label | startswith("Check In")) | .label' | head -1)
+  if [ -n "$dyn" ]; then
+    tap_element "$dyn" "label" "Tap Check In"
+  else
+    skip "Check In entry" "no habit card or Check In button visible"
+  fi
 fi
 sleep 2
 capture "06_camera_opened"

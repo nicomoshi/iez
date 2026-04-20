@@ -26,14 +26,20 @@ go_profile
 sleep 1.5
 capture "16_profile_page"
 
-# Open settings / edit profile — look for "Edit Profile" or gear icon
+# Open settings / edit profile — look for "Edit Profile" or gear icon.
+# Explicitly reject "Settings tab" (the top-nav tab) — that would navigate
+# away from Profile rather than opening the edit sheet.
 if has_label "Edit Profile"; then
   tap_element "Edit Profile" "label" "Open Edit Profile"
 elif has_label "Edit profile"; then
   tap_element "Edit profile" "label" "Open Edit profile"
 else
   dyn=$(run_iez "$IEZ" ui tree --compact \
-    | jq -r '.data.elements[] | select(.label != null) | select(.label | test("edit profile|settings"; "i")) | .label' | head -1)
+    | jq -r '.data.elements[]
+               | select(.label != null)
+               | select(.label != "Settings tab" and .label != "Settings tab, selected")
+               | select(.label | test("edit profile|profile settings"; "i"))
+               | .label' | head -1)
   if [ -n "$dyn" ]; then
     tap_element "$dyn" "label" "Open profile settings ('$dyn')"
   else

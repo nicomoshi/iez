@@ -28,11 +28,30 @@ if on_onboarding_page; then complete_onboarding; fi
 go_home
 capture "05_home"
 
-# Tap the first habit card (or a dedicated check-in FAB)
-# The home has carousels of habit cards. Tapping a card opens its detail.
-# From detail, tap the check-in camera button.
-if has_label "Check In" || tree_contains "Check In"; then
-  # Substring label like "Check In, Morning Run"
+# Tap a habit card in the home carousel to open the camera.
+# Tapping a card runs home_page's `_handleCheckInTap`, which pushes the
+# Camera page. The card's Semantics label is
+#   "<HabitName> habit, <status>"  e.g. "Morning Run habit, Tap to check in"
+# (see split_habit_card.dart::_buildHabitCard). The dev-only simulator
+# build adds SIMULATOR_MOCK_CAMERA=true, which bypasses the
+# CheckInAvailability gate so any card can open the camera. Prefer the
+# "Tap to check in" card (availability=due), fall back to the first
+# "* habit, *" label we find.
+habit_label=$(run_iez "$IEZ" ui tree --compact \
+  | jq -r '.data.elements[]
+             | select(.label != null)
+             | select(.label | test(" habit, Tap to check in$"))
+             | .label' | head -1)
+if [ -z "$habit_label" ]; then
+  habit_label=$(run_iez "$IEZ" ui tree --compact \
+    | jq -r '.data.elements[]
+               | select(.label != null)
+               | select(.label | test(" habit, "))
+               | .label' | head -1)
+fi
+if [ -n "$habit_label" ]; then
+  tap_element "$habit_label" "label" "Tap habit card ('$habit_label')"
+elif has_label "Check In" || tree_contains "Check In"; then
   dyn=$(run_iez "$IEZ" ui tree --compact \
     | jq -r '.data.elements[] | select(.label != null) | select(.label | startswith("Check In")) | .label' | head -1)
   if [ -n "$dyn" ]; then
@@ -40,12 +59,8 @@ if has_label "Check In" || tree_contains "Check In"; then
   else
     tap_element "Check In" "label" "Tap Check In"
   fi
-elif tree_contains "camera"; then
-  # Fallback: find any camera button in the tree
-  skip "Check In entry" "explicit Check In button not found; trying camera affordance"
-  run_iez "$IEZ" ui tap --id "camera" >/dev/null 2>&1
 else
-  skip "Check In entry" "no Check In CTA visible on Home"
+  skip "Check In entry" "no habit card or Check In CTA visible on Home"
 fi
 
 sleep 2
