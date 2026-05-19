@@ -23,6 +23,7 @@ source "$SCRIPT_DIR/../lib/navigation.sh"
 source "$SCRIPT_DIR/../lib/fixtures.sh"
 
 section "Flow 04: Habit Group Create + Invite + Members"
+HABIT_NAME="${STUARI_FLOW04_HABIT_NAME:-$(test_habit_name)}"
 
 fresh_launch; sleep 2
 
@@ -38,17 +39,32 @@ go_home
 capture "04_home_before_create"
 
 # Look for a "Create Habit" CTA — the empty state card or the + FAB
-if has_label "Create Habit"; then
+CREATE_STARTED=0
+CREATE_SUBMITTED=0
+if has_id "create_habit_card"; then
+  tap_element "create_habit_card" "id" "Start Create Habit flow (create card id)"
+  CREATE_STARTED=1
+elif has_label "Create Habit"; then
   tap_element "Create Habit" "label" "Start Create Habit flow"
+  CREATE_STARTED=1
 elif has_label "Create Habit. Tap to start a new journey."; then
   tap_element "Create Habit. Tap to start a new journey." "label" "Start Create Habit flow (long label)"
+  CREATE_STARTED=1
 elif has_label "Create new habit"; then
   tap_element "Create new habit" "label" "Start Create Habit flow (card)"
+  CREATE_STARTED=1
 else
   skip "Create Habit CTA" "not found on Home — user may already have habits; needs a + affordance"
   # Try a swipe to reveal it
   run_iez "$IEZ" ui swipe up >/dev/null 2>&1
   sleep 0.5
+  if has_id "create_habit_card"; then
+    tap_element "create_habit_card" "id" "Start Create Habit flow after swipe"
+    CREATE_STARTED=1
+  elif has_label "Create new habit"; then
+    tap_element "Create new habit" "label" "Start Create Habit flow after swipe"
+    CREATE_STARTED=1
+  fi
 fi
 
 sleep 1.5
@@ -56,7 +72,7 @@ capture "04_name_page"
 
 # Step 1: Name
 if tree_contains "e.g. Morning Run"; then
-  type_into "e.g. Morning Run" "$(test_habit_name)"
+  type_into "e.g. Morning Run" "$HABIT_NAME"
   run_iez "$IEZ" ui swipe down >/dev/null 2>&1
   sleep 0.5
   if has_label "Continue"; then
@@ -130,6 +146,7 @@ if has_label "Create Habit"; then
   sleep 3
   capture "04_post_create"
   pass "Submitted habit create form"
+  CREATE_SUBMITTED=1
 else
   skip "Final Create Habit" "button not reachable from review page"
 fi
@@ -138,6 +155,27 @@ fi
 sleep 2
 go_home
 capture "04_home_with_habit"
+if [ "$CREATE_SUBMITTED" = "1" ]; then
+  if wait_for_habit_name "$HABIT_NAME" 8; then
+    pass "Created habit is visible on Home: $HABIT_NAME"
+  else
+    fail "Created habit not visible on Home after create: $HABIT_NAME"
+  fi
+
+  terminate_app
+  fresh_launch
+  if on_auth_page; then login_with_test_user; fi
+  if on_onboarding_page; then complete_onboarding; fi
+  go_home
+  capture "04_home_after_relaunch"
+  if wait_for_habit_name "$HABIT_NAME" 10; then
+    pass "Created habit survives relaunch and is visible on Home: $HABIT_NAME"
+  else
+    fail "Created habit missing on Home after relaunch: $HABIT_NAME"
+  fi
+else
+  skip "Created habit Home/relaunch assertions" "create form was not submitted"
+fi
 
 # Invite flow: from habit card, tap → menu / members
 run_iez "$IEZ" ui swipe down >/dev/null 2>&1 || true
@@ -156,7 +194,15 @@ if has_label "Members"; then
     dismiss_all
   fi
 elif has_label "Habit settings"; then
-  tap_element "Habit settings" "label" "Open habit settings"
+  r=$(run_iez "$IEZ" ui tap --label "Habit settings")
+  if [ "$(json_ok "$r")" = "true" ]; then
+    pass "Tap: Open habit settings"
+  else
+    skip "Habit settings" "entry point visible but not tappable"
+    dismiss_all
+    print_summary
+    exit $FAIL
+  fi
   sleep 1
   if has_label "View Details"; then
     tap_element "View Details" "label" "Open habit details"

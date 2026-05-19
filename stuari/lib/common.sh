@@ -133,6 +133,18 @@ tree_has_id() {
     | jq -r '.data.elements[].id // empty' 2>/dev/null | grep -qF "$1"
 }
 
+wait_for_habit_name() {
+  local name="$1" timeout="${2:-8}" elapsed=0
+  while [ "$elapsed" -lt "$timeout" ]; do
+    if tree_contains "$name"; then
+      return 0
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  return 1
+}
+
 # ── Smart Assertions ────────────────────────────────────────────────
 
 # assert_element — wait for an element then assert it exists.
