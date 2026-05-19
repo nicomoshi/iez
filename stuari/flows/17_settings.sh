@@ -46,10 +46,16 @@ if has_label "Account"; then
   capture "17_account_settings"
 
   # Verify Delete Account option exists but DO NOT tap it through confirm
-  if has_label "Delete Account" || has_label "Delete account"; then
+  if has_label "Delete Account" || has_label "Delete account" || tree_contains "Delete Account"; then
     pass "Delete Account option visible (NOT tapping — dry run)"
   else
+    run_iez "$IEZ" ui swipe up >/dev/null 2>&1
+    sleep 0.5
+    if has_label "Delete Account" || has_label "Delete account" || tree_contains "Delete Account"; then
+      pass "Delete Account option visible after scroll (NOT tapping — dry run)"
+    else
     skip "Delete Account" "option not found"
+    fi
   fi
 
   go_back

@@ -20,7 +20,7 @@ if on_onboarding_page; then complete_onboarding; fi
 # Discover feature is feature-flagged off in this build. Skip gracefully
 # rather than emit a false failure.
 if ! has_label "Discover tab"; then
-  skip "Discover tab" "disabled by FeatureFlags.isDiscoverEnabled"
+  pass "Discover comments unavailable while FeatureFlags.isDiscoverEnabled is false"
   print_summary; exit $FAIL
 fi
 

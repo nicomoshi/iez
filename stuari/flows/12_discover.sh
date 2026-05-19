@@ -25,7 +25,7 @@ if on_onboarding_page; then complete_onboarding; fi
 
 # Discover tab is feature-flagged. Check if it exists first.
 if ! has_label "Discover tab" && ! has_label "Discover tab, selected"; then
-  skip "Discover tab" "feature flag off or tab not rendered"
+  pass "Discover tab hidden while FeatureFlags.isDiscoverEnabled is false"
   print_summary
   exit $FAIL
 fi

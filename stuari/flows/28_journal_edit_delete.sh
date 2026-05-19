@@ -24,48 +24,72 @@ sleep 1
 # Pull up the bottom sheet and tap Journal tab
 run_iez "$IEZ" ui swipe --from "200,800" --to "200,200" >/dev/null 2>&1
 sleep 1
-if has_label "Journal"; then
-  tap_element "Journal" "label" "Open Journal tab"
+tab_center=$(run_iez "$IEZ" ui tree --compact \
+  | jq -r '.data.elements[]
+      | select(.label != null)
+      | select(.label | test("^Journal(\\n|,|$)"))
+      | .frame
+      | if . then "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)" else empty end' \
+  | head -1)
+if [ -n "$tab_center" ]; then
+  tap_element "$tab_center" "coords" "Open Journal tab"
   sleep 1.5
 fi
 
 capture "28_journal_tab"
 
-# Tap "Write a reflection" CTA (GestureDetector exposed as a button via
-# children text). The label "Write a reflection" comes from GradientText.
-for lbl in "Write a reflection" "How was your day?"; do
-  if has_label "$lbl"; then
-    tap_element "$lbl" "label" "Open new journal entry"
-    sleep 1.2
-    break
-  fi
-done
-
-capture "28_editor"
-
-# Type into the hint field
-if tree_contains "Write your thoughts"; then
-  type_into "Write your thoughts..." "$(test_journal_entry)"
-  sleep 0.5
+# Tap the add-entry CTA.
+if has_label "Write a reflection"; then
+  tap_element "Write a reflection" "label" "Open new journal entry"
+  sleep 1.2
 else
-  skip "Journal editor" "hint not found"
+  skip "Journal entry CTA" "Write a reflection button not found"
   print_summary; exit $FAIL
 fi
 
-# Save (IconButton tooltip: Save)
-if has_label "Save"; then
-  tap_element "Save" "label" "Save journal entry"
+capture "28_editor"
+
+# Type into the labeled input field
+if has_label "Journal entry input"; then
+  type_into "Journal entry input" "$(test_journal_entry)"
+  sleep 0.5
+elif tree_contains "Write your thoughts"; then
+  type_into "Write your thoughts..." "$(test_journal_entry)"
+  sleep 0.5
+else
+  skip "Journal editor" "journal entry input not found"
+  print_summary; exit $FAIL
+fi
+
+# Save
+save_coords=$(run_iez "$IEZ" ui tree --compact \
+  | jq -r '.data.elements[]
+    | select(.label != null)
+    | select(.role == "AXButton")
+    | select(.label | contains("Save"))
+    | .frame
+    | if . then "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)" else empty end' \
+  | head -1)
+if [ -n "$save_coords" ]; then
+  tap_element "$save_coords" "coords" "Save journal entry"
   sleep 2
   pass "Saved journal entry"
 else
-  skip "Save button" "tooltip 'Save' not in AX tree"
+  skip "Save button" "Save label not in AX tree"
 fi
 
 capture "28_after_save"
 
-# Attempt to delete own entry: the card has an unlabelled close_rounded
-# icon. We skip the assertion but emit informational output.
-info "Edit/delete on journal card uses unlabelled icons — skipped (AX gap)"
+# Attempt to verify an entry card is visible after save.
+if run_iez "$IEZ" ui tree --compact \
+  | jq -e '.data.elements[] | select(.label != null) | select(.label | startswith("Journal entry by "))' >/dev/null 2>&1 \
+  || run_iez "$IEZ" ui tree --compact \
+  | jq -e '.data.elements[] | select(.label != null) | select(.label | contains("Today I showed up."))' >/dev/null 2>&1; then
+  pass "Journal entry card visible after save"
+fi
+
+# Edit/delete on journal cards still relies on icon-only affordances.
+info "Edit/delete on journal card still uses icon-first affordances — skipped"
 
 print_summary
 exit $FAIL

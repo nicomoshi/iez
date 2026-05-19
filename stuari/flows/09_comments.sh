@@ -16,6 +16,7 @@ source "$SCRIPT_DIR/../lib/fixtures.sh"
 
 section "Flow 09: Comments + Replies"
 
+reseed_feed_fixtures || true
 fresh_launch; sleep 2
 if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
@@ -27,85 +28,160 @@ sleep 1.5
 if has_label "Feed"; then tap_element "Feed" "label" "Feed tab"; sleep 1; fi
 
 # Tap into a post with comments
-comment_label=$(run_iez "$IEZ" ui tree --compact \
-  | jq -r '.data.elements[] | select(.label != null) | select(.label | test("^\\d+ comment"; "")) | .label' | head -1)
-
-if [ -z "$comment_label" ]; then
-  # Try entering the first post via its image
-  image_label=$(run_iez "$IEZ" ui tree --compact \
-    | jq -r '.data.elements[] | select(.label != null) | select(.label | test("Post image|Post video"; "")) | .label' | head -1)
-  if [ -n "$image_label" ]; then
-    tap_element "$image_label" "label" "Open post via image"
+opened_post=0
+for _ in 1 2 3 4 5 6; do
+  if tap_first_matching_label_regex '^Open post by ' '' \
+    "Open post via card"; then
     sleep 1.5
-  else
-    skip "Post detail entry" "no posts in feed"
-    print_summary; exit $FAIL
+    opened_post=1
+    break
   fi
-else
-  # Off-screen ListView items can silently fail a label tap; verify by
-  # post-state rather than the tap's return code.
-  r=$(run_iez "$IEZ" ui tap --label "$comment_label")
-  sleep 1.5
-  if tree_contains "Post image" || tree_contains "Post video" || has_label "Back"; then
-    pass "Opened post via '$comment_label'"
-  else
-    fail "Tap '$comment_label' did not open a post"
+
+  comment_coords=$(run_iez "$IEZ" ui tree --compact \
+    | jq -r '.data.elements[]
+      | select(.label != null)
+      | select(.label | test("[0-9]+ comments, tap to view"; ""))
+      | select(.frame != null and .frame.width > 20 and .frame.height > 20)
+      | .frame
+      | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
+    | head -1)
+
+  if [ -n "$comment_coords" ] && [ "$comment_coords" != "null" ] && [ "$comment_coords" != "," ]; then
+    tap_element "$comment_coords" "coords" "Open post via comments count"
+    sleep 1.5
+    opened_post=1
+    break
   fi
+
+  if tap_first_matching_label_regex '^Last comment by ' '' \
+    "Open post via last comment"; then
+    sleep 1.5
+    opened_post=1
+    break
+  fi
+
+  run_iez "$IEZ" ui swipe up >/dev/null 2>&1 || true
+  sleep 0.8
+done
+
+if [ "$opened_post" != "1" ]; then
+  skip "Post detail entry" "no comment affordance became reachable"
+  print_summary; exit $FAIL
 fi
 
 capture "09_post_detail"
 
-# Find the comment input — likely has a hint like "Add a comment..." or "Write..."
-# Try typing into it by tapping a text field, then typing.
-# There's no explicit semanticLabel on the input in comment_input_bar.dart,
-# so we fall back to "Write a comment" / "Add a comment" / field by label.
+# Find the comment input on the post detail page.
 added=0
-for candidate in "Add a comment..." "Add a comment" "Write a comment..." "Write a comment" "Comment..."; do
-  if tree_contains "$candidate"; then
-    type_into "$candidate" "$(test_comment)"
-    added=1
-    break
+comment_text=$(test_comment)
+for _ in 1 2 3 4 5 6; do
+  input_coords=$(run_iez "$IEZ" ui tree --compact \
+    | jq -r '.data.elements[]
+      | select(.label != null)
+      | select(.label | test("^(Comment input|Add a comment\\.\\.\\.)$"; ""))
+      | select(.frame != null and .frame.width > 100 and .frame.height >= 40)
+      | .frame
+      | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
+    | head -1)
+  if [ -n "$input_coords" ] && [ "$input_coords" != "null" ] && [ "$input_coords" != "," ]; then
+    run_iez "$IEZ" ui tap --coords "$input_coords" >/dev/null 2>&1 || true
+    sleep 0.3
+    r=$(run_iez "$IEZ" ui type "$comment_text")
+    if [ "$(json_ok "$r")" = "true" ]; then
+      pass "Typed comment"
+      added=1
+      break
+    fi
   fi
+  run_iez "$IEZ" ui swipe up >/dev/null 2>&1 || true
+  sleep 0.8
 done
 
 if [ "$added" = "0" ]; then
-  # Last resort: tap the bottom-center of the screen and type
-  run_iez "$IEZ" ui tap --coords "200,750" >/dev/null 2>&1
-  sleep 0.5
-  if run_iez "$IEZ" ui type "$(test_comment)" | grep -q '"ok":true'; then
-    pass "Typed comment (via coords fallback)"
-    added=1
-  fi
+  fail "Comment input" '{"reason":"comment input not reachable on post detail"}'
+  print_summary; exit $FAIL
 fi
 
-# Submit comment — look for a send/paper-plane-style button
-if has_label "Send comment" || has_label "Send"; then
-  label=$(has_label "Send comment" && echo "Send comment" || echo "Send")
-  tap_element "$label" "label" "Submit comment"
-  sleep 2
-  capture "09_comment_submitted"
+# Submit comment
+if tap_first_matching_label_regex '^Send comment$' '' "Submit comment"; then
+  :
 else
-  skip "Submit comment" "no explicit Send button — may require return key"
-  run_iez "$IEZ" ui key "40" >/dev/null 2>&1  # return key
+  run_iez "$IEZ" ui key "40" >/dev/null 2>&1
+  pass "Submit comment via return key"
+fi
+sleep 2
+capture "09_comment_submitted"
+
+comment_visible=0
+comment_text_lc=$(printf '%s' "$comment_text" | tr '[:upper:]' '[:lower:]')
+for _ in 1 2 3 4 5; do
+  if run_iez "$IEZ" ui tree --compact \
+    | jq -r '.data.elements[] | select(.label != null) | .label' \
+    | tr '[:upper:]' '[:lower:]' \
+    | grep -Fq "$comment_text_lc"; then
+    comment_visible=1
+    break
+  fi
   sleep 1
+done
+
+if [ "$comment_visible" = "1" ]; then
+  pass "Comment submitted"
+elif has_label "Delete" || tree_contains "Delete"; then
+  pass "Comment submitted"
+else
+  fail "Comment submitted" "{\"reason\":\"comment text '$comment_text' not visible after submit\"}"
 fi
 
-# Reply to an existing comment (best-effort — look for "Reply" button).
-# Reply buttons can be off-screen in the comment ListView; treat the tap
-# as soft-pass so only the downstream verification drives pass/fail.
-if has_label "Reply"; then
-  run_iez "$IEZ" ui tap --label "Reply" >/dev/null 2>&1
-  sleep 0.8
+# Reply to an existing comment
+reply_text="replying $(rand_tail)"
+reply_text_lc=$(printf '%s' "$reply_text" | tr '[:upper:]' '[:lower:]')
+if tap_first_matching_label_regex '^Reply$' '' "Reply to comment"; then
+  sleep 1
   if has_label "Cancel reply"; then
-    pass "Reply mode entered (Cancel reply visible)"
-    run_iez "$IEZ" ui type "replying $(rand_tail)" >/dev/null 2>&1
-    sleep 0.3
-    tap_element "Cancel reply" "label" "Cancel reply"
+    pass "Reply mode entered"
+    reply_coords=$(run_iez "$IEZ" ui tree --compact \
+      | jq -r '.data.elements[]
+        | select(.label != null)
+        | select(.label | test("^(Reply comment input|Comment input)$"; ""))
+        | select(.frame != null and .frame.width > 100 and .frame.height >= 40)
+        | .frame
+        | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
+      | head -1)
+    if [ -n "$reply_coords" ] && [ "$reply_coords" != "null" ] && [ "$reply_coords" != "," ]; then
+      run_iez "$IEZ" ui tap --coords "$reply_coords" >/dev/null 2>&1 || true
+      sleep 0.3
+      r=$(run_iez "$IEZ" ui type "$reply_text")
+      assert_ok "$r" "Type reply"
+    elif tree_contains "Reply comment input"; then
+      type_into "Reply comment input" "$reply_text"
+    else
+      type_into "Comment input" "$reply_text"
+    fi
+    if tap_first_matching_label_regex '^Send comment$' '' "Submit reply"; then
+      :
+    else
+      run_iez "$IEZ" ui key "40" >/dev/null 2>&1
+      pass "Submit reply via return key"
+    fi
+    sleep 2
+    if run_iez "$IEZ" ui tree --compact \
+      | jq -r '.data.elements[] | select(.label != null) | .label' \
+      | tr '[:upper:]' '[:lower:]' \
+      | grep -Fq "$reply_text_lc"; then
+      pass "Reply submitted"
+    elif tree_contains "View 1 reply" \
+      || tree_contains "View 2 replies" \
+      || tree_contains "Hide replies"; then
+      pass "Reply submitted"
+    else
+      fail "Reply submitted" "{\"reason\":\"reply text '$reply_text' not visible after submit\"}"
+    fi
   else
-    skip "Reply mode" "Cancel reply affordance not found"
+    fail "Reply mode" '{"reason":"Cancel reply affordance not found after tapping Reply"}'
   fi
 else
-  skip "Reply to comment" "no Reply button on existing comments"
+  fail "Reply to comment" '{"reason":"no Reply button on existing comments"}'
 fi
 
 go_back

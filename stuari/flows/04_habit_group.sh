@@ -140,6 +140,11 @@ go_home
 capture "04_home_with_habit"
 
 # Invite flow: from habit card, tap → menu / members
+run_iez "$IEZ" ui swipe down >/dev/null 2>&1 || true
+sleep 1
+go_home
+sleep 0.8
+
 if has_label "Members"; then
   tap_element "Members" "label" "Open members list"
   sleep 1.2
@@ -149,6 +154,23 @@ if has_label "Members"; then
     sleep 1
     capture "04_invite_sheet"
     dismiss_all
+  fi
+elif has_label "Habit settings"; then
+  tap_element "Habit settings" "label" "Open habit settings"
+  sleep 1
+  if has_label "View Details"; then
+    tap_element "View Details" "label" "Open habit details"
+    sleep 1.5
+    capture "04_habit_details"
+    if tree_contains "Members" || has_label "Members"; then
+      pass "Members section visible from habit details"
+    else
+      skip "Members section" "habit details opened but members heading not visible"
+    fi
+    go_back
+    sleep 1
+  else
+    skip "View Details" "habit settings menu opened without View Details"
   fi
 else
   skip "Members list" "entry point not found (may require tapping habit card first)"

@@ -16,13 +16,13 @@ section "Flow 30: Chat delete message"
 fresh_launch; sleep 2
 if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
+cleanup_generated_chat_messages || true
 
 go_home
 sleep 1
 
 # Open the group chat from the habit card (Open group chat tooltip).
-if has_label "Open group chat"; then
-  tap_element "Open group chat" "label" "Open group chat"
+if tap_first_matching_label_regex '^Open group chat' '' "Open group chat"; then
   sleep 1.5
 else
   skip "Chat entry" "no Open group chat button on home"
@@ -33,8 +33,13 @@ capture "30_chat"
 
 # Send a new message (test fixture)
 msg=$(test_chat_message)
-if tree_contains "Type a message"; then
-  type_into "Type a message..." "$msg"
+msg_lc=$(printf '%s' "$msg" | tr '[:upper:]' '[:lower:]')
+if tree_contains "Chat message input" || tree_contains "Type a message"; then
+  if has_label "Chat message input"; then
+    type_into "Chat message input" "$msg"
+  else
+    type_into "Type a message..." "$msg"
+  fi
   sleep 0.5
   if has_label "Send message"; then
     tap_element "Send message" "label" "Send message"
@@ -47,28 +52,85 @@ fi
 
 capture "30_after_send"
 
-# Long-press the message to open context menu. iEZ has no long-press
-# primitive, so simulate via a tap+hold using the coords the message
-# bubble occupies. We read the tree and find the label matching our
-# message (ChatMessageBubble passes message.content as Semantics label).
-msg_coords=$(run_iez "$IEZ" ui tree --compact \
-  | jq -r --arg m "$msg" '[.data.elements[] | select(.label != null) | select(.label | contains($m))] | first | "\(.frame.x + (.frame.width/2) | floor),\(.frame.y + (.frame.height/2) | floor)"' 2>/dev/null)
+message_visible=0
+for _ in 1 2 3 4 5; do
+  if run_iez "$IEZ" ui tree --compact \
+    | jq -e --arg msg "$msg_lc" '.data.elements[]
+      | select(.label != null)
+      | select((.label | ascii_downcase) | contains($msg))' >/dev/null 2>&1; then
+    message_visible=1
+    break
+  fi
+  sleep 1
+done
 
-if [ -n "$msg_coords" ] && [ "$msg_coords" != "null" ] && [ "$msg_coords" != "," ]; then
-  info "Long-pressing message bubble at $msg_coords"
-  r=$(run_iez "$IEZ" ui long-press --coords "$msg_coords")
-  assert_ok "$r" "Long-press message bubble"
-  sleep 1.5
+if [ "$message_visible" = "1" ]; then
+  pass "Message '$msg' visible in chat"
+else
+  skip "Message visibility" "text not found in tree after send"
+  print_summary; exit $FAIL
 fi
 
-if has_label "Delete" || has_label "Delete message"; then
-  for lbl in "Delete message" "Delete"; do
-    if has_label "$lbl"; then
-      tap_element "$lbl" "label" "Tap $lbl"
+# Prefer the explicit message-scoped overflow menu on the freshly sent message.
+options_coords=$(run_iez "$IEZ" ui tree --compact \
+  | jq -r --arg msg "$msg_lc" '.data.elements[]
+    | select(.label != null)
+    | select(
+        ((.label | ascii_downcase) | contains("message options for " + $msg))
+        or ((.label | ascii_downcase) | contains("message options"))
+      )
+    | select(.frame != null and .frame.width > 0 and .frame.height > 0)
+    | .frame
+    | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
+  | head -1)
+
+menu_open=0
+if [ -n "$options_coords" ]; then
+  r=$(run_iez "$IEZ" ui tap --coords "$options_coords")
+  assert_ok "$r" "Open message options"
+  sleep 1.5
+  if has_label "Delete message" || has_label "Delete"; then
+    menu_open=1
+  fi
+fi
+
+if [ "$menu_open" != "1" ]; then
+  msg_coords=$(run_iez "$IEZ" ui tree --compact \
+    | jq -r --arg msg "$msg_lc" '.data.elements[]
+      | select(.label != null)
+      | select((.label | ascii_downcase) | contains($msg))
+      | select(.frame != null and .frame.width > 0 and .frame.height > 0)
+      | .frame
+      | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
+    | tail -1)
+
+  if [ -n "$msg_coords" ] && [ "$msg_coords" != "null" ] && [ "$msg_coords" != "," ]; then
+    msg_x=${msg_coords%,*}
+    msg_y=${msg_coords#*,}
+    for offset in 54 66 78 90 102; do
+      candidate="$((msg_x - offset)),$msg_y"
+      tap_element "$candidate" "coords" "Tap message menu affordance"
       sleep 1
-      break
-    fi
-  done
+      if has_label "Delete message" || has_label "Delete"; then
+        menu_open=1
+        break
+      fi
+    done
+  fi
+fi
+
+if [ "$menu_open" != "1" ]; then
+  fail "Open message options" '{"reason":"delete action did not appear after tapping message options"}'
+  print_summary; exit $FAIL
+fi
+
+if has_label "Delete message" || has_label "Delete"; then
+  if has_label "Delete message"; then
+    tap_element "Delete message" "label" "Tap Delete message"
+  else
+    tap_element "Delete" "label" "Tap Delete"
+  fi
+  sleep 1
   if has_label "Delete" || has_label "Confirm"; then
     coords=$(run_iez "$IEZ" ui tree --compact \
       | jq -r '[.data.elements[] | select(.label == "Delete")] | last | "\(.frame.x + (.frame.width/2) | floor),\(.frame.y + (.frame.height/2) | floor)"' 2>/dev/null)
@@ -77,9 +139,17 @@ if has_label "Delete" || has_label "Delete message"; then
       assert_ok "$r" "Confirm delete ($coords)"
     fi
   fi
-  pass "Deleted own message"
+  sleep 1.5
+  if run_iez "$IEZ" ui tree --compact \
+    | jq -e --arg msg "$msg_lc" '.data.elements[]
+      | select(.label != null)
+      | select((.label | ascii_downcase) | contains($msg))' >/dev/null 2>&1; then
+    fail "Deleted own message" "{\"reason\":\"message still visible after delete\"}"
+  else
+    pass "Deleted own message"
+  fi
 else
-  skip "Delete message" "long-press menu not reachable via single tap"
+  fail "Delete message" '{"reason":"delete action disappeared before it could be tapped"}'
 fi
 
 capture "30_done"

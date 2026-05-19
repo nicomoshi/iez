@@ -24,6 +24,8 @@ IEZ="${IEZ:-$IEZ_REPO_DIR/bin/iez}"
 
 # Default dev flavor bundle id. Override via STUARI_BUNDLE_ID to test stg/prod.
 BUNDLE_ID="${STUARI_BUNDLE_ID:-com.stuari.stuari.dev}"
+SEEDED_GROUP_ID="${SEEDED_GROUP_ID:-bbbb0000-0000-0000-0000-000000000001}"
+SEEDED_GROUP_CARD_ID="habit_card_$SEEDED_GROUP_ID"
 
 SCREENSHOTS="${SCREENSHOTS:-$STUARI_SUITE_DIR/screenshots}"
 mkdir -p "$SCREENSHOTS"
@@ -197,6 +199,31 @@ capture() {
   local stem="${1:-capture}"
   local stamp; stamp=$(date +%H%M%S)
   run_iez "$IEZ" ui screenshot --out "$SCREENSHOTS/${stem}_${stamp}.png" >/dev/null
+}
+
+first_coords_matching_label_regex() {
+  local regex="$1" flags="${2:-}"
+  run_iez "$IEZ" ui tree --compact \
+    | jq -r --arg regex "$regex" --arg flags "$flags" '.data.elements[]
+      | select(.label != null)
+      | select(.label | test($regex; $flags))
+      | select(.frame != null and .frame.width > 0 and .frame.height > 0)
+      | .frame
+      | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
+    | head -1
+}
+
+tap_first_matching_label_regex() {
+  local regex="$1" flags="${2:-}" desc="${3:-$1}"
+  local coords
+  coords=$(first_coords_matching_label_regex "$regex" "$flags")
+  if [ -z "$coords" ] || [ "$coords" = "null" ] || [ "$coords" = "," ]; then
+    return 1
+  fi
+  local r
+  r=$(run_iez "$IEZ" ui tap --coords "$coords")
+  assert_ok "$r" "Tap: $desc"
+  return 0
 }
 
 # ── App Lifecycle ───────────────────────────────────────────────────

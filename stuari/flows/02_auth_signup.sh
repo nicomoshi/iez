@@ -19,6 +19,18 @@ section "Flow 02: Auth Sign-Up + Profile Setup"
 fresh_launch
 sleep 2
 
+# Give the relaunched app time to settle on either the cached signed-in
+# home state or the auth page before deciding which path this flow can
+# legitimately exercise.
+wait_i=0
+while [ $wait_i -lt 8 ]; do
+  if on_home_page || on_auth_page; then
+    break
+  fi
+  sleep 1
+  wait_i=$((wait_i + 1))
+done
+
 # If a prior run left us signed in, skip the whole flow rather than force
 # a brittle sign-out→sign-in sequence — flow 03 covers that path.
 if on_home_page; then

@@ -9,9 +9,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 source "$SCRIPT_DIR/../lib/auth.sh"
 source "$SCRIPT_DIR/../lib/navigation.sh"
+source "$SCRIPT_DIR/../lib/fixtures.sh"
 
 section "Flow 07: Feed Browse"
 
+reseed_feed_fixtures || true
 fresh_launch; sleep 2
 if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
@@ -57,6 +59,10 @@ sleep 0.8
 # tolerantly and verify by post-tap state instead of the tap return.
 comment_label=$(run_iez "$IEZ" ui tree --compact \
   | jq -r '.data.elements[] | select(.label != null) | select(.label | test("^\\d+ comments")) | .label' | head -1)
+if [ -z "$comment_label" ]; then
+  comment_label=$(run_iez "$IEZ" ui tree --compact \
+    | jq -r '.data.elements[] | select(.label != null) | select(.label | test("^Last comment by ")) | .label' | head -1)
+fi
 if [ -n "$comment_label" ]; then
   r=$(run_iez "$IEZ" ui tap --label "$comment_label")
   sleep 1.5
@@ -71,7 +77,11 @@ if [ -n "$comment_label" ]; then
   go_back
   sleep 1
 else
-  skip "Post detail" "no posts with comments in feed"
+  if tree_contains "No posts yet"; then
+    skip "Post detail" "feed is empty for this seeded account"
+  else
+    skip "Post detail" "no posts with comments in feed"
+  fi
 fi
 
 capture "07_back_to_feed"

@@ -54,6 +54,9 @@ fi
 
 # Sign out again to return to a known state
 section "Sign-Out"
+sleep 1
+go_home >/dev/null 2>&1 || true
+sleep 1
 sign_out
 
 print_summary

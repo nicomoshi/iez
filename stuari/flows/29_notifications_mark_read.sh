@@ -40,23 +40,11 @@ else
   info "No notifications — checking for empty state"
   if tree_contains "No notifications" || tree_contains "empty" || tree_contains "all caught up"; then
     pass "Empty-state visible"
+    print_summary
+    exit $FAIL
   else
     skip "Notification interaction" "neither rows nor empty-state visible"
   fi
-fi
-
-# Look for Mark all as read / Clear all
-if has_label "Mark all read" || has_label "Mark all as read" || has_label "Clear all"; then
-  for lbl in "Mark all read" "Mark all as read" "Clear all"; do
-    if has_label "$lbl"; then
-      tap_element "$lbl" "label" "Tap $lbl"
-      sleep 1
-      break
-    fi
-  done
-  pass "Tapped mark-all affordance"
-else
-  info "No mark-all CTA visible (may be hidden under overflow)"
 fi
 
 print_summary

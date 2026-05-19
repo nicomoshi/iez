@@ -30,9 +30,17 @@ sleep 1
 run_iez "$IEZ" ui swipe --from "200,700" --to "200,200" >/dev/null 2>&1
 sleep 1.2
 
-# Switch to Stats tab
-if has_label "Stats"; then
-  tap_element "Stats" "label" "Switch to Stats tab"
+# Switch to Stats tab. The tab label currently resolves to static text,
+# so tap its frame center instead of relying on a tappable AX button.
+tab_center=$(run_iez "$IEZ" ui tree --compact \
+  | jq -r '.data.elements[]
+      | select(.label != null)
+      | select(.label | test("^Stats(\\n|,|$)"))
+      | .frame
+      | if . then "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)" else empty end' \
+  | head -1)
+if [ -n "$tab_center" ]; then
+  tap_element "$tab_center" "coords" "Switch to Stats tab"
   sleep 1.2
 else
   skip "Stats tab" "not visible in bottom sheet"

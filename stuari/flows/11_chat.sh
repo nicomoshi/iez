@@ -46,16 +46,21 @@ fi
 
 capture "11_chat_opened"
 
-# Verify we're in the chat — input hint is "Type a message..."
-if tree_contains "Type a message"; then
+# Verify we're in the chat.
+if tree_contains "Chat message input" || tree_contains "Type a message"; then
   pass "Chat input visible"
 else
-  fail "Chat input hint 'Type a message' not found"
+  fail "Chat input not found"
 fi
 
 # Type & send a message
 msg="$(test_chat_message)"
-type_into "Type a message..." "$msg"
+msg_lc=$(printf '%s' "$msg" | tr '[:upper:]' '[:lower:]')
+if has_label "Chat message input"; then
+  type_into "Chat message input" "$msg"
+else
+  type_into "Type a message..." "$msg"
+fi
 sleep 0.3
 capture "11_typed_message"
 
@@ -74,22 +79,46 @@ else
   info "Used return key to submit (no Send button label found)"
 fi
 
-# Verify the message appears in the chat list
-if tree_contains "$msg"; then
+message_visible=0
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if run_iez "$IEZ" ui tree --compact \
+    | jq -e --arg msg "$msg_lc" \
+      '.data.elements[]
+        | select(.label != null)
+        | select((.label | ascii_downcase) | contains($msg))' >/dev/null 2>&1; then
+    message_visible=1
+    break
+  fi
+  run_iez "$IEZ" ui swipe down >/dev/null 2>&1 || true
+  sleep 0.3
+  run_iez "$IEZ" ui swipe up >/dev/null 2>&1 || true
+  sleep 1
+done
+
+if [ "$message_visible" = "1" ]; then
   pass "Message '$msg' visible in chat"
 else
-  skip "Message visibility" "text not found in tree after send (may be below fold)"
+  fail "Message visibility" '{"reason":"text not found in tree after send"}'
 fi
 
 # React to a message — long-press to open emoji picker.
 # iez ui long-press requires --coords, not --label, so we read the element's
 # frame from the tree and long-press its center.
-if has_label "$msg"; then
+if [ "$message_visible" = "1" ]; then
   center=$(run_iez "$IEZ" ui tree --compact \
-    | jq -r --arg m "$msg" \
-      '.data.elements[] | select(.label == $m) | .frame
+    | jq -r --arg m "$msg_lc" \
+      '.data.elements[]
+        | select(.label != null)
+        | select((.label | ascii_downcase) | contains($m))
+        | .frame
         | if . then "\((.x + .width/2) | floor),\((.y + .height/2) | floor)" else empty end' \
-    | head -1)
+    | tail -1)
+  if [ -z "$center" ]; then
+    center=$(run_iez "$IEZ" ui tree --compact \
+      | jq -r '.data.elements[] | select(.label != null) | select(.label | startswith("Message from Alice:")) | .frame
+        | if . then "\((.x + .width/2) | floor),\((.y + .height/2) | floor)" else empty end' \
+      | tail -1)
+  fi
   if [ -n "$center" ]; then
     r=$(run_iez "$IEZ" ui long-press --coords "$center")
     assert_ok "$r" "Long-press message at $center to open reaction picker"
@@ -99,12 +128,18 @@ if has_label "$msg"; then
   fi
   sleep 1
   capture "11_reaction_picker"
-  # Tap first emoji — emoji picker buttons are labeled by emoji character
-  emoji_label=$(run_iez "$IEZ" ui tree --compact \
-    | jq -r '.data.elements[] | select(.role == "AXButton") | select(.label != null) | .label' \
-    | grep -E '^.?(👍|❤|🔥|😂|😮|🎉|👏)' | head -1)
-  if [ -n "$emoji_label" ]; then
-    tap_element "$emoji_label" "label" "Tap emoji reaction ($emoji_label)"
+  # Tap the first visible emoji option. The picker exposes labels like
+  # "Thumbs up\n👍" rather than the emoji glyph alone.
+  emoji_coords=$(run_iez "$IEZ" ui tree --compact \
+    | jq -r '.data.elements[]
+      | select(.role == "AXButton")
+      | select(.label != null)
+      | select(.label | test("Thumbs up|Love|Laugh|Surprised|Sad|Fire"))
+      | .frame
+      | if . then "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)" else empty end' \
+    | head -1)
+  if [ -n "$emoji_coords" ]; then
+    tap_element "$emoji_coords" "coords" "Tap emoji reaction"
     sleep 1
     capture "11_reacted"
   else
@@ -112,7 +147,7 @@ if has_label "$msg"; then
     dismiss_all
   fi
 else
-  skip "Long-press message" "message not re-findable for long-press"
+  fail "Long-press message" '{"reason":"message was not visible after send"}'
 fi
 
 go_back

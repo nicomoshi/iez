@@ -18,6 +18,7 @@ source "$LIB_DIR/fixtures.sh"
 
 section "Edge 1: Connection drop smoke"
 
+reseed_feed_fixtures || true
 fresh_launch; sleep 2
 if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
@@ -58,16 +59,23 @@ if has_label "Feed"; then
   sleep 1.5
 fi
 
-# Find a like button (tooltip: "Like" or add reaction)
-react_label=""
-for lbl in "Like" "React" "Add reaction"; do
-  if has_label "$lbl"; then react_label="$lbl"; break; fi
+# Find a like button (tooltip: "Like this post"; toggles to "Unlike").
+primed_reaction=0
+for _ in 1 2 3 4 5 6; do
+  if tap_first_matching_label_regex '^(Like this post|Unlike|Like|React|Add reaction)' '' \
+    "Prime reaction hammer target"; then
+    primed_reaction=1
+    break
+  fi
+  run_iez "$IEZ" ui swipe up >/dev/null 2>&1 || true
+  sleep 0.8
 done
 
-if [ -n "$react_label" ]; then
-  info "Hammering '$react_label' 10x"
+if [ "$primed_reaction" = "1" ]; then
+  info "Hammering reaction target 10x"
   for i in $(seq 1 10); do
-    run_iez "$IEZ" ui tap --label "$react_label" >/dev/null 2>&1
+    tap_first_matching_label_regex '^(Like this post|Unlike|Like|React|Add reaction)' '' \
+      "Reaction hammer tap $i" >/dev/null 2>&1 || true
     sleep 0.15
   done
   # Survived? App still responds to tree?
@@ -77,7 +85,7 @@ if [ -n "$react_label" ]; then
     fail "App became unresponsive under reaction hammer"
   fi
 else
-  skip "Reaction hammer" "no Like/React label visible on feed"
+  fail "Reaction hammer" '{"reason":"no Like/React label visible on feed"}'
 fi
 
 capture "edge2_done"

@@ -22,36 +22,21 @@ section "Flow 16: Profile Edit"
 fresh_launch; sleep 2
 if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
-go_profile
+go_settings
 sleep 1.5
-capture "16_profile_page"
+capture "16_settings_page"
 
-# Open settings / edit profile — look for "Edit Profile" or gear icon.
-# Explicitly reject "Settings tab" (the top-nav tab) — that would navigate
-# away from Profile rather than opening the edit sheet.
-if has_label "Edit Profile"; then
-  tap_element "Edit Profile" "label" "Open Edit Profile"
-elif has_label "Edit profile"; then
-  tap_element "Edit profile" "label" "Open Edit profile"
+if has_label "Profile"; then
+  tap_element "Profile" "label" "Open Profile settings"
 else
-  dyn=$(run_iez "$IEZ" ui tree --compact \
-    | jq -r '.data.elements[]
-               | select(.label != null)
-               | select(.label != "Settings tab" and .label != "Settings tab, selected")
-               | select(.label | test("edit profile|profile settings"; "i"))
-               | .label' | head -1)
-  if [ -n "$dyn" ]; then
-    tap_element "$dyn" "label" "Open profile settings ('$dyn')"
-  else
-    skip "Edit Profile entry" "no Edit Profile button visible"
-    print_summary; exit $FAIL
-  fi
+  skip "Edit Profile entry" "no Profile settings tile visible"
+  print_summary; exit $FAIL
 fi
 
 sleep 1.5
 capture "16_edit_profile"
 
-# Edit display name — field has a label derived from the form (guess "Name" or "Display name")
+# Edit display name
 for name_field in "Name" "Display name" "Display Name" "Full name"; do
   if tree_contains "$name_field"; then
     type_into "$name_field" "$(test_display_name)"
@@ -59,8 +44,8 @@ for name_field in "Name" "Display name" "Display Name" "Full name"; do
   fi
 done
 
-# Edit bio — hint "Bio" or placeholder "Write something about yourself..."
-for bio_field in "Bio" "About" "Write something about yourself..."; do
+# Edit bio
+for bio_field in "Bio" "About" "Write something about yourself..." "Comment input"; do
   if tree_contains "$bio_field"; then
     type_into "$bio_field" "$(test_bio)"
     break
@@ -69,9 +54,32 @@ done
 
 capture "16_edited"
 
-# Save Changes — GradientButton label: "Save Changes"
-if has_label "Save Changes"; then
-  tap_element "Save Changes" "label" "Save profile changes"
+# Dismiss keyboard and scroll until the offscreen save button exposes a real
+# frame. Flutter currently reports the button in-tree even when it's still at
+# 0x0 offscreen.
+run_iez "$IEZ" ui tap --coords "200,180" >/dev/null 2>&1
+sleep 0.5
+
+save_coords=""
+for _ in 1 2 3; do
+  save_coords=$(run_iez "$IEZ" ui tree --compact \
+    | jq -r '.data.elements[]
+      | select(.label != null)
+      | select(.label | contains("Save Changes"))
+      | select(.frame != null and .frame.width > 0 and .frame.height > 0)
+      | .frame
+      | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
+    | head -1)
+  if [ -n "$save_coords" ]; then
+    break
+  fi
+  run_iez "$IEZ" ui swipe up >/dev/null 2>&1
+  sleep 0.8
+done
+
+if [ -n "$save_coords" ]; then
+  r=$(run_iez "$IEZ" ui tap --coords "$save_coords")
+  assert_ok "$r" "Tap: Save profile changes"
   sleep 2
   capture "16_saved"
   pass "Saved profile changes"
@@ -79,7 +87,7 @@ elif has_label "Save"; then
   tap_element "Save" "label" "Save (alternate label)"
   sleep 2
 else
-  skip "Save button" "no Save Changes / Save label found"
+  skip "Save button" "no visible Save Changes / Save label found"
 fi
 
 # Return to profile page

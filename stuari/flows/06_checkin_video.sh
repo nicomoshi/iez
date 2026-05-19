@@ -19,7 +19,13 @@ if on_onboarding_page; then complete_onboarding; fi
 go_home
 
 # Open camera by tapping a habit card (same approach as flow 05).
-# See 05_checkin_photo.sh for the rationale behind matching " habit, ".
+# Prefer the stable semantics identifier when present, then fall back to
+# matching the habit-card label.
+habit_id=$(run_iez "$IEZ" ui tree --compact \
+  | jq -r '.data.elements[]
+             | select(.id != null)
+             | select(.id | startswith("habit_card_"))
+             | .id' | head -1)
 habit_label=$(run_iez "$IEZ" ui tree --compact \
   | jq -r '.data.elements[]
              | select(.label != null)
@@ -32,7 +38,9 @@ if [ -z "$habit_label" ]; then
                | select(.label | test(" habit, "))
                | .label' | head -1)
 fi
-if [ -n "$habit_label" ]; then
+if [ -n "$habit_id" ]; then
+  tap_element "$habit_id" "id" "Tap habit card by id ('$habit_id')"
+elif [ -n "$habit_label" ]; then
   tap_element "$habit_label" "label" "Tap habit card ('$habit_label')"
 else
   dyn=$(run_iez "$IEZ" ui tree --compact \
@@ -47,7 +55,11 @@ sleep 2
 capture "06_camera_opened"
 
 # Switch to Video mode
-if has_label "Video mode"; then
+if has_id "camera_mode_video_button"; then
+  tap_element "camera_mode_video_button" "id" "Select Video mode"
+  sleep 0.5
+  capture "06_video_mode"
+elif has_label "Video mode"; then
   tap_element "Video mode" "label" "Select Video mode"
   sleep 0.5
   capture "06_video_mode"
@@ -57,13 +69,32 @@ fi
 
 # Start recording
 rec_label=""
-if has_label "Start video recording"; then
+recording_started=0
+if has_id "camera_capture_video_button"; then
+  tap_element "camera_capture_video_button" "id" "Start video recording"
+  sleep 3
+  capture "06_recording"
+  recording_started=1
+  if has_id "camera_stop_recording_button"; then
+    tap_element "camera_stop_recording_button" "id" "Stop recording"
+    sleep 2
+    capture "06_stopped"
+  elif has_label "Stop recording"; then
+    tap_element "Stop recording" "label" "Stop recording"
+    sleep 2
+    capture "06_stopped"
+  else
+    fail "Stop recording button not found mid-recording"
+  fi
+elif has_label "Start video recording"; then
   rec_label="Start video recording"
 else
   rec_label=$(run_iez "$IEZ" ui tree --compact \
     | jq -r '.data.elements[] | select(.label != null) | select(.label | startswith("Start video recording")) | .label' | head -1)
 fi
-if [ -n "$rec_label" ]; then
+if [ "$recording_started" -eq 1 ]; then
+  :
+elif [ -n "$rec_label" ]; then
   tap_element "$rec_label" "label" "Start video recording ($rec_label)"
   # Record ~3 seconds
   sleep 3
@@ -81,7 +112,10 @@ else
 fi
 
 # Continue to post composition + submit
-if has_label "Continue to post"; then
+if has_id "camera_continue_to_post_button"; then
+  tap_element "camera_continue_to_post_button" "id" "Continue to compose"
+  sleep 1.5
+elif has_label "Continue to post"; then
   tap_element "Continue to post" "label" "Continue to compose"
   sleep 1.5
 fi

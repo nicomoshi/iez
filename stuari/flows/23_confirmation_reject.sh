@@ -10,43 +10,61 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 source "$SCRIPT_DIR/../lib/auth.sh"
 source "$SCRIPT_DIR/../lib/navigation.sh"
+source "$SCRIPT_DIR/../lib/fixtures.sh"
 
 section "Flow 23: Confirmation — reject"
 
+reseed_confirmation_fixtures || true
 fresh_launch; sleep 2
 if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
 go_home
 sleep 1
+capture "23_home"
 
-# Pull up Feed bottom sheet
-run_iez "$IEZ" ui swipe --from "200,800" --to "200,200" >/dev/null 2>&1
+found_conf=0
+run_iez "$IEZ" ui swipe down >/dev/null 2>&1 || true
 sleep 1
-if has_label "Feed"; then
-  tap_element "Feed" "label" "Open Feed tab"
-  sleep 1.5
-fi
 
-capture "23_feed"
-
-# The vote buttons are a thumbs-down ("Reject") and thumbs-up ("Confirm").
-# Look for either label. The vote_button widget uses IconButton with
-# tooltips "Confirm check-in" / "Reject check-in".
-reject_labels=( "Reject" "Reject check-in" "Not now" "Deny" "No" )
-found=""
-for lbl in "${reject_labels[@]}"; do
-  if has_label "$lbl"; then found="$lbl"; break; fi
+for _ in 1 2 3 4 5; do
+  if tap_first_matching_label_regex '^Review check-in from ' '' \
+    "Open reject confirmation from home"; then
+    found_conf=1
+    sleep 1.5
+    break
+  fi
+  sleep 1
 done
 
-if [ -z "$found" ]; then
-  skip "Reject affordance" "no 'Reject' label visible — no pending check-in by peers"
+if [ "$found_conf" = "0" ]; then
+  go_notifications
+  sleep 1.5
+  capture "23_notifications_list"
+fi
+
+for label in "Reject" "Reject check-in" "Review check-in" "Confirm check-in"; do
+  if has_label "$label"; then
+    tap_element "$label" "label" "Open reject confirmation '$label'"
+    found_conf=1
+    sleep 1.5
+    break
+  fi
+done
+
+if [ "$found_conf" = "0" ]; then
+  skip "Reject affordance" "no pending confirmation entry was reachable"
   print_summary; exit $FAIL
 fi
 
-tap_element "$found" "label" "Tap Reject"
-sleep 2
-capture "23_post_reject"
-pass "Tapped reject affordance"
+capture "23_confirmation_overlay"
+
+if tap_first_matching_label_regex '^Reject' '' "Tap Reject"; then
+  sleep 2
+  capture "23_post_reject"
+  pass "Tapped reject affordance"
+else
+  skip "Reject affordance" "confirmation opened but Reject button was not reachable"
+fi
 
 print_summary
 exit $FAIL

@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
-# Flow 27 (P1): Members sheet smoke
+# Flow 27 (P1): Members sheet → friend search
 #
-# The proper entry to FriendSearchPage is not wired from Home yet — the
-# MembersListSheet button shows "Add member coming soon!" toast. Flow
-# validates the members sheet opens and the stub toast fires.
-#
-# Once the proper entry is wired (see habit_detail page → add members),
-# this flow should walk through the friend search + invite path.
+# Opens the overflow members sheet from Home and verifies the "Add Member"
+# CTA routes into the existing FriendSearchPage.
 
 set +e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -35,21 +31,34 @@ if [ -z "$members_label" ]; then
     | jq -r '[.data.elements[] | select(.label != null) | select(.label | test("^member|^\\+[0-9]+ more|Group members"; "i")) | .label][0]')
 fi
 
-if [ -z "$members_label" ] || [ "$members_label" = "null" ]; then
-  skip "Members sheet entry" "no member-bubble affordance (group has ≤2 members or AX gap)"
-  print_summary; exit $FAIL
-fi
-
-tap_element "$members_label" "label" "Open members sheet ('$members_label')"
-sleep 1.2
-capture "27_members_sheet"
-
-if has_label "Add Member"; then
-  tap_element "Add Member" "label" "Tap Add Member"
+if [ -n "$members_label" ] && [ "$members_label" != "null" ]; then
+  tap_element "$members_label" "label" "Open members sheet ('$members_label')"
   sleep 1.2
-  pass "Add Member tapped (stub toast)"
+  capture "27_members_sheet"
+
+  if has_label "Add Member"; then
+    tap_element "Add Member" "label" "Tap Add Member"
+    sleep 1.5
+    capture "27_friend_search"
+    if tree_contains "Invite to Group" || tree_contains "Inviting to" || has_label "Invite via SMS"; then
+      pass "Friend search page opened from members sheet"
+    else
+      fail "Friend search page did not open from members sheet"
+    fi
+  else
+    info "No Add Member CTA — members sheet may be read-only"
+  fi
+elif has_label "Add friend to group"; then
+  tap_element "Add friend to group" "label" "Open friend search from home shortcut"
+  sleep 1.5
+  capture "27_friend_search"
+  if tree_contains "Invite to Group" || tree_contains "Inviting to" || has_label "Invite via SMS"; then
+    pass "Friend search page opened from direct add-friend button"
+  else
+    fail "Friend search page did not open from direct add-friend button"
+  fi
 else
-  info "No Add Member CTA — members sheet may be read-only"
+  skip "Friend search entry" "no member overflow or add-friend affordance visible on home"
 fi
 
 dismiss_all
