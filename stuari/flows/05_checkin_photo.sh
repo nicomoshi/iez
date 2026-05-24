@@ -37,11 +37,8 @@ capture "05_home"
 # CheckInAvailability gate so any card can open the camera. Prefer the
 # stable semantics identifier when present, then the "Tap to check in"
 # card (availability=due), and finally the first "* habit, *" label we find.
-habit_id=$(run_iez "$IEZ" ui tree --compact \
-  | jq -r '.data.elements[]
-             | select(.id != null)
-             | select(.id | startswith("habit_card_"))
-             | .id' | head -1)
+wait_for_visible_habit_card 15 || true
+habit_id=$(current_visible_habit_card_id)
 habit_label=$(run_iez "$IEZ" ui tree --compact \
   | jq -r '.data.elements[]
              | select(.label != null)
@@ -116,9 +113,12 @@ elif has_label "Continue to post"; then
   sleep 1.5
 fi
 
-# Type an optional caption
+# Type an optional caption. Keep the value in memory so the feed assertion can
+# prove the just-submitted post is visible immediately, before confirmation.
+post_description="$(test_post_description)"
+wait_for_tree_text "Post" 8 || true
 if tree_contains "Share your progress"; then
-  type_into "Share your progress..." "$(test_post_description)"
+  type_into "Share your progress..." "$post_description"
 fi
 
 capture "05_compose"
@@ -129,6 +129,19 @@ if has_label "Post"; then
   sleep 3
   capture "05_posted"
   pass "Photo check-in submitted"
+
+  go_home
+  sleep 1
+  expand_home_sheet_to_feed
+  capture "05_feed_after_post"
+  if wait_for_tree_text "$post_description" 12; then
+    pass "New check-in appears in feed immediately"
+  elif tree_contains "Posting..."; then
+    pass "New check-in appears as optimistic feed card"
+  else
+    fail "New check-in did not appear in feed after posting"
+    capture "05_feed_missing_new_post"
+  fi
 else
   skip "Post button" "not visible (may need to scroll or fill required fields)"
 fi

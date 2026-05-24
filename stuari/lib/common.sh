@@ -133,6 +133,18 @@ tree_has_id() {
     | jq -r '.data.elements[].id // empty' 2>/dev/null | grep -qF "$1"
 }
 
+wait_for_tree_text() {
+  local text="$1" timeout="${2:-10}" elapsed=0
+  while [ "$elapsed" -lt "$timeout" ]; do
+    if tree_contains "$text"; then
+      return 0
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  return 1
+}
+
 wait_for_habit_name() {
   local name="$1" timeout="${2:-8}" elapsed=0
   while [ "$elapsed" -lt "$timeout" ]; do
@@ -238,13 +250,92 @@ tap_first_matching_label_regex() {
   return 0
 }
 
+current_visible_habit_card_id() {
+  local center_x="${1:-196}"
+  run_iez "$IEZ" ui tree --compact \
+    | jq -r --argjson center_x "$center_x" '
+      def abs: if . < 0 then -1 * . else . end;
+      .data.elements[]
+      | select(.id != null)
+      | select(.id | startswith("habit_card_"))
+      | select(.frame != null and .frame.width > 40 and .frame.height > 40)
+      | [
+          (((.frame.x + (.frame.width / 2)) - $center_x) | abs),
+          (-1 * (.frame.width * .frame.height)),
+          .id
+        ]
+      | @tsv' 2>/dev/null \
+    | sort -n \
+    | head -1 \
+    | awk -F '\t' '{print $3}'
+}
+
+current_visible_habit_card_label() {
+  local id
+  id=$(current_visible_habit_card_id)
+  if [ -z "$id" ]; then
+    return 1
+  fi
+  run_iez "$IEZ" ui tree --compact \
+    | jq -r --arg id "$id" '.data.elements[]
+        | select(.id == $id)
+        | .label // empty' 2>/dev/null \
+    | head -1
+}
+
+wait_for_visible_habit_card() {
+  local timeout="${1:-12}" elapsed=0
+  while [ "$elapsed" -lt "$timeout" ]; do
+    if [ -n "$(current_visible_habit_card_id)" ]; then
+      return 0
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  return 1
+}
+
+pull_to_refresh_home() {
+  local r
+  r=$(run_iez "$IEZ" ui swipe --from "200,650" --to "200,830")
+  assert_ok "$r" "Pull to refresh selected habit"
+  sleep 3
+}
+
+expand_home_sheet_to_feed() {
+  local r
+  r=$(run_iez "$IEZ" ui swipe --from "200,700" --to "200,200")
+  if [ "$(json_ok "$r")" = "true" ]; then
+    pass "Expanded home bottom sheet"
+  else
+    fail "Expanded home bottom sheet" "$r"
+    return 1
+  fi
+  sleep 1.5
+
+  if has_label "Feed"; then
+    tap_element "Feed" "label" "Switch to Feed tab"
+    sleep 1
+  fi
+}
+
 # ── App Lifecycle ───────────────────────────────────────────────────
 
 fresh_launch() {
   xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" 2>/dev/null || true
   sleep 0.5
-  xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID" >/dev/null 2>&1
-  sleep 3
+
+  local attempts=0
+  while [ $attempts -lt 3 ]; do
+    xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID" >/dev/null 2>&1
+    sleep 3
+    if run_iez "$IEZ" ui tree --compact \
+      | jq -r '.data.elements[] | .label // empty' 2>/dev/null \
+      | grep -qE '^(stuari-dev|stuari|Home tab|Home tab, selected|Sign in with Apple|Sign in with Google)$'; then
+      return 0
+    fi
+    attempts=$((attempts + 1))
+  done
 }
 
 terminate_app() {
