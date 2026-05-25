@@ -142,6 +142,39 @@ if has_label "Post"; then
     fail "New check-in did not appear in feed after posting"
     capture "05_feed_missing_new_post"
   fi
+
+  go_home
+  sleep 1
+  if ! wait_for_visible_habit_card 3; then
+    run_iez "$IEZ" ui swipe --from "200,330" --to "200,780" >/dev/null
+    sleep 1
+  fi
+  if ! wait_for_visible_habit_card 8; then
+    fail "Habit carousel visible after posting"
+    capture "05_home_after_post_missing_card"
+  fi
+  capture "05_home_after_post"
+  pull_to_refresh_home
+  wait_for_visible_habit_card 5 || true
+  capture "05_home_after_post_refresh"
+  if [ -n "$habit_id" ]; then
+    submitted_card_label=$(run_iez "$IEZ" ui tree --compact \
+      | jq -r --arg id "$habit_id" '.data.elements[]
+          | select(.id == $id)
+          | .label // empty' 2>/dev/null \
+      | head -1)
+    if [ -z "$submitted_card_label" ]; then
+      fail "Submitted habit card remains visible after refresh"
+      capture "05_refresh_missing_submitted_card"
+    elif echo "$submitted_card_label" | grep -q "Tap to check in"; then
+      fail "Submitted habit card re-enabled check-in after refresh"
+      capture "05_refresh_reenabled_checkin"
+    else
+      pass "Submitted habit card stays blocked after refresh"
+    fi
+  else
+    skip "Submitted habit refresh guard" "habit card id was unavailable"
+  fi
 else
   skip "Post button" "not visible (may need to scroll or fill required fields)"
 fi
