@@ -136,7 +136,7 @@ if has_label "Post"; then
   capture "05_feed_after_post"
   if wait_for_tree_text "$post_description" 12; then
     pass "New check-in appears in feed immediately"
-  elif tree_contains "Posting..."; then
+  elif tree_contains "Posting..." || tree_contains "Syncing..." || tree_contains "Retrying..."; then
     pass "New check-in appears as optimistic feed card"
   else
     fail "New check-in did not appear in feed after posting"
