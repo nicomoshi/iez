@@ -61,7 +61,13 @@ detect_device() {
 # Run an iez command and strip any non-JSON stderr noise.
 # Usage: run_iez "$IEZ" ui tap --id some_id
 run_iez() {
-  "$@" 2>/dev/null | sed -n '/^{/,/^}/p'
+  local binary="$1"
+  shift
+  if [ -n "${DEVICE_ID:-}" ]; then
+    "$binary" --udid "$DEVICE_ID" "$@" 2>/dev/null | sed -n '/^{/,/^}/p'
+  else
+    "$binary" "$@" 2>/dev/null | sed -n '/^{/,/^}/p'
+  fi
 }
 
 # Extract .ok from a JSON response; default false.
@@ -250,6 +256,17 @@ tap_first_matching_label_regex() {
   return 0
 }
 
+coords_for_id() {
+  local id="$1"
+  run_iez "$IEZ" ui tree --compact \
+    | jq -r --arg id "$id" '.data.elements[]
+      | select(.id == $id)
+      | select(.frame != null and .frame.width > 0 and .frame.height > 0)
+      | .frame
+      | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
+    | head -1
+}
+
 current_visible_habit_card_id() {
   local center_x="${1:-196}"
   run_iez "$IEZ" ui tree --compact \
@@ -322,6 +339,10 @@ expand_home_sheet_to_feed() {
 # ── App Lifecycle ───────────────────────────────────────────────────
 
 fresh_launch() {
+  # Other local simulator apps can be left in front by deep links or OTA
+  # tooling. Kill known shells before asserting the Stuari AX tree.
+  xcrun simctl terminate "$DEVICE_ID" "com.arguello.canvaspatchshell" 2>/dev/null || true
+  xcrun simctl terminate "$DEVICE_ID" "com.example.canvaspatchShell" 2>/dev/null || true
   xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" 2>/dev/null || true
   sleep 0.5
 
@@ -334,8 +355,11 @@ fresh_launch() {
       | grep -qE '^(stuari-dev|stuari|Home tab|Home tab, selected|Sign in with Apple|Sign in with Google)$'; then
       return 0
     fi
+    xcrun simctl terminate "$DEVICE_ID" "com.arguello.canvaspatchshell" 2>/dev/null || true
+    xcrun simctl terminate "$DEVICE_ID" "com.example.canvaspatchShell" 2>/dev/null || true
     attempts=$((attempts + 1))
   done
+  capture "fresh_launch_not_stuari"
 }
 
 terminate_app() {

@@ -51,8 +51,18 @@ if [ -z "$habit_label" ]; then
                | select(.label | test(" habit, "))
                | .label' | head -1)
 fi
+camera_shell_visible() {
+  has_id "camera_capture_photo_button" ||
+    has_id "camera_mode_photo_button" ||
+    tree_contains "Take photo"
+}
 if [ -n "$habit_id" ]; then
-  tap_element "$habit_id" "id" "Tap habit card by id ('$habit_id')"
+  r=$(run_iez "$IEZ" ui tap --id "$habit_id")
+  if [ "$(json_ok "$r")" = "true" ]; then
+    pass "Tap: Tap habit card by id ('$habit_id')"
+  else
+    info "Habit id tap did not report success; trying visible card coordinates"
+  fi
 elif [ -n "$habit_label" ]; then
   tap_element "$habit_label" "label" "Tap habit card ('$habit_label')"
 elif has_label "Check In" || tree_contains "Check In"; then
@@ -67,8 +77,24 @@ else
   skip "Check In entry" "no habit card or Check In CTA visible on Home"
 fi
 
+sleep 1
+if ! camera_shell_visible && [ -n "$habit_id" ]; then
+  habit_coords=$(coords_for_id "$habit_id")
+  if [ -n "$habit_coords" ] && [ "$habit_coords" != "null" ] && [ "$habit_coords" != "," ]; then
+    tap_element "$habit_coords" "coords" "Tap visible habit card center ('$habit_id')"
+  fi
+fi
+sleep 1
+if ! camera_shell_visible && [ -n "$habit_label" ]; then
+  tap_first_matching_label_regex " habit, " "" "Tap habit card by visible label" || true
+fi
+
 sleep 2
 capture "05_camera_opened"
+if ! camera_shell_visible; then
+  fail "Camera shell opened after tapping habit card"
+  capture "05_camera_not_opened"
+fi
 
 # Ensure we're on Photo mode
 if has_id "camera_mode_photo_button"; then
@@ -116,6 +142,10 @@ fi
 # Type an optional caption. Keep the value in memory so the feed assertion can
 # prove the just-submitted post is visible immediately, before confirmation.
 post_description="$(test_post_description)"
+post_description_display="$(
+  printf '%s' "$post_description" \
+    | awk '{print toupper(substr($0,1,1)) substr($0,2)}'
+)"
 wait_for_tree_text "Post" 8 || true
 if tree_contains "Share your progress"; then
   type_into "Share your progress..." "$post_description"
@@ -134,7 +164,8 @@ if has_label "Post"; then
   sleep 1
   expand_home_sheet_to_feed
   capture "05_feed_after_post"
-  if wait_for_tree_text "$post_description" 12; then
+  if wait_for_tree_text "$post_description" 12 ||
+     wait_for_tree_text "$post_description_display" 2; then
     pass "New check-in appears in feed immediately"
   elif tree_contains "Posting..." || tree_contains "Syncing..." || tree_contains "Retrying..."; then
     pass "New check-in appears as optimistic feed card"
@@ -154,26 +185,31 @@ if has_label "Post"; then
     capture "05_home_after_post_missing_card"
   fi
   capture "05_home_after_post"
+  selected_habit_label=$(current_visible_habit_card_label)
+  selected_habit_name=$(
+    printf '%s' "$selected_habit_label" |
+      sed 's/^Habit card: //; s/ habit,.*$//'
+  )
   pull_to_refresh_home
   wait_for_visible_habit_card 5 || true
   capture "05_home_after_post_refresh"
-  if [ -n "$habit_id" ]; then
-    submitted_card_label=$(run_iez "$IEZ" ui tree --compact \
-      | jq -r --arg id "$habit_id" '.data.elements[]
-          | select(.id == $id)
-          | .label // empty' 2>/dev/null \
-      | head -1)
-    if [ -z "$submitted_card_label" ]; then
-      fail "Submitted habit card remains visible after refresh"
-      capture "05_refresh_missing_submitted_card"
-    elif echo "$submitted_card_label" | grep -q "Tap to check in"; then
-      fail "Submitted habit card re-enabled check-in after refresh"
-      capture "05_refresh_reenabled_checkin"
-    else
-      pass "Submitted habit card stays blocked after refresh"
-    fi
+  submitted_card_label=$(current_visible_habit_card_label)
+  submitted_habit_name=$(
+    printf '%s' "$submitted_card_label" |
+      sed 's/^Habit card: //; s/ habit,.*$//'
+  )
+  if [ -z "$submitted_card_label" ]; then
+    fail "Submitted habit card remains visible after refresh"
+    capture "05_refresh_missing_submitted_card"
+  elif [ -n "$selected_habit_name" ] &&
+    [ "$submitted_habit_name" != "$selected_habit_name" ]; then
+    fail "Submitted habit remains selected after refresh ($selected_habit_name -> $submitted_habit_name)"
+    capture "05_refresh_changed_submitted_card"
+  elif echo "$submitted_card_label" | grep -q "Tap to check in"; then
+    fail "Submitted habit card re-enabled check-in after refresh"
+    capture "05_refresh_reenabled_checkin"
   else
-    skip "Submitted habit refresh guard" "habit card id was unavailable"
+    pass "Submitted habit card stays selected and blocked after refresh"
   fi
 else
   skip "Post button" "not visible (may need to scroll or fill required fields)"

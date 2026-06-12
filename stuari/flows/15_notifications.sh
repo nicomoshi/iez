@@ -56,27 +56,43 @@ run_iez "$IEZ" ui swipe up >/dev/null 2>&1
 sleep 0.5
 capture "15_notifications_scrolled"
 
-# Tap the first notification that isn't a tab — prefer ones mentioning "liked", "commented", etc.
-first_notif=$(run_iez "$IEZ" ui tree --compact \
+# Tap the first notification row. Prefer stable Semantics identifiers; fall
+# back to the older label matching path for builds that do not expose them.
+first_notif_id=$(run_iez "$IEZ" ui tree --compact \
   | jq -r '.data.elements[]
-      | select(.label != null)
-      | select(.label | test("liked|commented|followed|confirm|posted"; "i"))
-      | .label' | head -1)
+      | select(.id != null)
+      | select(.id | startswith("notification_tile_"))
+      | .id' | head -1)
 
-if [ -z "$first_notif" ]; then
+first_notif=""
+if [ -z "$first_notif_id" ]; then
   first_notif=$(run_iez "$IEZ" ui tree --compact \
     | jq -r '.data.elements[]
         | select(.label != null)
-        | select(.label | test("tab|selected|stuari"; "i") | not)
-        | select(.label | test("no notifications|nothing here|all caught up|empty"; "i") | not)
+        | select(.label | test("liked|commented|followed|confirm|posted|check in"; "i"))
         | .label' | head -1)
 fi
 
-if [ -n "$first_notif" ]; then
+tapped_notification="false"
+if [ -n "$first_notif_id" ]; then
+  coords=$(coords_for_id "$first_notif_id")
+  if [ -n "$coords" ]; then
+    r=$(run_iez "$IEZ" ui tap --coords "$coords")
+    assert_ok "$r" "Tap first notification row ($first_notif_id)"
+  else
+    tap_element "$first_notif_id" "id" "Tap first notification row ($first_notif_id)"
+  fi
+  sleep 2
+  capture "15_notif_target"
+  tapped_notification="true"
+elif [ -n "$first_notif" ]; then
   tap_element "$first_notif" "label" "Tap first notification ('$first_notif')"
   sleep 2
   capture "15_notif_target"
+  tapped_notification="true"
+fi
 
+if [ "$tapped_notification" = "true" ]; then
   # Verify we navigated somewhere — we should not be on the notifications list anymore
   # (best-effort: Home tab selected state flipped)
   if has_label "Notifications tab, selected"; then

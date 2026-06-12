@@ -41,7 +41,10 @@ capture "04_home_before_create"
 # Look for a "Create Habit" CTA — the empty state card or the + FAB
 CREATE_STARTED=0
 CREATE_SUBMITTED=0
-if has_id "create_habit_card"; then
+if has_id "create_habit_quick_action"; then
+  tap_element "create_habit_quick_action" "id" "Start Create Habit flow (quick action)"
+  CREATE_STARTED=1
+elif has_id "create_habit_card"; then
   tap_element "create_habit_card" "id" "Start Create Habit flow (create card id)"
   CREATE_STARTED=1
 elif has_label "Create Habit"; then
@@ -58,7 +61,10 @@ else
   # Try a swipe to reveal it
   run_iez "$IEZ" ui swipe up >/dev/null 2>&1
   sleep 0.5
-  if has_id "create_habit_card"; then
+  if has_id "create_habit_quick_action"; then
+    tap_element "create_habit_quick_action" "id" "Start Create Habit flow after swipe"
+    CREATE_STARTED=1
+  elif has_id "create_habit_card"; then
     tap_element "create_habit_card" "id" "Start Create Habit flow after swipe"
     CREATE_STARTED=1
   elif has_label "Create new habit"; then
