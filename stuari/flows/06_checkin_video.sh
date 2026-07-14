@@ -18,28 +18,25 @@ if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
 go_home
 
-# Open camera by tapping a habit card (same approach as flow 05).
-# Prefer the stable semantics identifier when present, then fall back to
-# matching the habit-card label.
-habit_id=$(run_iez "$IEZ" ui tree --compact \
-  | jq -r '.data.elements[]
-             | select(.id != null)
-             | select(.id | startswith("habit_card_"))
-             | .id' | head -1)
-habit_label=$(run_iez "$IEZ" ui tree --compact \
-  | jq -r '.data.elements[]
-             | select(.label != null)
-             | select(.label | test(" habit, Tap to check in$"))
-             | .label' | head -1)
-if [ -z "$habit_label" ]; then
-  habit_label=$(run_iez "$IEZ" ui tree --compact \
-    | jq -r '.data.elements[]
-               | select(.label != null)
-               | select(.label | test(" habit, "))
-               | .label' | head -1)
-fi
+# Open camera by tapping an actionable habit card. Mock camera replaces
+# simulator hardware only; it must not bypass check-in eligibility.
+wait_for_visible_habit_card 15 || true
+habit_id=$(actionable_habit_card_id)
+habit_label=$(actionable_habit_card_label)
+camera_shell_visible() {
+  has_id "camera_capture_video_button" ||
+    has_id "camera_mode_video_button" ||
+    has_id "camera_mode_photo_button" ||
+    tree_contains "Video mode" ||
+    tree_contains "Take photo"
+}
 if [ -n "$habit_id" ]; then
-  tap_element "$habit_id" "id" "Tap habit card by id ('$habit_id')"
+  r=$(run_iez "$IEZ" ui tap --id "$habit_id")
+  if [ "$(json_ok "$r")" = "true" ]; then
+    pass "Tap: Tap habit card by id ('$habit_id')"
+  else
+    info "Habit id tap did not report success; trying visible card coordinates"
+  fi
 elif [ -n "$habit_label" ]; then
   tap_element "$habit_label" "label" "Tap habit card ('$habit_label')"
 else
@@ -48,10 +45,48 @@ else
   if [ -n "$dyn" ]; then
     tap_element "$dyn" "label" "Tap Check In"
   else
-    skip "Check In entry" "no habit card or Check In button visible"
+    fail "Check In entry not available for video flow"
+    capture "06_no_actionable_habit"
+    print_summary
+    exit $FAIL
   fi
 fi
+sleep 1
+if ! camera_shell_visible && [ -n "$habit_id" ]; then
+  habit_coords=$(coords_for_id "$habit_id")
+  if [ -n "$habit_coords" ] && [ "$habit_coords" != "null" ] && [ "$habit_coords" != "," ]; then
+    tap_element "$habit_coords" "coords" "Tap visible habit card center ('$habit_id')"
+  fi
+fi
+sleep 1
+if ! camera_shell_visible && [ -n "$habit_label" ]; then
+  tap_first_matching_label_regex \
+    " habit, (Tap to check in|Streak at risk)" \
+    "" \
+    "Tap actionable habit card by visible label" || true
+fi
+
 sleep 2
+if ! camera_shell_visible; then
+  app_container=$(xcrun simctl get_app_container "$DEVICE_ID" "$BUNDLE_ID" data 2>/dev/null)
+  db_path="$app_container/tmp/stuari_offline.sqlite"
+  occurrence_count=""
+  if [ -f "$db_path" ]; then
+    occurrence_count=$(sqlite3 "$db_path" \
+      "select count(*) from occurrence_snapshots;" 2>/dev/null)
+  fi
+  info "Local authoritative occurrence snapshots: ${occurrence_count:-unavailable}"
+  if tree_contains "Refresh this habit before checking in" ||
+    [ "${occurrence_count:-0}" -eq 0 ]; then
+    fail "Authoritative occurrence capture context unavailable; video check-in failed closed"
+  else
+    fail "Camera shell did not open for the selected actionable habit"
+  fi
+  capture "06_occurrence_capture_context_blocked"
+  print_summary
+  exit $FAIL
+fi
+pass "Camera shell opened for the selected occurrence"
 capture "06_camera_opened"
 
 # Switch to Video mode
@@ -64,7 +99,7 @@ elif has_label "Video mode"; then
   sleep 0.5
   capture "06_video_mode"
 else
-  skip "Video mode toggle" "mode selector not exposed"
+  fail "Video mode toggle not exposed"
 fi
 
 # Start recording
@@ -132,7 +167,7 @@ if has_label "Post"; then
   capture "06_posted"
   pass "Video check-in submitted"
 else
-  skip "Post button" "not visible"
+  fail "Post button not visible after video capture"
 fi
 
 print_summary

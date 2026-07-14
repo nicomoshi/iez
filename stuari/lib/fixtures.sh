@@ -241,6 +241,11 @@ with alice as (
   from stuari_dev.users
   where email = 'alice@seed.dev'
   limit 1
+), peer as (
+  select id, name
+  from stuari_dev.users
+  where email = 'bob@seed.dev'
+  limit 1
 ), target_groups as (
   select g.id, g.name, g.created_at
   from stuari_dev.groups g
@@ -248,6 +253,31 @@ with alice as (
   join alice on alice.id = gm.user_id
   where g.deleted_at is null
   order by g.created_at desc
+), peer_memberships as (
+  insert into stuari_dev.group_members (
+    group_id,
+    user_id,
+    role,
+    current_streak,
+    longest_streak,
+    total_check_ins,
+    joined_at
+  )
+  select
+    target_groups.id,
+    peer.id,
+    'member',
+    7,
+    9,
+    18,
+    now() - interval '30 days'
+  from target_groups
+  cross join peer
+  on conflict (group_id, user_id) do update set
+    current_streak = excluded.current_streak,
+    longest_streak = excluded.longest_streak,
+    total_check_ins = excluded.total_check_ins
+  returning group_id, user_id
 ), inserted_feed as (
   insert into stuari_dev.posts (
     id,
@@ -271,14 +301,14 @@ with alice as (
   select
     gen_random_uuid(),
     target_groups.id,
-    alice.id,
+    peer.id,
     'checkIn',
     'https://picsum.photos/640/640?stuari-iez-feed=' || target_groups.id::text,
     'photo',
     'confirmed',
     'group',
     'IEZ confirmed feed fixture for automated coverage',
-    coalesce(nullif(alice.name, ''), 'Alice'),
+    coalesce(nullif(peer.name, ''), 'Bob'),
     target_groups.name,
     7,
     1,
@@ -287,7 +317,7 @@ with alice as (
     jsonb_build_object('iez_fixture', 'feed'),
     now() - interval '12 minutes'
   from target_groups
-  cross join alice
+  cross join peer
   returning id, group_id, user_id
 ), inserted_comments as (
   insert into stuari_dev.comments (

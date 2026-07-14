@@ -25,11 +25,7 @@ fi
 go_home
 capture "21_home"
 
-if has_label "Habit settings"; then
-  tap_element "Habit settings" "label" "Open habit card overflow menu"
-  sleep 1.2
-elif has_label "More options"; then
-  tap_element "More options" "label" "Open habit card overflow menu (legacy)"
+if tap_visible_habit_menu "Open habit card overflow menu"; then
   sleep 1.2
 else
   skip "Habit card menu" "no menu affordance — user has no owned habits"

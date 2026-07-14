@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Flow 20 (P0): Edit habit rules
 #
-# Walks: Home → open habit-card overflow menu → Edit Habit → change name →
-# Save Changes. Verifies the edit form mounts and Save button exists.
+# Walks: create an owned disposable habit -> Home -> open that habit's
+# overflow menu -> Edit Habit -> replace name -> Save Changes -> verify Home,
+# refresh, and relaunch all show the edited name.
 #
 # Source-of-truth widgets:
 #   lib/home/widgets/habit_card_menu.dart      (Edit Habit menu entry)
@@ -16,6 +17,18 @@ source "$SCRIPT_DIR/../lib/navigation.sh"
 source "$SCRIPT_DIR/../lib/fixtures.sh"
 
 section "Flow 20: Edit habit rules"
+ORIGINAL_NAME="${STUARI_FLOW20_ORIGINAL_NAME:-Edit Me $(rand_tail)}"
+UPDATED_NAME="${STUARI_FLOW20_UPDATED_NAME:-Edited $(rand_tail)}"
+
+section "Flow 20 setup: create owned habit"
+if STUARI_FLOW04_HABIT_NAME="$ORIGINAL_NAME" \
+  SCREENSHOTS="$SCREENSHOTS" \
+  bash "$SCRIPT_DIR/04_habit_group.sh"; then
+  pass "Created owned habit for edit flow: $ORIGINAL_NAME"
+else
+  fail "Could not create owned habit for edit flow: $ORIGINAL_NAME"
+  print_summary; exit $FAIL
+fi
 
 fresh_launch; sleep 2
 if on_auth_page; then login_with_test_user; fi
@@ -28,18 +41,18 @@ fi
 go_home
 capture "20_home"
 
+if wait_for_visible_habit_card_name "$ORIGINAL_NAME" 10; then
+  pass "Owned habit visible before edit: $ORIGINAL_NAME"
+else
+  fail "Owned habit not visible before edit: $ORIGINAL_NAME"
+fi
+
 # Open the three-dot menu on the currently-selected habit card.
-# HabitCardMenu exposes a Semantics(button:true, label:'Habit settings').
-if has_label "Habit settings"; then
-  tap_element "Habit settings" "label" "Open habit card overflow menu"
-  sleep 1.2
-  capture "20_menu_open"
-elif has_label "More options"; then
-  tap_element "More options" "label" "Open habit card overflow menu (legacy label)"
+if tap_visible_habit_menu "Open habit card overflow menu"; then
   sleep 1.2
   capture "20_menu_open"
 else
-  skip "Habit card menu" "no menu affordance — user may not own any habit"
+  fail "Habit card menu missing for the owned disposable habit"
   print_summary; exit $FAIL
 fi
 
@@ -49,19 +62,21 @@ if has_label "Edit Habit"; then
   sleep 1.5
   capture "20_edit_page"
 else
-  skip "Edit Habit menu entry" "not present — non-owner or menu layout changed"
+  fail "Edit Habit menu entry missing for the owned disposable habit"
   print_summary; exit $FAIL
 fi
 
-# On the edit page: look for a name field. EditHabitPage reuses the
-# create widgets, so the same "e.g. Morning Run" hint should surface
-# when the name field is empty. For pre-populated groups we look for
-# a Save / Save Changes button.
-if tree_contains "e.g. Morning Run"; then
-  # Field is visible — re-type. (No --clear primitive; concatenation is OK.)
-  type_into "e.g. Morning Run" "_edit_$(rand_tail)"
+# On the edit page: replace the pre-filled name with a unique value.
+# Flutter does not expose this TextField as a stable AX text field on iOS
+# simulator, so use the measured center of the visible input.
+if tree_contains "What habit do you" || tree_contains "$ORIGINAL_NAME" || tree_contains "e.g. Morning Run"; then
+  replace_text_at_coords "205,390" "$UPDATED_NAME" "Habit name"
+else
+  fail "Habit name field not found on the edit page"
 fi
+capture "20_name_replaced"
 run_iez "$IEZ" ui swipe down >/dev/null 2>&1
+sleep 0.5
 
 # Walk forward through the PageView wizard. Some steps have gated
 # Continue buttons — we provide input where needed. Stop as soon as
@@ -107,10 +122,36 @@ if has_label "Save Changes"; then
   sleep 2
   pass "Submitted edit habit form"
 else
-  skip "Save on edit form" "no Save Changes button found"
+  fail "Save Changes button not found on the edit review page"
 fi
 
 capture "20_after_save"
 go_home
+if wait_for_visible_habit_card_name "$UPDATED_NAME" 12; then
+  pass "Edited habit is visible on Home: $UPDATED_NAME"
+else
+  fail "Edited habit not visible on Home: $UPDATED_NAME"
+fi
+
+pull_to_refresh_home
+capture "20_after_refresh"
+if wait_for_visible_habit_card_name "$UPDATED_NAME" 10; then
+  pass "Edited habit survives pull-to-refresh: $UPDATED_NAME"
+else
+  fail "Edited habit missing after pull-to-refresh: $UPDATED_NAME"
+fi
+
+terminate_app
+fresh_launch
+if on_auth_page; then login_with_test_user; fi
+if on_onboarding_page; then complete_onboarding; fi
+go_home
+capture "20_after_relaunch"
+if wait_for_visible_habit_card_name "$UPDATED_NAME" 12; then
+  pass "Edited habit survives relaunch: $UPDATED_NAME"
+else
+  fail "Edited habit missing after relaunch: $UPDATED_NAME"
+fi
+
 print_summary
 exit $FAIL

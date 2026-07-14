@@ -28,29 +28,13 @@ if on_onboarding_page; then complete_onboarding; fi
 go_home
 capture "05_home"
 
-# Tap a habit card in the home carousel to open the camera.
+# Tap an actionable habit card in the home carousel to open the camera.
 # Tapping a card runs home_page's `_handleCheckInTap`, which pushes the
-# Camera page. The card's Semantics label is
-#   "<HabitName> habit, <status>"  e.g. "Morning Run habit, Tap to check in"
-# (see split_habit_card.dart::_buildHabitCard). The dev-only simulator
-# build adds SIMULATOR_MOCK_CAMERA=true, which bypasses the
-# CheckInAvailability gate so any card can open the camera. Prefer the
-# stable semantics identifier when present, then the "Tap to check in"
-# card (availability=due), and finally the first "* habit, *" label we find.
+# Camera page only for due or missed habits. SIMULATOR_MOCK_CAMERA replaces
+# hardware on iOS simulators but must not bypass that product rule.
 wait_for_visible_habit_card 15 || true
-habit_id=$(current_visible_habit_card_id)
-habit_label=$(run_iez "$IEZ" ui tree --compact \
-  | jq -r '.data.elements[]
-             | select(.label != null)
-             | select(.label | test(" habit, Tap to check in$"))
-             | .label' | head -1)
-if [ -z "$habit_label" ]; then
-  habit_label=$(run_iez "$IEZ" ui tree --compact \
-    | jq -r '.data.elements[]
-               | select(.label != null)
-               | select(.label | test(" habit, "))
-               | .label' | head -1)
-fi
+habit_id=$(actionable_habit_card_id)
+habit_label=$(actionable_habit_card_label)
 camera_shell_visible() {
   has_id "camera_capture_photo_button" ||
     has_id "camera_mode_photo_button" ||
@@ -74,7 +58,10 @@ elif has_label "Check In" || tree_contains "Check In"; then
     tap_element "Check In" "label" "Tap Check In"
   fi
 else
-  skip "Check In entry" "no habit card or Check In CTA visible on Home"
+  fail "Check In entry not available for photo flow"
+  capture "05_no_actionable_habit"
+  print_summary
+  exit $FAIL
 fi
 
 sleep 1
@@ -86,15 +73,34 @@ if ! camera_shell_visible && [ -n "$habit_id" ]; then
 fi
 sleep 1
 if ! camera_shell_visible && [ -n "$habit_label" ]; then
-  tap_first_matching_label_regex " habit, " "" "Tap habit card by visible label" || true
+  tap_first_matching_label_regex \
+    " habit, (Tap to check in|Streak at risk)" \
+    "" \
+    "Tap actionable habit card by visible label" || true
 fi
 
 sleep 2
-capture "05_camera_opened"
 if ! camera_shell_visible; then
-  fail "Camera shell opened after tapping habit card"
-  capture "05_camera_not_opened"
+  app_container=$(xcrun simctl get_app_container "$DEVICE_ID" "$BUNDLE_ID" data 2>/dev/null)
+  db_path="$app_container/tmp/stuari_offline.sqlite"
+  occurrence_count=""
+  if [ -f "$db_path" ]; then
+    occurrence_count=$(sqlite3 "$db_path" \
+      "select count(*) from occurrence_snapshots;" 2>/dev/null)
+  fi
+  info "Local authoritative occurrence snapshots: ${occurrence_count:-unavailable}"
+  if tree_contains "Refresh this habit before checking in" ||
+    [ "${occurrence_count:-0}" -eq 0 ]; then
+    fail "Authoritative occurrence capture context unavailable; check-in failed closed"
+  else
+    fail "Camera shell did not open for the selected actionable habit"
+  fi
+  capture "05_occurrence_capture_context_blocked"
+  print_summary
+  exit $FAIL
 fi
+pass "Camera shell opened for the selected occurrence"
+capture "05_camera_opened"
 
 # Ensure we're on Photo mode
 if has_id "camera_mode_photo_button"; then

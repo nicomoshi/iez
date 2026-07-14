@@ -13,6 +13,20 @@ source "$SCRIPT_DIR/../lib/fixtures.sh"
 
 section "Flow 18: Offline Degradation"
 
+FORCED_OFFLINE_ENABLED="false"
+restore_forced_online() {
+  [ "$FORCED_OFFLINE_ENABLED" = "true" ] || return 0
+  fresh_launch
+  sleep 1
+  go_settings >/dev/null 2>&1 || true
+  sleep 1
+  if has_label "Force offline mode" || tree_contains "Force offline"; then
+    run_iez "$IEZ" ui tap --label "Force offline mode" >/dev/null 2>&1 || true
+    sleep 1
+  fi
+}
+trap restore_forced_online EXIT INT TERM
+
 fresh_launch; sleep 2
 if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
@@ -28,15 +42,24 @@ done
 
 if has_label "Force offline mode" || tree_contains "Force offline"; then
   tap_element "Force offline mode" "label" "Enable forced offline mode"
+  FORCED_OFFLINE_ENABLED="true"
   sleep 1.5
 else
-  skip "Offline toggle" "dev testing control not available in this build"
+  fail "Dev forced-offline control is missing from the dev build"
   print_summary; exit $FAIL
 fi
 
 go_home
 sleep 1.5
-capture "18_home_offline"
+home_offline_reached="false"
+if tree_contains "Home tab, selected" && tree_contains "Habit card:"; then
+  home_offline_reached="true"
+  pass "Home remains reachable while offline"
+  capture "18_home_offline"
+else
+  fail "Offline banner blocked shell navigation to Home"
+  capture "18_offline_navigation_blocked"
+fi
 
 if has_label "You are offline" || tree_contains "offline" || tree_contains "No internet"; then
   pass "Offline banner appeared"
@@ -47,7 +70,9 @@ fi
 
 # If the app presents its full-screen offline blocker, that is the
 # expected UX for network-gated actions. Otherwise attempt a check-in tap.
-if tree_contains "No internet connection"; then
+if [ "$home_offline_reached" != "true" ]; then
+  skip "Offline network-gated action" "Home was not reachable while the banner was visible"
+elif tree_contains "No internet connection"; then
   pass "Offline blocker prevents network-gated actions"
 else
   # Make sure the home carousel, not the feed sheet, is the active hit target.
@@ -91,11 +116,22 @@ for _ in 1 2 3; do
 done
 if has_label "Force offline mode" || tree_contains "Force offline"; then
   tap_element "Force offline mode" "label" "Disable forced offline mode"
+  FORCED_OFFLINE_ENABLED="false"
   sleep 1.5
+else
+  fail "Forced-offline control was not reachable for connectivity recovery"
 fi
 go_home
-sleep 1
+sleep 2
 capture "18_online_restored"
+
+if tree_contains "You are offline" || tree_contains "No internet connection"; then
+  fail "Offline UI remained visible after connectivity recovery"
+elif wait_for_main_ui 5; then
+  pass "Online home content recovered and remained interactive"
+else
+  fail "Home did not recover after forced offline mode was disabled"
+fi
 
 print_summary
 exit $FAIL

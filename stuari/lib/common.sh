@@ -18,8 +18,9 @@ set +e  # Never exit on a failed assertion — counters track state instead
 
 # ── Paths & Environment ─────────────────────────────────────────────
 
-STUARI_SUITE_DIR="${STUARI_SUITE_DIR:-$HOME/Developer/i_ez/stuari}"
-IEZ_REPO_DIR="${IEZ_REPO_DIR:-$HOME/Developer/i_ez}"
+_STUARI_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STUARI_SUITE_DIR="${STUARI_SUITE_DIR:-$(cd "$_STUARI_COMMON_DIR/.." && pwd)}"
+IEZ_REPO_DIR="${IEZ_REPO_DIR:-$(cd "$_STUARI_COMMON_DIR/../.." && pwd)}"
 IEZ="${IEZ:-$IEZ_REPO_DIR/bin/iez}"
 
 # Default dev flavor bundle id. Override via STUARI_BUNDLE_ID to test stg/prod.
@@ -28,7 +29,8 @@ SEEDED_GROUP_ID="${SEEDED_GROUP_ID:-bbbb0000-0000-0000-0000-000000000001}"
 SEEDED_GROUP_CARD_ID="habit_card_$SEEDED_GROUP_ID"
 
 SCREENSHOTS="${SCREENSHOTS:-$STUARI_SUITE_DIR/screenshots}"
-mkdir -p "$SCREENSHOTS"
+AX_TREES="${AX_TREES:-$SCREENSHOTS/ax}"
+mkdir -p "$SCREENSHOTS" "$AX_TREES"
 
 # Make iez discoverable on PATH for child processes
 export PATH="$IEZ_REPO_DIR/bin:$PATH"
@@ -39,6 +41,7 @@ PASS="${PASS:-0}"
 FAIL="${FAIL:-0}"
 SKIP="${SKIP:-0}"
 TOTAL="${TOTAL:-0}"
+CAPTURE_SEQUENCE="${CAPTURE_SEQUENCE:-0}"
 
 # ── Simulator Detection ─────────────────────────────────────────────
 
@@ -163,6 +166,19 @@ wait_for_habit_name() {
   return 1
 }
 
+wait_for_visible_habit_card_name() {
+  local name="$1" timeout="${2:-8}" elapsed=0 label=""
+  while [ "$elapsed" -lt "$timeout" ]; do
+    label="$(current_visible_habit_card_label 2>/dev/null || true)"
+    if printf '%s\n' "$label" | grep -qF "$name"; then
+      return 0
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  return 1
+}
+
 # ── Smart Assertions ────────────────────────────────────────────────
 
 # assert_element — wait for an element then assert it exists.
@@ -223,12 +239,97 @@ type_into() {
   sleep 0.3
 }
 
-# capture — take a timestamped screenshot.
+# replace_text_at_coords -- replace a short pre-filled field value in place.
+replace_text_at_coords() {
+  local coords="$1" text="$2" desc="${3:-$1}"
+  local r
+  r=$(run_iez "$IEZ" ui tap --coords "$coords")
+  assert_ok "$r" "Focus field: $desc"
+  sleep 0.4
+
+  # Flutter text fields on simulator do not reliably honor command+a through
+  # AX, but tapping the field places the cursor at the end. A bounded delete
+  # loop is slow but deterministic for short fixture names.
+  for _ in $(seq 1 40); do
+    run_iez "$IEZ" ui key "42" >/dev/null 2>&1
+  done
+  sleep 0.2
+  r=$(run_iez "$IEZ" ui type "$text")
+  assert_ok "$r" "Replace text in $desc: '$text'"
+  sleep 0.3
+}
+
+# Return a stable signature for the user-visible portion of a compact AX tree.
+# Command metadata such as duration is intentionally excluded.
+compact_tree_signature() {
+  printf '%s\n' "$1" \
+    | jq -cS '[.data.elements[] | {
+        id: (.id // null),
+        label: (.label // null),
+        value: (.value // null),
+        frame: (.frame // null),
+        enabled: (.enabled // null)
+      }]' 2>/dev/null \
+    | shasum -a 256 \
+    | awk '{print $1}'
+}
+
+# Wait for two consecutive compact AX snapshots to match before evidence is
+# captured. This keeps screenshots out of in-flight route/carousel animations.
+wait_for_ui_settle() {
+  local max_attempts="${1:-8}" delay="${2:-0.35}"
+  local attempt=0 previous_signature="" tree signature
+
+  SETTLED_TREE=""
+  while [ "$attempt" -lt "$max_attempts" ]; do
+    tree=$(run_iez "$IEZ" ui tree --compact)
+    if printf '%s\n' "$tree" \
+      | jq -e '.ok == true and (.data.elements | type == "array")' \
+        >/dev/null 2>&1; then
+      signature=$(compact_tree_signature "$tree")
+      if [ -n "$signature" ] && [ "$signature" = "$previous_signature" ]; then
+        SETTLED_TREE="$tree"
+        return 0
+      fi
+      previous_signature="$signature"
+      SETTLED_TREE="$tree"
+    fi
+    sleep "$delay"
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
+# capture -- wait for semantic stability, then take a uniquely named
+# screenshot and matching compact AX tree.
 # Args: $1=filename stem (no extension)
 capture() {
   local stem="${1:-capture}"
-  local stamp; stamp=$(date +%H%M%S)
-  run_iez "$IEZ" ui screenshot --out "$SCREENSHOTS/${stem}_${stamp}.png" >/dev/null
+  local stamp screenshot_path ax_path screenshot_result tree_result
+
+  if ! wait_for_ui_settle; then
+    info "UI settle timeout before capture: $stem; saving the latest readable state"
+  fi
+
+  CAPTURE_SEQUENCE=$((CAPTURE_SEQUENCE + 1))
+  stamp="$(date +%Y%m%d_%H%M%S)_$$_$(printf '%03d' "$CAPTURE_SEQUENCE")"
+  screenshot_path="$SCREENSHOTS/${stem}_${stamp}.png"
+  ax_path="$AX_TREES/${stem}_${stamp}.json"
+
+  screenshot_result=$(run_iez "$IEZ" ui screenshot --out "$screenshot_path")
+  if [ "$(json_ok "$screenshot_result")" != "true" ] || [ ! -s "$screenshot_path" ]; then
+    fail "Capture screenshot: $stem" "$screenshot_result"
+    return 1
+  fi
+
+  tree_result=$(run_iez "$IEZ" ui tree --compact)
+  if ! printf '%s\n' "$tree_result" | jq . >"$ax_path" 2>/dev/null; then
+    fail "Capture compact AX tree: $stem" "$tree_result"
+    return 1
+  fi
+
+  info "Evidence: $screenshot_path"
+  info "AX tree: $ax_path"
 }
 
 first_coords_matching_label_regex() {
@@ -275,6 +376,7 @@ current_visible_habit_card_id() {
       .data.elements[]
       | select(.id != null)
       | select(.id | startswith("habit_card_"))
+      | select(.id | startswith("habit_card_menu_") | not)
       | select(.frame != null and .frame.width > 40 and .frame.height > 40)
       | [
           (((.frame.x + (.frame.width / 2)) - $center_x) | abs),
@@ -298,6 +400,70 @@ current_visible_habit_card_label() {
         | select(.id == $id)
         | .label // empty' 2>/dev/null \
     | head -1
+}
+
+actionable_habit_card_id() {
+  run_iez "$IEZ" ui tree --compact \
+    | jq -r '.data.elements[]
+        | select(.id != null)
+        | select(.id | startswith("habit_card_"))
+        | select(.id | startswith("habit_card_menu_") | not)
+        | select(.label != null)
+        | select(.label | test(" habit, (Tap to check in|Streak at risk)"))
+        | .id' 2>/dev/null \
+    | head -1
+}
+
+actionable_habit_card_label() {
+  run_iez "$IEZ" ui tree --compact \
+    | jq -r '.data.elements[]
+        | select(.id != null)
+        | select(.id | startswith("habit_card_"))
+        | select(.id | startswith("habit_card_menu_") | not)
+        | select(.label != null)
+        | select(.label | test(" habit, (Tap to check in|Streak at risk)"))
+        | .label' 2>/dev/null \
+    | head -1
+}
+
+current_visible_habit_menu_id() {
+  local card_id
+  card_id=$(current_visible_habit_card_id)
+  if [ -z "$card_id" ]; then
+    return 1
+  fi
+  printf '%s\n' "${card_id/habit_card_/habit_card_menu_}"
+}
+
+tap_visible_habit_menu() {
+  local desc="${1:-Open habit card overflow menu}"
+  local menu_id
+  menu_id=$(current_visible_habit_menu_id)
+  if [ -n "$menu_id" ] && has_id "$menu_id"; then
+    tap_element "$menu_id" "id" "$desc"
+    return $?
+  fi
+
+  local coords
+  coords=$(coords_for_id "$menu_id")
+  if [ -n "$coords" ] && [ "$coords" != "null" ] && [ "$coords" != "," ]; then
+    tap_element "$coords" "coords" "$desc"
+    return $?
+  fi
+
+  if has_label "Habit settings"; then
+    tap_element "Habit settings" "label" "$desc"
+    return $?
+  fi
+  if has_label "Habit actions"; then
+    tap_element "Habit actions" "label" "$desc"
+    return $?
+  fi
+  if has_label "More options"; then
+    tap_element "More options" "label" "$desc (legacy label)"
+    return $?
+  fi
+  return 1
 }
 
 wait_for_visible_habit_card() {
@@ -467,6 +633,7 @@ print_summary() {
   printf "║  Results: \033[1;32m%d passed\033[0m / \033[1;31m%d failed\033[0m / \033[1;33m%d skipped\033[0m / %d total  ║\n" "$PASS" "$FAIL" "$SKIP" "$TOTAL"
   echo "╚══════════════════════════════════════════════════╝"
   echo "Screenshots: $SCREENSHOTS/"
+  echo "Compact AX trees: $AX_TREES/"
 }
 
 # ── Initialize ──────────────────────────────────────────────────────

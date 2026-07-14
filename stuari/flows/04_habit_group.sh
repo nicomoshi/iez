@@ -73,6 +73,13 @@ else
   fi
 fi
 
+if [ "$CREATE_STARTED" != "1" ]; then
+  fail "Create Habit entry point missing on Home"
+  capture "04_create_entry_missing"
+  print_summary
+  exit $FAIL
+fi
+
 sleep 1.5
 capture "04_name_page"
 
@@ -86,7 +93,9 @@ if tree_contains "e.g. Morning Run"; then
     sleep 1
   fi
 else
-  skip "Name step" "hint 'e.g. Morning Run' not found"
+  fail "Name step did not expose the expected habit-name field"
+  print_summary
+  exit $FAIL
 fi
 
 capture "04_image_page"
@@ -140,7 +149,7 @@ for step in frequency checkins milestone; do
       tap_element "Continue" "label" "Step '$step' → Continue (after scroll)"
       sleep 1
     else
-      skip "Step '$step'" "Continue not reachable"
+      fail "Step '$step' Continue action not reachable"
     fi
   fi
 done
@@ -154,7 +163,7 @@ if has_label "Create Habit"; then
   pass "Submitted habit create form"
   CREATE_SUBMITTED=1
 else
-  skip "Final Create Habit" "button not reachable from review page"
+  fail "Final Create Habit button not reachable from review page"
 fi
 
 # Back on Home — verify a habit card now shows the habit name (best-effort)
@@ -199,16 +208,7 @@ if has_label "Members"; then
     capture "04_invite_sheet"
     dismiss_all
   fi
-elif has_label "Habit settings"; then
-  r=$(run_iez "$IEZ" ui tap --label "Habit settings")
-  if [ "$(json_ok "$r")" = "true" ]; then
-    pass "Tap: Open habit settings"
-  else
-    skip "Habit settings" "entry point visible but not tappable"
-    dismiss_all
-    print_summary
-    exit $FAIL
-  fi
+elif tap_visible_habit_menu "Open habit settings"; then
   sleep 1
   if has_label "View Details"; then
     tap_element "View Details" "label" "Open habit details"
