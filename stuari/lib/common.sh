@@ -179,6 +179,71 @@ wait_for_visible_habit_card_name() {
   return 1
 }
 
+# These immediate mutation assertions are intentionally AX-read-only. They
+# poll compact trees for a bounded interval and never refresh, relaunch, tap,
+# swipe, or otherwise mutate product state. Keep them separate from the later
+# durability checks so a stale stream cannot turn a refresh-only pass green.
+wait_for_habit_card_id() {
+  local id="$1" timeout="${2:-10}" interval="${3:-0.25}" attempts=0 max_attempts
+  max_attempts=$((timeout * 4))
+  while [ "$attempts" -lt "$max_attempts" ]; do
+    if run_iez "$IEZ" ui tree --compact \
+      | jq -e --arg id "$id" '
+          any(.data.elements[]?;
+            .id == $id and
+            .frame != null and
+            .frame.width > 0 and
+            .frame.height > 0)
+        ' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$interval"
+    attempts=$((attempts + 1))
+  done
+  return 1
+}
+
+wait_for_immediate_habit_card_name() {
+  local name="$1" timeout="${2:-8}" interval="${3:-0.25}" attempts=0 max_attempts
+  max_attempts=$((timeout * 4))
+  while [ "$attempts" -lt "$max_attempts" ]; do
+    if run_iez "$IEZ" ui tree --compact \
+      | jq -e --arg name "$name" '
+          any(.data.elements[]?;
+            ((.id // "") | startswith("habit_card_")) and
+            (((.id // "") | startswith("habit_card_menu_")) | not) and
+            ((.label // "") | contains($name)))
+        ' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$interval"
+    attempts=$((attempts + 1))
+  done
+  return 1
+}
+
+wait_for_immediate_habit_card_absent() {
+  local name="$1" timeout="${2:-8}" interval="${3:-0.25}" attempts=0 max_attempts
+  max_attempts=$((timeout * 4))
+  while [ "$attempts" -lt "$max_attempts" ]; do
+    if run_iez "$IEZ" ui tree --compact \
+      | jq -e --arg name "$name" '
+          ([.data.elements[]?
+            | select(((.id // "") | startswith("habit_card_")))
+            | select((((.id // "") | startswith("habit_card_menu_")) | not))
+            | (.label // "")
+            | contains($name)
+            | select(. == true)
+          ] | length) == 0
+        ' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$interval"
+    attempts=$((attempts + 1))
+  done
+  return 1
+}
+
 # ── Smart Assertions ────────────────────────────────────────────────
 
 # assert_element — wait for an element then assert it exists.

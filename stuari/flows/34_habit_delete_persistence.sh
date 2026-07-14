@@ -84,11 +84,14 @@ fi
 go_home
 sleep 1.5
 capture "34_after_delete"
-if tree_contains "$HABIT_NAME"; then
+# Immediate optimistic assertion: this bounded helper only reads compact AX
+# trees and cannot refresh, relaunch, or mutate product state. Durability
+# assertions remain below the refresh and relaunch boundaries.
+if wait_for_immediate_habit_card_absent "$HABIT_NAME" 8; then
+  pass "Deleted habit removed immediately from Home"
+else
   fail "Deleted habit removed immediately from Home"
   capture "34_still_visible_after_delete"
-else
-  pass "Deleted habit removed immediately from Home"
 fi
 
 pull_to_refresh_home

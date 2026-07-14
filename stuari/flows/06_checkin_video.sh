@@ -13,16 +13,20 @@ source "$SCRIPT_DIR/../lib/fixtures.sh"
 
 section "Flow 06: Check-In with Video"
 
+if ! reseed_due_now_occurrence_fixture; then
+  fail "Due-now authoritative occurrence fixture available for video flow"
+  print_summary
+  exit $FAIL
+fi
+
 fresh_launch; sleep 2
 if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
 go_home
 
-# Open camera by tapping an actionable habit card. Mock camera replaces
-# simulator hardware only; it must not bypass check-in eligibility.
-wait_for_visible_habit_card 15 || true
-habit_id=$(actionable_habit_card_id)
-habit_label=$(actionable_habit_card_label)
+# Open camera by tapping the reserved due-now fixture card. Mock camera
+# replaces simulator hardware only; it must not bypass check-in eligibility.
+habit_id="$DUE_NOW_HABIT_CARD_ID"
 camera_shell_visible() {
   has_id "camera_capture_video_button" ||
     has_id "camera_mode_video_button" ||
@@ -30,41 +34,27 @@ camera_shell_visible() {
     tree_contains "Video mode" ||
     tree_contains "Take photo"
 }
-if [ -n "$habit_id" ]; then
+if wait_for_habit_card_id "$habit_id" 15; then
   r=$(run_iez "$IEZ" ui tap --id "$habit_id")
   if [ "$(json_ok "$r")" = "true" ]; then
     pass "Tap: Tap habit card by id ('$habit_id')"
   else
     info "Habit id tap did not report success; trying visible card coordinates"
   fi
-elif [ -n "$habit_label" ]; then
-  tap_element "$habit_label" "label" "Tap habit card ('$habit_label')"
 else
-  dyn=$(run_iez "$IEZ" ui tree --compact \
-    | jq -r '.data.elements[] | select(.label != null) | select(.label | startswith("Check In")) | .label' | head -1)
-  if [ -n "$dyn" ]; then
-    tap_element "$dyn" "label" "Tap Check In"
-  else
-    fail "Check In entry not available for video flow"
-    capture "06_no_actionable_habit"
-    print_summary
-    exit $FAIL
-  fi
+  fail "Reserved due-now fixture card not available for video flow"
+  capture "06_no_actionable_habit"
+  print_summary
+  exit $FAIL
 fi
 sleep 1
-if ! camera_shell_visible && [ -n "$habit_id" ]; then
+if ! camera_shell_visible; then
   habit_coords=$(coords_for_id "$habit_id")
   if [ -n "$habit_coords" ] && [ "$habit_coords" != "null" ] && [ "$habit_coords" != "," ]; then
     tap_element "$habit_coords" "coords" "Tap visible habit card center ('$habit_id')"
   fi
 fi
 sleep 1
-if ! camera_shell_visible && [ -n "$habit_label" ]; then
-  tap_first_matching_label_regex \
-    " habit, (Tap to check in|Streak at risk)" \
-    "" \
-    "Tap actionable habit card by visible label" || true
-fi
 
 sleep 2
 if ! camera_shell_visible; then
@@ -73,9 +63,9 @@ if ! camera_shell_visible; then
   occurrence_count=""
   if [ -f "$db_path" ]; then
     occurrence_count=$(sqlite3 "$db_path" \
-      "select count(*) from occurrence_snapshots;" 2>/dev/null)
+      "select count(*) from occurrence_snapshots where group_id = '$DUE_NOW_HABIT_GROUP_ID';" 2>/dev/null)
   fi
-  info "Local authoritative occurrence snapshots: ${occurrence_count:-unavailable}"
+  info "Local authoritative occurrence snapshots for fixture group $DUE_NOW_HABIT_GROUP_ID: ${occurrence_count:-unavailable}"
   if tree_contains "Refresh this habit before checking in" ||
     [ "${occurrence_count:-0}" -eq 0 ]; then
     fail "Authoritative occurrence capture context unavailable; video check-in failed closed"

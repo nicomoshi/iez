@@ -127,7 +127,9 @@ fi
 
 capture "20_after_save"
 go_home
-if wait_for_visible_habit_card_name "$UPDATED_NAME" 12; then
+# Immediate optimistic assertion: this bounded helper only reads compact AX
+# trees. Refresh/relaunch are deliberately below this gate.
+if wait_for_immediate_habit_card_name "$UPDATED_NAME" 8; then
   pass "Edited habit is visible on Home: $UPDATED_NAME"
 else
   fail "Edited habit not visible on Home: $UPDATED_NAME"

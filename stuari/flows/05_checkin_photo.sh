@@ -22,62 +22,51 @@ source "$SCRIPT_DIR/../lib/fixtures.sh"
 
 section "Flow 05: Check-In with Photo"
 
+if ! reseed_due_now_occurrence_fixture; then
+  fail "Due-now authoritative occurrence fixture available for photo flow"
+  print_summary
+  exit $FAIL
+fi
+
 fresh_launch; sleep 2
 if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
 go_home
 capture "05_home"
 
-# Tap an actionable habit card in the home carousel to open the camera.
+# Tap the reserved due-now fixture card in the home carousel to open the
+# camera. The exact card id prevents another habit from satisfying this flow.
 # Tapping a card runs home_page's `_handleCheckInTap`, which pushes the
 # Camera page only for due or missed habits. SIMULATOR_MOCK_CAMERA replaces
 # hardware on iOS simulators but must not bypass that product rule.
-wait_for_visible_habit_card 15 || true
-habit_id=$(actionable_habit_card_id)
-habit_label=$(actionable_habit_card_label)
+habit_id="$DUE_NOW_HABIT_CARD_ID"
 camera_shell_visible() {
   has_id "camera_capture_photo_button" ||
     has_id "camera_mode_photo_button" ||
     tree_contains "Take photo"
 }
-if [ -n "$habit_id" ]; then
+if wait_for_habit_card_id "$habit_id" 15; then
   r=$(run_iez "$IEZ" ui tap --id "$habit_id")
   if [ "$(json_ok "$r")" = "true" ]; then
     pass "Tap: Tap habit card by id ('$habit_id')"
   else
     info "Habit id tap did not report success; trying visible card coordinates"
   fi
-elif [ -n "$habit_label" ]; then
-  tap_element "$habit_label" "label" "Tap habit card ('$habit_label')"
-elif has_label "Check In" || tree_contains "Check In"; then
-  dyn=$(run_iez "$IEZ" ui tree --compact \
-    | jq -r '.data.elements[] | select(.label != null) | select(.label | startswith("Check In")) | .label' | head -1)
-  if [ -n "$dyn" ]; then
-    tap_element "$dyn" "label" "Tap Check In button ('$dyn')"
-  else
-    tap_element "Check In" "label" "Tap Check In"
-  fi
 else
-  fail "Check In entry not available for photo flow"
+  fail "Reserved due-now fixture card not available for photo flow"
   capture "05_no_actionable_habit"
   print_summary
   exit $FAIL
 fi
 
 sleep 1
-if ! camera_shell_visible && [ -n "$habit_id" ]; then
+if ! camera_shell_visible; then
   habit_coords=$(coords_for_id "$habit_id")
   if [ -n "$habit_coords" ] && [ "$habit_coords" != "null" ] && [ "$habit_coords" != "," ]; then
     tap_element "$habit_coords" "coords" "Tap visible habit card center ('$habit_id')"
   fi
 fi
 sleep 1
-if ! camera_shell_visible && [ -n "$habit_label" ]; then
-  tap_first_matching_label_regex \
-    " habit, (Tap to check in|Streak at risk)" \
-    "" \
-    "Tap actionable habit card by visible label" || true
-fi
 
 sleep 2
 if ! camera_shell_visible; then
@@ -86,9 +75,9 @@ if ! camera_shell_visible; then
   occurrence_count=""
   if [ -f "$db_path" ]; then
     occurrence_count=$(sqlite3 "$db_path" \
-      "select count(*) from occurrence_snapshots;" 2>/dev/null)
+      "select count(*) from occurrence_snapshots where group_id = '$DUE_NOW_HABIT_GROUP_ID';" 2>/dev/null)
   fi
-  info "Local authoritative occurrence snapshots: ${occurrence_count:-unavailable}"
+  info "Local authoritative occurrence snapshots for fixture group $DUE_NOW_HABIT_GROUP_ID: ${occurrence_count:-unavailable}"
   if tree_contains "Refresh this habit before checking in" ||
     [ "${occurrence_count:-0}" -eq 0 ]; then
     fail "Authoritative occurrence capture context unavailable; check-in failed closed"

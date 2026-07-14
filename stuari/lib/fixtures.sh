@@ -12,6 +12,15 @@ STUARI_FIXTURES_LOADED=1
 
 STUARI_APP_REPO_DIR="${STUARI_APP_REPO_DIR:-$HOME/Developer/sestuary}"
 
+# Reserved, idempotently rebuilt occurrence fixture. The fixed identity lets
+# flows 05/06 select exactly this card even when other habits are present in
+# the carousel, while the transaction below removes the previous occurrence
+# graph before materializing a fresh authoritative row.
+DUE_NOW_HABIT_GROUP_ID="bbbb0000-0000-0000-0000-000000000010"
+DUE_NOW_HABIT_CARD_ID="habit_card_$DUE_NOW_HABIT_GROUP_ID"
+DUE_NOW_HABIT_NAME="IEZ Due Now Check-In"
+export DUE_NOW_HABIT_GROUP_ID DUE_NOW_HABIT_CARD_ID DUE_NOW_HABIT_NAME
+
 # ── Core helpers ────────────────────────────────────────────────────
 
 # now_epoch — seconds since the epoch.
@@ -96,6 +105,222 @@ test_post_description() {
 # test_invite_code — bogus invite code for negative-path tests
 test_invite_code() {
   printf 'INV_%s' "$(rand_tail)"
+}
+
+# Reseed a due-now occurrence for the authenticated dev seed account.
+#
+# This intentionally uses the linked Supabase database helper, not the
+# simulator's local SQLite database and not an app-side eligibility bypass.
+# The SQL calls the existing occurrence schedule materializer, then verifies
+# the rows consumed by list_my_occurrence_snapshots_v2 are present and open.
+# Only alice@seed.dev is supported because the flow login defaults to that
+# authenticated account and the fixed card must remain deterministic.
+reseed_due_now_occurrence_fixture() {
+  if ! command -v supabase >/dev/null 2>&1; then
+    info "Supabase CLI not installed — cannot provision due-now occurrence fixture"
+    return 1
+  fi
+
+  local test_email="${STUARI_TEST_EMAIL:-alice@seed.dev}"
+  if [ "$test_email" != "alice@seed.dev" ]; then
+    info "Due-now occurrence fixture requires authenticated seed account alice@seed.dev (got $test_email)"
+    return 1
+  fi
+
+  local sql_file
+  sql_file=$(mktemp "${TMPDIR:-/tmp}/stuari_due_now_occurrence.XXXXXX.sql") || {
+    info "Could not allocate temporary due-now occurrence fixture SQL"
+    return 1
+  }
+
+  cat >"$sql_file" <<'SQL'
+begin;
+
+do $fixture$
+declare
+  _user_id uuid;
+  _rules jsonb;
+  _schedule jsonb;
+  _baseline_period_id uuid;
+  _open_count integer;
+  _rpc_count integer;
+begin
+  if current_database() not in ('postgres', 'stuari_dev', 'supabase_db') then
+    raise exception 'iez_due_now_fixture_requires_dev_database';
+  end if;
+
+  select au.id
+    into _user_id
+    from auth.users au
+    join stuari_dev.users su on su.id = au.id
+   where au.id = 'aaaa0000-0000-0000-0000-000000000001'::uuid
+     and au.email = 'alice@seed.dev'
+     and su.email = 'alice@seed.dev'
+   limit 1;
+  if _user_id is null then
+    raise exception 'iez_due_now_fixture_seed_account_missing';
+  end if;
+
+  -- Deleting the reserved group cascades its old schedule, periods,
+  -- occurrences, states, baselines, and any prior fixture posts. Restrict the
+  -- delete to the expected owner/name so a reused reserved id fails closed
+  -- instead of deleting an unrelated group.
+  delete from stuari_dev.groups
+   where id = 'bbbb0000-0000-0000-0000-000000000010'::uuid
+     and name = 'IEZ Due Now Check-In'
+     and created_by = _user_id;
+  if exists (
+    select 1 from stuari_dev.groups
+     where id = 'bbbb0000-0000-0000-0000-000000000010'::uuid
+  ) then
+    raise exception 'iez_due_now_fixture_reserved_id_occupied';
+  end if;
+
+  _rules := jsonb_build_object(
+    'frequency', 'daily',
+    'dailySchedule', jsonb_build_object(
+      'activeDays', to_jsonb(array[1,2,3,4,5,6,7]),
+      'checkInTimes', jsonb_build_array(jsonb_build_object(
+        'time', '00:00',
+        'windowMinutes', 1440,
+        'label', 'IEZ due-now slot'
+      ))
+    ),
+    'confirmationThreshold', 0.5,
+    'gracePeriodHours', 24,
+    'requiredConfirmations', 1
+  );
+
+  insert into stuari_dev.groups (
+    id, name, description, image_url, created_by, rules
+  ) values (
+    'bbbb0000-0000-0000-0000-000000000010'::uuid,
+    'IEZ Due Now Check-In',
+    'Reserved iEZ occurrence capture fixture',
+    'https://picsum.photos/640/640?stuari-iez-due-now',
+    _user_id,
+    _rules
+  );
+
+  insert into stuari_dev.group_members (
+    group_id, user_id, role, current_streak, longest_streak, total_check_ins
+  ) values (
+    'bbbb0000-0000-0000-0000-000000000010'::uuid,
+    _user_id,
+    'owner',
+    0,
+    0,
+    0
+  );
+
+  -- Use the same schedule publisher/materializer used by the v2 habit-create
+  -- path. Passing the seed owner explicitly preserves the owner/member
+  -- contract while keeping this setup independent of a simulator session.
+  select stuari_dev.__occurrence_publish_schedule_v2(
+    'bbbb0000-0000-0000-0000-000000000010'::uuid,
+    'daily'::stuari_dev.habit_frequency,
+    'Australia/Sydney',
+    _rules,
+    clock_timestamp(),
+    interval '0',
+    interval '24 hours',
+    _user_id,
+    true,
+    clock_timestamp()
+  ) into _schedule;
+
+  -- Keep a valid baseline tied to the current materialized period. The
+  -- occurrence snapshot RPC does not infer this row, so the fixture makes
+  -- the complete release contract explicit.
+  select p.id
+    into _baseline_period_id
+    from stuari_dev.habit_periods p
+   where p.habit_id = 'bbbb0000-0000-0000-0000-000000000010'::uuid
+     and p.starts_at <= clock_timestamp()
+   order by p.starts_at desc
+   limit 1;
+  if _baseline_period_id is null then
+    raise exception 'iez_due_now_fixture_current_period_missing';
+  end if;
+
+  insert into stuari_dev.habit_streak_baselines (
+    habit_id, member_id, baseline_streak, cutover_period_id, audit
+  ) values (
+    'bbbb0000-0000-0000-0000-000000000010'::uuid,
+    _user_id,
+    0,
+    _baseline_period_id,
+    jsonb_build_object('iez_fixture', 'due_now', 'schedule', _schedule)
+  )
+  on conflict (habit_id, member_id) do update set
+    baseline_streak = excluded.baseline_streak,
+    cutover_period_id = excluded.cutover_period_id,
+    audit = excluded.audit;
+
+  -- Validate the rows that list_my_occurrence_snapshots_v2 will expose to
+  -- Alice. This is deliberately fail-closed: an empty or stale authority
+  -- must stop the flow before any card is selected.
+  select count(*)
+    into _open_count
+    from stuari_dev.habit_occurrences o
+    join stuari_dev.habit_periods p on p.id = o.period_id
+    join stuari_dev.habit_schedule_slots sl on sl.id = o.slot_id
+    join stuari_dev.habit_schedule_versions sv on sv.id = o.schedule_version_id
+    join stuari_dev.habit_occurrence_member_states ms
+      on ms.occurrence_id = o.id and ms.member_id = _user_id
+    join stuari_dev.habit_streak_baselines b
+      on b.habit_id = o.habit_id and b.member_id = _user_id
+   where o.habit_id = 'bbbb0000-0000-0000-0000-000000000010'::uuid
+     and o.opens_at <= clock_timestamp()
+     and o.submission_closes_at >= clock_timestamp()
+     and ms.status in ('open', 'overdue')
+     and ms.post_id is null
+     and p.habit_id = sv.habit_id
+     and sl.position >= 0
+     and sv.version >= 1
+     and b.cutover_period_id = p.id;
+  if _open_count <> 1 then
+    raise exception 'iez_due_now_fixture_expected_one_open_snapshot (got %)', _open_count;
+  end if;
+
+  -- Exercise the authenticated RPC contract as Alice, not just the backing
+  -- tables. This mirrors the JWT subject Supabase supplies to the app.
+  perform set_config('request.jwt.claim.sub', _user_id::text, true);
+  select count(*)
+    into _rpc_count
+    from stuari_dev.list_my_occurrence_snapshots_v2(
+      array['bbbb0000-0000-0000-0000-000000000010'::uuid],
+      'current',
+      0,
+      100
+    ) snapshot
+   where snapshot.habit_id = 'bbbb0000-0000-0000-0000-000000000010'::uuid
+     and snapshot.status in ('open', 'overdue')
+     and snapshot.post_id is null
+     and snapshot.schedule_version >= 1
+     and snapshot.state_revision >= 0;
+  if _rpc_count <> 1 then
+    raise exception 'iez_due_now_fixture_rpc_expected_one_open_snapshot (got %)', _rpc_count;
+  end if;
+end
+$fixture$;
+
+commit;
+SQL
+
+  (
+    cd "$STUARI_APP_REPO_DIR" &&
+      supabase db query --linked -f "$sql_file" >/dev/null 2>&1
+  )
+  local rc=$?
+  rm -f "$sql_file"
+  if [ $rc -ne 0 ]; then
+    info "Due-now occurrence fixture reseed failed"
+    return $rc
+  fi
+
+  info "Reseeded authenticated Alice due-now occurrence fixture ($DUE_NOW_HABIT_GROUP_ID)"
+  return 0
 }
 
 # Reseed deterministic pending posts for every Alice test group so approval
