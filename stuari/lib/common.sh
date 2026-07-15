@@ -388,7 +388,9 @@ capture() {
   fi
 
   tree_result=$(run_iez "$IEZ" ui tree --compact)
-  if ! printf '%s\n' "$tree_result" | jq . >"$ax_path" 2>/dev/null; then
+  if ! printf '%s\n' "$tree_result" \
+    | jq -e 'select(.ok == true and (.data.elements | type == "array"))' >"$ax_path" 2>/dev/null \
+    || [ ! -s "$ax_path" ]; then
     fail "Capture compact AX tree: $stem" "$tree_result"
     return 1
   fi

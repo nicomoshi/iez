@@ -25,6 +25,33 @@ source "$SCRIPT_DIR/../lib/fixtures.sh"
 section "Flow 04: Habit Group Create + Invite + Members"
 HABIT_NAME="${STUARI_FLOW04_HABIT_NAME:-$(test_habit_name)}"
 
+wait_for_natural_home() {
+  local timeout="${1:-10}" elapsed=0
+  while [ "$elapsed" -lt "$timeout" ]; do
+    if on_home_page && [ -n "$(selected_home_nav_label)" ]; then
+      return 0
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  return 1
+}
+
+selected_home_nav_label() {
+  run_iez "$IEZ" ui tree --compact \
+    | jq -r --arg base "$TAB_HOME" '
+        .data.elements[]?
+        | select(.label != null)
+        | select(
+            .label == ($base + ", selected")
+            or .label == ($base + ", selected tab")
+            or ((.label | startswith($base + ", ")) and (.label | contains("selected")))
+          )
+        | .label
+      ' 2>/dev/null \
+    | head -1
+}
+
 fresh_launch; sleep 2
 
 if on_auth_page; then login_with_test_user; fi
@@ -157,43 +184,137 @@ done
 # Review page — final Create Habit button
 capture "04_review_page"
 if has_label "Create Habit"; then
-  tap_element "Create Habit" "label" "Review → Create Habit (submit)"
-  sleep 3
+  if tap_element "Create Habit" "label" "Review → Create Habit (submit)"; then
+    CREATE_SUBMITTED=1
+    pass "Submitted habit create form"
+  else
+    fail "Create Habit submit action failed"
+  fi
   capture "04_post_create"
-  pass "Submitted habit create form"
-  CREATE_SUBMITTED=1
 else
   fail "Final Create Habit button not reachable from review page"
 fi
 
-# Back on Home — verify the centered habit card now shows the habit name.
-sleep 2
-go_home
-capture "04_home_before_created_habit_center_check"
+# Create Habit should return to Home without any navigation tap. Keep each
+# durability boundary independent so a failed assertion cannot hide evidence
+# from the later safe checkpoints.
 if [ "$CREATE_SUBMITTED" = "1" ]; then
-  if wait_for_visible_habit_card_name "$HABIT_NAME" 8; then
-    capture "04_created_habit_centered"
-    pass "Created habit is visible on Home: $HABIT_NAME"
+  if wait_for_natural_home 10; then
+    if capture "04_home_before_created_habit_center_check"; then
+      pass "Immediate create-return boundary: Create Habit returned naturally to Home without a Home re-tap"
+    else
+      info "Immediate create-return boundary did not produce complete screenshot + compact AX evidence"
+    fi
   else
-    capture "04_created_habit_centered_missing"
-    fail "Created habit not visible on Home after create: $HABIT_NAME"
+    capture "04_created_habit_immediate_home_failure"
+    fail "Immediate create-return boundary failed: Create Habit did not return naturally to Home"
+  fi
+
+  if on_home_page && \
+    wait_for_visible_habit_card_name "$HABIT_NAME" 8; then
+    immediate_label="$(current_visible_habit_card_label 2>/dev/null || true)"
+    case "$immediate_label" in
+      *"$HABIT_NAME"*)
+        if capture "04_created_habit_centered_immediate"; then
+          pass "Immediate centered-card boundary: created habit is the visible centered Home card: $HABIT_NAME"
+        else
+          info "Immediate centered-card boundary did not produce complete screenshot + compact AX evidence"
+        fi
+        ;;
+      *)
+        capture "04_created_habit_centered_immediate_failure"
+        fail "Immediate centered-card boundary failed: centered Home card label was '$immediate_label', expected '$HABIT_NAME'"
+        ;;
+    esac
+  else
+    capture "04_created_habit_centered_immediate_failure"
+    fail "Immediate centered-card boundary failed: created habit is not the visible centered Home card: $HABIT_NAME"
+  fi
+
+  # Deliberate stability boundary: no app interaction occurs during this
+  # interval. The later AX read is centered-card-only and cannot move the
+  # carousel or refresh the route.
+  sleep 10
+  if on_home_page && \
+    wait_for_visible_habit_card_name "$HABIT_NAME" 8; then
+    stability_label="$(current_visible_habit_card_label 2>/dev/null || true)"
+    case "$stability_label" in
+      *"$HABIT_NAME"*)
+        if capture "04_created_habit_centered_after_10s_no_interaction"; then
+          pass "10-second no-interaction stability boundary: created habit remains the centered Home card: $HABIT_NAME"
+        else
+          info "10-second no-interaction stability boundary did not produce complete screenshot + compact AX evidence"
+        fi
+        ;;
+      *)
+        capture "04_created_habit_centered_after_10s_no_interaction_failure"
+        fail "10-second no-interaction stability boundary failed: centered Home card label was '$stability_label', expected '$HABIT_NAME'"
+        ;;
+    esac
+  else
+    capture "04_created_habit_centered_after_10s_no_interaction_failure"
+    fail "10-second no-interaction stability boundary failed: created habit is no longer the centered Home card: $HABIT_NAME"
+  fi
+
+  selected_home_label="$(selected_home_nav_label)"
+  selected_home_retapped=0
+  if [ -n "$selected_home_label" ]; then
+    if tap_element "$selected_home_label" "label" "Re-tap already-selected Home nav item"; then
+      selected_home_retapped=1
+    fi
+  fi
+  if [ "$selected_home_retapped" = "1" ] && \
+    wait_for_visible_habit_card_name "$HABIT_NAME" 8; then
+    selected_home_label_after_tap="$(current_visible_habit_card_label 2>/dev/null || true)"
+    case "$selected_home_label_after_tap" in
+      *"$HABIT_NAME"*)
+        if capture "04_created_habit_centered_after_selected_home_retap"; then
+          pass "Selected Home re-tap boundary: created habit remains the centered Home card: $HABIT_NAME"
+        else
+          info "Selected Home re-tap boundary did not produce complete screenshot + compact AX evidence"
+        fi
+        ;;
+      *)
+        capture "04_created_habit_centered_after_selected_home_retap_failure"
+        fail "Selected Home re-tap boundary failed: centered Home card label was '$selected_home_label_after_tap', expected '$HABIT_NAME'"
+        ;;
+    esac
+  else
+    capture "04_created_habit_centered_after_selected_home_retap_failure"
+    if [ -z "$selected_home_label" ]; then
+      fail "Selected Home re-tap boundary failed: already-selected Home nav item was not visible"
+    else
+      fail "Selected Home re-tap boundary failed: selected Home nav tap did not succeed or the created habit was not centered: $HABIT_NAME"
+    fi
   fi
 
   terminate_app
   fresh_launch
   if on_auth_page; then login_with_test_user; fi
   if on_onboarding_page; then complete_onboarding; fi
-  go_home
-  capture "04_home_after_relaunch"
-  if wait_for_visible_habit_card_name "$HABIT_NAME" 10; then
-    capture "04_created_habit_centered_after_relaunch"
-    pass "Created habit survives relaunch and is visible on Home: $HABIT_NAME"
+  if wait_for_natural_home 10 && \
+    wait_for_visible_habit_card_name "$HABIT_NAME" 10; then
+    relaunch_label="$(current_visible_habit_card_label 2>/dev/null || true)"
+    capture "04_home_after_relaunch"
+    case "$relaunch_label" in
+      *"$HABIT_NAME"*)
+        if capture "04_created_habit_centered_after_relaunch"; then
+          pass "Fresh relaunch/auth restore boundary: created habit remains the centered Home card: $HABIT_NAME"
+        else
+          info "Fresh relaunch/auth restore boundary did not produce complete screenshot + compact AX evidence"
+        fi
+        ;;
+      *)
+        capture "04_created_habit_centered_after_relaunch_failure"
+        fail "Fresh relaunch/auth restore boundary failed: centered Home card label was '$relaunch_label', expected '$HABIT_NAME'"
+        ;;
+    esac
   else
-    capture "04_created_habit_centered_after_relaunch_missing"
-    fail "Created habit missing on Home after relaunch: $HABIT_NAME"
+    capture "04_created_habit_centered_after_relaunch_failure"
+    fail "Fresh relaunch/auth restore boundary failed: created habit is not the centered Home card after returning Home: $HABIT_NAME"
   fi
 else
-  skip "Created habit Home/relaunch assertions" "create form was not submitted"
+  fail "Created habit durability boundaries unavailable because Create Habit submission failed"
 fi
 
 # Invite flow: from habit card, tap → menu / members

@@ -229,6 +229,67 @@ printf '%s\n' "$helper_block" | grep -Eq 'ui tap|ui swipe|fresh_launch|pull_to_r
   fail_test "immediate helper must not mutate, refresh, or relaunch"
 pass_test "immediate AX wait is read-only"
 
+capture_block=$(sed -n '/^capture() {/,/^first_coords_matching_label_regex()/p' "$common_file")
+printf '%s\n' "$capture_block" | grep -Fq 'ui screenshot --out "$screenshot_path"' || \
+  fail_test "capture must request a screenshot artifact"
+printf '%s\n' "$capture_block" | grep -Fq 'ui tree --compact' || \
+  fail_test "capture must request a compact AX tree artifact"
+printf '%s\n' "$capture_block" | grep -Fq '[ ! -s "$screenshot_path" ]' || \
+  fail_test "capture must reject a missing or empty screenshot artifact"
+printf '%s\n' "$capture_block" | grep -Fq '[ ! -s "$ax_path" ]' || \
+  fail_test "capture must reject a missing or empty AX artifact"
+printf '%s\n' "$capture_block" | grep -Fq '.ok == true and (.data.elements | type == "array")' || \
+  fail_test "capture must require a successful compact AX response"
+
+CAPTURE_SCREENSHOTS="$TMP_DIR/capture_screenshots"
+CAPTURE_AX_TREES="$TMP_DIR/capture_ax"
+mkdir -p "$CAPTURE_SCREENSHOTS" "$CAPTURE_AX_TREES"
+SCREENSHOTS="$CAPTURE_SCREENSHOTS"
+AX_TREES="$CAPTURE_AX_TREES"
+CAPTURE_SEQUENCE=0
+CAPTURE_FAKE_AX_MODE="ok"
+IEZ="fake-iez"
+
+run_iez() {
+  local _binary="$1"
+  shift
+  if [ "${1:-}" = "ui" ] && [ "${2:-}" = "tree" ] && [ "${3:-}" = "--compact" ]; then
+    if [ "$CAPTURE_FAKE_AX_MODE" = "ok" ]; then
+      printf '%s\n' '{"ok":true,"data":{"elements":[{"id":"habit_card_test","label":"Habit card: Test habit","frame":{"x":150,"y":250,"width":92,"height":120}}]}}'
+    else
+      printf '%s\n' '{"ok":false,"error":{"code":"TREE_EMPTY","message":"fake tree failure"}}'
+    fi
+    return 0
+  fi
+  if [ "${1:-}" = "ui" ] && [ "${2:-}" = "screenshot" ] && [ "${3:-}" = "--out" ]; then
+    printf 'fake png\n' >"$4"
+    printf '%s\n' '{"ok":true,"data":{"path":"fake"}}'
+    return 0
+  fi
+  return 1
+}
+
+capture_output="$(capture "static_capture" 2>&1)" || \
+  fail_test "capture should succeed with a screenshot and compact AX response"
+screenshot_count=$(find "$CAPTURE_SCREENSHOTS" -type f -name 'static_capture_*.png' | wc -l | tr -d ' ')
+ax_count=$(find "$CAPTURE_AX_TREES" -type f -name 'static_capture_*.json' | wc -l | tr -d ' ')
+[ "$screenshot_count" = "1" ] || fail_test "capture should create exactly one screenshot artifact"
+[ "$ax_count" = "1" ] || fail_test "capture should create exactly one compact AX artifact"
+ax_artifact=$(find "$CAPTURE_AX_TREES" -type f -name 'static_capture_*.json' | head -1)
+jq -e '.ok == true and (.data.elements | type == "array")' "$ax_artifact" >/dev/null 2>&1 || \
+  fail_test "capture AX artifact should preserve the successful compact tree envelope"
+pass_test "capture produces paired screenshot and compact AX artifacts"
+
+sleep() {
+  :
+}
+CAPTURE_FAKE_AX_MODE="error"
+if capture "static_capture_invalid_ax" >/dev/null 2>&1; then
+  fail_test "capture must fail closed when the compact AX response is unsuccessful"
+fi
+unset -f sleep
+pass_test "capture fails closed when compact AX evidence is unavailable"
+
 for flow in 20_habit_edit 34_habit_delete_persistence; do
   flow_file="$ROOT_DIR/stuari/flows/$flow.sh"
   immediate_line=$(grep -n 'wait_for_immediate_habit_card_' "$flow_file" | head -1 | cut -d: -f1)

@@ -29,6 +29,11 @@ assert_eq() {
   [ "$expected" = "$actual" ] || fail_test "$description (expected '$expected', got '$actual')"
 }
 
+assert_file_contains() {
+  local needle="$1" file="$2" description="$3"
+  grep -Fq -- "$needle" "$file" || fail_test "$description (missing: $needle)"
+}
+
 touch "$FAKE_PLIST"
 mkdir -p "$FAKE_APP_CONTAINER/tmp"
 
@@ -561,36 +566,107 @@ fi
 pass_test "Given mismatched Drift habit_id When waiting for due-now occurrence Then it times out and rejects"
 
 flow04_file="$ROOT_DIR/stuari/flows/04_habit_group.sh"
-flow04_created_checks=$(sed -n '/if \[ "$CREATE_SUBMITTED" = "1" \]; then/,/skip "Created habit Home\/relaunch assertions"/p' "$flow04_file")
-assert_eq "2" "$(printf '%s\n' "$flow04_created_checks" | grep -Fc 'wait_for_visible_habit_card_name "$HABIT_NAME"')" \
-  "Flow 04 uses centered-card matching for immediate and post-relaunch create checks"
+flow04_created_checks=$(sed -n '/if \[ "$CREATE_SUBMITTED" = "1" \]; then/,/^# Invite flow:/p' "$flow04_file")
+assert_file_contains 'HABIT_NAME="${STUARI_FLOW04_HABIT_NAME:-$(test_habit_name)}"' "$flow04_file" \
+  "Flow 04 generates a unique habit name unless an enclosing flow supplies one"
+assert_file_contains 'type_into "e.g. Morning Run" "$HABIT_NAME"' "$flow04_file" \
+  "Flow 04 types the generated habit name into the create form"
+assert_eq "4" "$(printf '%s\n' "$flow04_created_checks" | grep -Fc 'wait_for_visible_habit_card_name "$HABIT_NAME"')" \
+  "Flow 04 uses centered-card matching at all four created-habit checkpoints"
+assert_eq "4" "$(printf '%s\n' "$flow04_created_checks" | grep -Fc 'current_visible_habit_card_label')" \
+  "Flow 04 re-reads the centered card label at every created-habit checkpoint"
 printf '%s\n' "$flow04_created_checks" | grep -Fq 'wait_for_habit_name "$HABIT_NAME"' && \
   fail_test "Flow 04 create checks must not use broad AX-tree habit-name matching"
 grep -Fq 'capture "04_home_with_habit"' "$flow04_file" && \
   fail_test "Flow 04 must not label a pre-wait screenshot as created-habit evidence"
+
+checkpoint_names=(
+  04_created_habit_centered_immediate
+  04_created_habit_centered_after_10s_no_interaction
+  04_created_habit_centered_after_selected_home_retap
+  04_created_habit_centered_after_relaunch
+)
+for checkpoint in "${checkpoint_names[@]}"; do
+  assert_file_contains "capture \"$checkpoint\"" "$flow04_file" \
+    "Flow 04 captures screenshot + compact AX evidence for $checkpoint"
+  assert_file_contains "capture \"${checkpoint}_failure\"" "$flow04_file" \
+    "Flow 04 captures failure evidence for $checkpoint"
+  assert_file_contains "if capture \"$checkpoint\"" "$flow04_file" \
+    "Flow 04 gates the passing assertion on complete evidence for $checkpoint"
+done
+
 first_centered_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'wait_for_visible_habit_card_name "$HABIT_NAME"' | sed -n '1s/:.*//p')
+stability_sleep_line=$(printf '%s\n' "$flow04_created_checks" | grep -nE '^[[:space:]]*sleep 10[[:space:]]*$' | sed -n '1s/:.*//p')
 second_centered_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'wait_for_visible_habit_card_name "$HABIT_NAME"' | sed -n '2s/:.*//p')
+selected_home_retap_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'tap_element "$selected_home_label" "label" "Re-tap already-selected Home nav item"' | sed -n '1s/:.*//p')
+third_centered_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'wait_for_visible_habit_card_name "$HABIT_NAME"' | sed -n '3s/:.*//p')
 terminate_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'terminate_app' | sed -n '1s/:.*//p')
 relaunch_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'fresh_launch' | sed -n '1s/:.*//p')
-[ "$first_centered_line" -lt "$terminate_line" ] && [ "$terminate_line" -lt "$relaunch_line" ] && [ "$relaunch_line" -lt "$second_centered_line" ] || \
-  fail_test "Flow 04 must keep immediate and post-relaunch centered-card checks distinct"
-for capture_name in \
-  04_created_habit_centered \
-  04_created_habit_centered_missing \
-  04_created_habit_centered_after_relaunch \
-  04_created_habit_centered_after_relaunch_missing
+fourth_centered_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'wait_for_visible_habit_card_name "$HABIT_NAME"' | sed -n '4s/:.*//p')
+natural_home_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'if wait_for_natural_home 10' | sed -n '1s/:.*//p')
+[ -n "$first_centered_line" ] && [ -n "$stability_sleep_line" ] && [ -n "$second_centered_line" ] && \
+  [ -n "$selected_home_retap_line" ] && [ -n "$third_centered_line" ] && \
+  [ -n "$terminate_line" ] && [ -n "$relaunch_line" ] && [ -n "$fourth_centered_line" ] || \
+  fail_test "Flow 04 static checkpoint markers must all be present"
+[ -n "$natural_home_line" ] && [ "$natural_home_line" -lt "$first_centered_line" ] || \
+  fail_test "Flow 04 must prove natural Home return before the immediate centered-card check"
+
+relaunch_restore_segment=$(printf '%s\n' "$flow04_created_checks" | sed -n "${relaunch_line},${fourth_centered_line}p")
+printf '%s\n' "$relaunch_restore_segment" | grep -Eq 'go_home|nav_to_tab|tap_element.*Home|pull_to_refresh_home|ui (tap|swipe|type|key)|type_into' && \
+  fail_test "Flow 04 must not mutate Home navigation between relaunch/auth/onboarding restoration and the fourth centered-card assertion"
+
+[ -n "$stability_sleep_line" ] && [ "$first_centered_line" -lt "$stability_sleep_line" ] && \
+  [ "$stability_sleep_line" -lt "$second_centered_line" ] && \
+  [ "$second_centered_line" -lt "$selected_home_retap_line" ] && \
+  [ "$selected_home_retap_line" -lt "$third_centered_line" ] && \
+  [ "$third_centered_line" -lt "$terminate_line" ] && \
+  [ "$terminate_line" -lt "$relaunch_line" ] && \
+  [ "$relaunch_line" -lt "$fourth_centered_line" ] || \
+  fail_test "Flow 04 checkpoints must be ordered: immediate, 10s idle, selected Home re-tap, terminate/relaunch"
+immediate_capture_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'capture "04_created_habit_centered_immediate"' | sed -n '1s/:.*//p')
+stability_capture_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'capture "04_created_habit_centered_after_10s_no_interaction"' | sed -n '1s/:.*//p')
+retap_capture_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'capture "04_created_habit_centered_after_selected_home_retap"' | sed -n '1s/:.*//p')
+relaunch_capture_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'capture "04_created_habit_centered_after_relaunch"' | sed -n '1s/:.*//p')
+[ "$first_centered_line" -lt "$immediate_capture_line" ] && \
+  [ "$second_centered_line" -lt "$stability_capture_line" ] && \
+  [ "$third_centered_line" -lt "$retap_capture_line" ] && \
+  [ "$fourth_centered_line" -lt "$relaunch_capture_line" ] || \
+  fail_test "Flow 04 must capture evidence after each centered-card assertion"
+
+pre_natural_home=$(printf '%s\n' "$flow04_created_checks" | sed -n "1,${natural_home_line}p")
+printf '%s\n' "$pre_natural_home" | grep -Eq 'go_home|nav_to_tab|tap_element.*Home' && \
+  fail_test "Flow 04 must not navigate Home before proving Create Habit returned there naturally"
+
+idle_segment=$(printf '%s\n' "$flow04_created_checks" | sed -n "${stability_sleep_line},$((second_centered_line - 1))p")
+printf '%s\n' "$idle_segment" | grep -Eq 'tap_element|ui (tap|swipe|type|key)|fresh_launch|terminate_app|go_home|pull_to_refresh_home|type_into' && \
+  fail_test "Flow 04 must not interact with the app during the 10-second no-interaction interval"
+
+assert_file_contains 'selected_home_label="$(selected_home_nav_label)"' "$flow04_file" \
+  "Flow 04 resolves the already-selected Home nav item from compact AX"
+assert_file_contains 'tap_element "$selected_home_label" "label" "Re-tap already-selected Home nav item"' "$flow04_file" \
+  "Flow 04 re-taps the already-selected Home nav item"
+assert_file_contains 'capture "04_home_before_created_habit_center_check"' "$flow04_file" \
+  "Flow 04 preserves the pre-centered Home evidence capture"
+assert_file_contains 'capture "04_home_after_relaunch"' "$flow04_file" \
+  "Flow 04 preserves the post-relaunch Home evidence capture"
+
+for prior_check in \
+  'capture "04_home_before_create"' \
+  'capture "04_name_page"' \
+  'capture "04_image_page"' \
+  'capture "04_review_page"' \
+  'tap_element "Create Habit" "label" "Review → Create Habit (submit)"' \
+  'capture "04_post_create"' \
+  'has_label "Members"' \
+  'tap_element "Invite" "label" "Tap Invite"' \
+  'tap_visible_habit_menu "Open habit settings"' \
+  'has_label "View Details"' \
+  'dismiss_all' \
+  'print_summary'
 do
-  printf '%s\n' "$flow04_created_checks" | grep -Fq "capture \"$capture_name\"" || \
-    fail_test "Flow 04 must capture centered-card success and timeout evidence ($capture_name)"
+  assert_file_contains "$prior_check" "$flow04_file" "Flow 04 preserves prior check: $prior_check"
 done
-immediate_success_capture_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'capture "04_created_habit_centered"' | sed -n '1s/:.*//p')
-immediate_missing_capture_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'capture "04_created_habit_centered_missing"' | sed -n '1s/:.*//p')
-durable_success_capture_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'capture "04_created_habit_centered_after_relaunch"' | sed -n '1s/:.*//p')
-durable_missing_capture_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'capture "04_created_habit_centered_after_relaunch_missing"' | sed -n '1s/:.*//p')
-[ "$first_centered_line" -lt "$immediate_success_capture_line" ] && [ "$first_centered_line" -lt "$immediate_missing_capture_line" ] && \
-  [ "$second_centered_line" -lt "$durable_success_capture_line" ] && [ "$second_centered_line" -lt "$durable_missing_capture_line" ] || \
-  fail_test "Flow 04 evidence captures must follow their centered-card wait result"
-pass_test "Given adjacent mounted habit cards When flow 04 verifies creation Then only the centered card passes before and after relaunch"
+pass_test "Given adjacent mounted habit cards When flow 04 verifies creation Then all four centered-card release checkpoints are ordered and gated"
 
 write_fake_carousel_cards() {
   : > "$FAKE_CAROUSEL_CARDS"
