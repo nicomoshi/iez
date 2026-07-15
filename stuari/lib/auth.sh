@@ -77,6 +77,31 @@ has_dev_magic_login() {
   has_label "$LABEL_DEV_SIGN_IN"
 }
 
+stuari_auth_text_field_right_inset_coords() {
+  local label="${1:-}" tree
+  [ -n "$label" ] || return 1
+
+  tree="$(run_iez "$IEZ" ui tree --compact)" || return 1
+  printf '%s\n' "$tree" \
+    | jq -er --arg label "$label" '
+        [(.data.elements // [])[]
+          | select(.role == "AXTextField" and .label == $label)
+          | .frame
+          | select(
+              type == "object" and
+              (.x | type) == "number" and
+              (.y | type) == "number" and
+              (.width | type) == "number" and
+              (.height | type) == "number" and
+              .width > 24 and
+              .height > 0
+            )] as $frames
+        | select(($frames | length) == 1)
+        | $frames[0]
+        | "\((.x + .width - 12) | floor),\((.y + (.height / 2)) | floor)"
+      ' 2>/dev/null
+}
+
 stuari_auth_app_container_data_path() {
   if [ -n "${STUARI_AUTH_APP_CONTAINER_DATA_PATH:-}" ]; then
     printf '%s\n' "$STUARI_AUTH_APP_CONTAINER_DATA_PATH"
@@ -258,6 +283,46 @@ reset_simulator_auth_tokens_to_auth_page() {
     fi
   fi
 
+  # cfprefsd can flush a cached UserDefaults dictionary after a direct plist
+  # rewrite. Invalidate it once before the final readback; never launch while
+  # an auth-token key is still observable.
+  xcrun simctl spawn "$DEVICE_ID" /usr/bin/killall cfprefsd >/dev/null 2>&1 || {
+    fail "Resolved simulator auth tokens: failed to invalidate cfprefsd"
+    return 1
+  }
+
+  sleep 1
+
+  if [ -e "$preferences_path" ]; then
+    if ! [ -f "$preferences_path" ]; then
+      fail "Resolved simulator auth tokens: preferences path is not a file"
+      return 1
+    fi
+    [ -r "$preferences_path" ] || {
+      fail "Resolved simulator auth tokens: preferences file unreadable"
+      return 1
+    }
+    preferences_json="$(stuari_auth_preferences_json "$preferences_path")" || {
+      fail "Resolved simulator auth tokens: preferences file invalid JSON"
+      return 1
+    }
+    printf '%s\n' "$preferences_json" | jq -e 'type == "object"' >/dev/null 2>&1 || {
+      fail "Resolved simulator auth tokens: preferences content is not an object"
+      return 1
+    }
+    token_keys_json="$(
+      printf '%s\n' "$preferences_json" \
+        | jq -c '[keys[]? | select(test("^flutter\\.sb-.*-auth-token$"))]' 2>/dev/null
+    )" || {
+      fail "Resolved simulator auth tokens: failed to parse auth-token keys"
+      return 1
+    }
+    if [ "$token_keys_json" != "[]" ]; then
+      fail "Resolved simulator auth tokens: cfprefsd did not purge auth-token keys"
+      return 1
+    fi
+  fi
+
   xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID" >/dev/null 2>&1 || return 1
   while [ "$wait_i" -lt 10 ]; do
     if on_auth_page; then
@@ -346,9 +411,20 @@ login_with_dev_magic() {
     done
   }
 
+  _focus_field_at_end() {
+    local label="$1" coords tap_result
+    coords="$(stuari_auth_text_field_right_inset_coords "$label")" || {
+      fail "Resolve unique nonzero $label frame"
+      return 1
+    }
+
+    tap_result="$(run_iez "$IEZ" ui tap --coords "$coords")"
+    assert_ok "$tap_result" "Focus $label at end"
+    [ "$(json_ok "$tap_result")" = "true" ]
+  }
+
   if [ "$need_email_type" = "1" ]; then
-    r=$(run_iez "$IEZ" ui tap --label "$LABEL_DEV_EMAIL")
-    assert_ok "$r" "Focus Dev email"
+    _focus_field_at_end "$LABEL_DEV_EMAIL" || return 1
     sleep 0.3
     _clear_field
     r=$(run_iez "$IEZ" ui type "$email")
@@ -359,8 +435,7 @@ login_with_dev_magic() {
   fi
 
   if [ "$need_password_type" = "1" ]; then
-    r=$(run_iez "$IEZ" ui tap --label "$LABEL_DEV_PASSWORD")
-    assert_ok "$r" "Focus Dev password"
+    _focus_field_at_end "$LABEL_DEV_PASSWORD" || return 1
     sleep 0.3
     _clear_field
     r=$(run_iez "$IEZ" ui type "$password")
