@@ -518,7 +518,6 @@ pass_test "Given cfprefsd invalidation failure When resetting Then it fails clos
 FAKE_CFPREFSD_FAILURE=0
 
 sqlite3 "$FAKE_DB_PATH" <<SQL
-create table users (id text primary key, email text);
 create table groups (id text primary key, created_by text, name text, deleted_at integer);
 create table occurrence_snapshots (
   occurrence_id text,
@@ -537,7 +536,6 @@ open_ms="$((now_ms - 1000))"
 close_ms="$((now_ms + 60000))"
 
 sqlite3 "$FAKE_DB_PATH" <<SQL
-insert into users (id, email) values ('$STUARI_AUTH_ALICE_USER_ID', '$STUARI_AUTH_ALICE_EMAIL');
 insert into groups (id, created_by, name, deleted_at)
 values ('$DUE_NOW_HABIT_GROUP_ID', '$STUARI_AUTH_ALICE_USER_ID', '$DUE_NOW_HABIT_NAME', null);
 insert into occurrence_snapshots (
@@ -561,6 +559,38 @@ if wait_for_due_now_occurrence_drift_authority 2 0; then
   fail_test "Given mismatched Drift habit_id When waiting for due-now occurrence Then it times out and rejects"
 fi
 pass_test "Given mismatched Drift habit_id When waiting for due-now occurrence Then it times out and rejects"
+
+flow04_file="$ROOT_DIR/stuari/flows/04_habit_group.sh"
+flow04_created_checks=$(sed -n '/if \[ "$CREATE_SUBMITTED" = "1" \]; then/,/skip "Created habit Home\/relaunch assertions"/p' "$flow04_file")
+assert_eq "2" "$(printf '%s\n' "$flow04_created_checks" | grep -Fc 'wait_for_visible_habit_card_name "$HABIT_NAME"')" \
+  "Flow 04 uses centered-card matching for immediate and post-relaunch create checks"
+printf '%s\n' "$flow04_created_checks" | grep -Fq 'wait_for_habit_name "$HABIT_NAME"' && \
+  fail_test "Flow 04 create checks must not use broad AX-tree habit-name matching"
+grep -Fq 'capture "04_home_with_habit"' "$flow04_file" && \
+  fail_test "Flow 04 must not label a pre-wait screenshot as created-habit evidence"
+first_centered_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'wait_for_visible_habit_card_name "$HABIT_NAME"' | sed -n '1s/:.*//p')
+second_centered_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'wait_for_visible_habit_card_name "$HABIT_NAME"' | sed -n '2s/:.*//p')
+terminate_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'terminate_app' | sed -n '1s/:.*//p')
+relaunch_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'fresh_launch' | sed -n '1s/:.*//p')
+[ "$first_centered_line" -lt "$terminate_line" ] && [ "$terminate_line" -lt "$relaunch_line" ] && [ "$relaunch_line" -lt "$second_centered_line" ] || \
+  fail_test "Flow 04 must keep immediate and post-relaunch centered-card checks distinct"
+for capture_name in \
+  04_created_habit_centered \
+  04_created_habit_centered_missing \
+  04_created_habit_centered_after_relaunch \
+  04_created_habit_centered_after_relaunch_missing
+do
+  printf '%s\n' "$flow04_created_checks" | grep -Fq "capture \"$capture_name\"" || \
+    fail_test "Flow 04 must capture centered-card success and timeout evidence ($capture_name)"
+done
+immediate_success_capture_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'capture "04_created_habit_centered"' | sed -n '1s/:.*//p')
+immediate_missing_capture_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'capture "04_created_habit_centered_missing"' | sed -n '1s/:.*//p')
+durable_success_capture_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'capture "04_created_habit_centered_after_relaunch"' | sed -n '1s/:.*//p')
+durable_missing_capture_line=$(printf '%s\n' "$flow04_created_checks" | grep -nF 'capture "04_created_habit_centered_after_relaunch_missing"' | sed -n '1s/:.*//p')
+[ "$first_centered_line" -lt "$immediate_success_capture_line" ] && [ "$first_centered_line" -lt "$immediate_missing_capture_line" ] && \
+  [ "$second_centered_line" -lt "$durable_success_capture_line" ] && [ "$second_centered_line" -lt "$durable_missing_capture_line" ] || \
+  fail_test "Flow 04 evidence captures must follow their centered-card wait result"
+pass_test "Given adjacent mounted habit cards When flow 04 verifies creation Then only the centered card passes before and after relaunch"
 
 write_fake_carousel_cards() {
   : > "$FAKE_CAROUSEL_CARDS"

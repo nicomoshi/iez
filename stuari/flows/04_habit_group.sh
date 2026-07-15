@@ -166,14 +166,16 @@ else
   fail "Final Create Habit button not reachable from review page"
 fi
 
-# Back on Home — verify a habit card now shows the habit name (best-effort)
+# Back on Home — verify the centered habit card now shows the habit name.
 sleep 2
 go_home
-capture "04_home_with_habit"
+capture "04_home_before_created_habit_center_check"
 if [ "$CREATE_SUBMITTED" = "1" ]; then
-  if wait_for_habit_name "$HABIT_NAME" 8; then
+  if wait_for_visible_habit_card_name "$HABIT_NAME" 8; then
+    capture "04_created_habit_centered"
     pass "Created habit is visible on Home: $HABIT_NAME"
   else
+    capture "04_created_habit_centered_missing"
     fail "Created habit not visible on Home after create: $HABIT_NAME"
   fi
 
@@ -183,9 +185,11 @@ if [ "$CREATE_SUBMITTED" = "1" ]; then
   if on_onboarding_page; then complete_onboarding; fi
   go_home
   capture "04_home_after_relaunch"
-  if wait_for_habit_name "$HABIT_NAME" 10; then
+  if wait_for_visible_habit_card_name "$HABIT_NAME" 10; then
+    capture "04_created_habit_centered_after_relaunch"
     pass "Created habit survives relaunch and is visible on Home: $HABIT_NAME"
   else
+    capture "04_created_habit_centered_after_relaunch_missing"
     fail "Created habit missing on Home after relaunch: $HABIT_NAME"
   fi
 else

@@ -142,6 +142,85 @@ assert_file_not_contains "bbbb0000-0000-0000-0000-000000000001" "$CLEANUP_CAPTUR
 assert_file_not_contains "bbbb0000-0000-0000-0000-000000000002" "$CLEANUP_CAPTURE_FILE" "cleanup never targets seeded group 0002"
 pass_test "due-now cleanup SQL contract"
 
+DRIFT_DB_PATH="$TMP_DIR/stuari_offline.sqlite"
+DRIFT_QUERY_CAPTURE="$TMP_DIR/drift_authority.sql"
+DRIFT_PROBE_CALLS_FILE="$TMP_DIR/drift_probe.calls"
+DRIFT_PREFLIGHT_READABLE=1
+DRIFT_PROBE_MODE="eventual"
+
+stuari_fixture_drift_db_path() {
+  printf '%s\n' "$DRIFT_DB_PATH"
+}
+
+stuari_fixture_now_epoch_ms() {
+  printf '2000000000000\n'
+}
+
+stuari_fixture_sqlite_query() {
+  local db_path="$1" query="$2" probe_calls
+  [ "$db_path" = "$DRIFT_DB_PATH" ] || return 1
+  if [ "$query" = "select 1;" ]; then
+    [ "$DRIFT_PREFLIGHT_READABLE" = "1" ]
+    return
+  fi
+
+  printf '%s\n' "$query" > "$DRIFT_QUERY_CAPTURE"
+  probe_calls="$(cat "$DRIFT_PROBE_CALLS_FILE")"
+  probe_calls=$((probe_calls + 1))
+  printf '%s\n' "$probe_calls" > "$DRIFT_PROBE_CALLS_FILE"
+  if [ "$DRIFT_PROBE_MODE" = "timeout" ]; then
+    printf '1|0\n'
+  elif [ "$probe_calls" -eq 1 ]; then
+    return 1
+  elif [ "$probe_calls" -eq 2 ]; then
+    printf '\n'
+  else
+    printf '1|1\n'
+  fi
+}
+
+sleep() {
+  :
+}
+
+DRIFT_DB_PATH="$TMP_DIR/missing.sqlite"
+if wait_for_due_now_occurrence_drift_authority 1 0; then
+  fail_test "missing Drift database must fail before authority polling"
+fi
+DRIFT_DB_PATH="$TMP_DIR/stuari_offline.sqlite"
+: > "$DRIFT_DB_PATH"
+DRIFT_PREFLIGHT_READABLE=0
+if wait_for_due_now_occurrence_drift_authority 1 0; then
+  fail_test "unreadable Drift database must fail before authority polling"
+fi
+pass_test "Given a missing or unreadable Drift database When authority preflight runs Then it fails closed"
+
+DRIFT_PREFLIGHT_READABLE=1
+DRIFT_PROBE_MODE="eventual"
+printf '0\n' > "$DRIFT_PROBE_CALLS_FILE"
+wait_for_due_now_occurrence_drift_authority 5 0 || \
+  fail_test "temporary unreadable and empty probes should reach an exact 1|1 authority result"
+[ "$(cat "$DRIFT_PROBE_CALLS_FILE")" = "3" ] || \
+  fail_test "authority wait must retry both temporary unreadable and empty probes"
+assert_file_not_contains "from users" "$DRIFT_QUERY_CAPTURE" "Drift authority does not depend on the unused users table"
+assert_file_contains "where id = '$DUE_NOW_HABIT_GROUP_ID'" "$DRIFT_QUERY_CAPTURE" "Drift authority requires the exact reserved group"
+assert_file_contains "and created_by = '$STUARI_AUTH_ALICE_USER_ID'" "$DRIFT_QUERY_CAPTURE" "Drift group authority requires exact Alice ownership"
+assert_file_contains "where group_id = '$DUE_NOW_HABIT_GROUP_ID'" "$DRIFT_QUERY_CAPTURE" "Drift occurrence authority requires the exact reserved group"
+assert_file_contains "and user_id = '$STUARI_AUTH_ALICE_USER_ID'" "$DRIFT_QUERY_CAPTURE" "Drift occurrence authority requires exact Alice ownership"
+assert_file_contains "and status = 'open'" "$DRIFT_QUERY_CAPTURE" "Drift occurrence authority requires an open occurrence"
+pass_test "Given transient Drift probes When exact group and occurrence authority arrives Then polling succeeds without a users-table dependency"
+
+DRIFT_PROBE_MODE="timeout"
+printf '0\n' > "$DRIFT_PROBE_CALLS_FILE"
+if wait_for_due_now_occurrence_drift_authority 3 0; then
+  fail_test "authority wait must not accept a missing exact occurrence"
+fi
+[ "$(cat "$DRIFT_PROBE_CALLS_FILE")" = "3" ] || \
+  fail_test "authority wait must exhaust its bounded timeout"
+pass_test "Given exact authority never arrives When the timeout expires Then polling fails closed"
+
+unset -f sleep
+
 common_file="$ROOT_DIR/stuari/lib/common.sh"
 helper_block=$(sed -n '/# These immediate mutation assertions are intentionally AX-read-only\./,/^# ── Smart Assertions/p' "$common_file")
 printf '%s\n' "$helper_block" | grep -Fq 'ui tree --compact' || fail_test "immediate helper reads compact AX trees"
