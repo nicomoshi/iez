@@ -46,6 +46,16 @@ source "$ROOT_DIR/stuari/lib/fixtures.sh"
 eval "$(declare -f login_with_dev_magic | sed '1s/login_with_dev_magic/stuari_real_login_with_dev_magic/')"
 eval "$(declare -f reset_simulator_auth_tokens_to_auth_page | sed '1s/reset_simulator_auth_tokens_to_auth_page/stuari_real_reset_simulator_auth_tokens_to_auth_page/')"
 
+_stuari_real_write_decl="$(declare -f stuari_auth_write_preferences_json_atomically)"
+eval "$(printf '%s\n' "$_stuari_real_write_decl" | sed '1s/stuari_auth_write_preferences_json_atomically/_stuari_real_write_inner/')"
+stuari_auth_write_preferences_json_atomically() {
+  _stuari_real_write_inner "$@" && {
+    printf 'WRITE\n' >> "$FAKE_XCRUN_LOG"
+    return 0
+  }
+  return 1
+}
+
 write_preferences_plist() {
   local mode="${1:-none}"
   case "$mode" in
@@ -160,14 +170,25 @@ login_contract_output="$(
         shift
       fi
 
-      if [ "${1:-}" = "ui" ] && [ "${2:-}" = "tap" ] && [ "${3:-}" = "--label" ]; then
+      if [ "${1:-}" = "ui" ] && [ "${2:-}" = "tree" ] && [ "${3:-}" = "--compact" ]; then
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":300,"height":50}},{"role":"AXTextField","label":"Dev password","frame":{"x":20,"y":200,"width":300,"height":50}}]}}'
+        return 0
+      fi
+
+      if [ "${1:-}" = "ui" ] && [ "${2:-}" = "tap" ] && [ "${3:-}" = "--coords" ]; then
         case "${4:-}" in
-          "$LABEL_DEV_EMAIL")
-            printf 'FOCUS_EMAIL\n' >> "$LOGIN_CONTRACT_CALLS"
+          "308,125")
+            printf 'FOCUS_EMAIL_RIGHT\n' >> "$LOGIN_CONTRACT_CALLS"
             ;;
-          "$LABEL_DEV_PASSWORD")
-            printf 'FOCUS_PASSWORD\n' >> "$LOGIN_CONTRACT_CALLS"
+          "308,225")
+            printf 'FOCUS_PASSWORD_RIGHT\n' >> "$LOGIN_CONTRACT_CALLS"
             ;;
+          *)
+            printf 'FOCUS_OTHER\n' >> "$LOGIN_CONTRACT_CALLS"
+            ;;
+        esac
+      elif [ "${1:-}" = "ui" ] && [ "${2:-}" = "tap" ] && [ "${3:-}" = "--label" ]; then
+        case "${4:-}" in
           "$LABEL_DEV_SIGN_IN")
             printf 'SUBMIT\n' >> "$LOGIN_CONTRACT_CALLS"
             FAKE_AUTH_PAGE="home"
@@ -203,20 +224,44 @@ login_contract_output="$(
   fail_test "Explicit Alice dev login types the email field exactly once"
 [ "$(grep -c '^TYPE_PASSWORD$' "$LOGIN_CONTRACT_CALLS")" = "1" ] || \
   fail_test "Explicit Alice dev login types the password field exactly once"
-[ "$(grep -c '^FOCUS_EMAIL$' "$LOGIN_CONTRACT_CALLS")" = "1" ] || \
-  fail_test "Explicit Alice dev login focuses the email field exactly once"
-[ "$(grep -c '^FOCUS_PASSWORD$' "$LOGIN_CONTRACT_CALLS")" = "1" ] || \
-  fail_test "Explicit Alice dev login focuses the password field exactly once"
+[ "$(grep -c '^FOCUS_EMAIL_RIGHT$' "$LOGIN_CONTRACT_CALLS")" = "1" ] || \
+  fail_test "Given a unique Dev email frame When overwriting explicitly Then it taps the right inset once"
+[ "$(grep -c '^FOCUS_PASSWORD_RIGHT$' "$LOGIN_CONTRACT_CALLS")" = "1" ] || \
+  fail_test "Given a unique Dev password frame When overwriting explicitly Then it taps the right inset once"
+[ "$(grep -c '^FOCUS_OTHER$' "$LOGIN_CONTRACT_CALLS" || true)" = "0" ] || \
+  fail_test "Explicit Alice dev login must not tap an unresolved coordinate"
 printf '%s' "$login_contract_output" | grep -Fq "$STUARI_AUTH_ALICE_EMAIL" && \
   fail_test "Explicit Alice dev login must not print the email credential"
 printf '%s' "$login_contract_output" | grep -Fq "${STUARI_TEST_PASSWORD:-iez-test-password-2026}" && \
   fail_test "Explicit Alice dev login must not print the password credential"
-pass_test "Explicit Alice dev login forces typing without printing credentials"
+pass_test "Given unique Dev field frames When explicitly logging in Then it taps right insets and prints no credentials"
+
+if (
+  run_iez() {
+    printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":300,"height":50}},{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":300,"height":50}}]}}'
+  }
+  stuari_auth_text_field_right_inset_coords "$LABEL_DEV_EMAIL" >/dev/null
+); then
+  fail_test "Given duplicate exact Dev fields When resolving overwrite coordinates Then it fails closed"
+fi
+if (
+  run_iez() {
+    printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":0,"height":50}}]}}'
+  }
+  stuari_auth_text_field_right_inset_coords "$LABEL_DEV_EMAIL" >/dev/null
+); then
+  fail_test "Given a zero-width Dev field When resolving overwrite coordinates Then it fails closed"
+fi
+pass_test "Given duplicate or zero Dev field frames When resolving overwrite coordinates Then it fails closed"
 
 FAKE_PAGE="auth"
 FAKE_SIGN_OUT_CALLS=0
 FAKE_LOGIN_CALLS=0
 FAKE_RESET_CALLS=0
+FAKE_CFPREFSD_RESTORE=0
+FAKE_CFPREFSD_FAILURE=0
+FAKE_INVALIDATION_CALLS=0
+FAKE_LAUNCH_CALLS=0
 FAKE_XCRUN_LOG="$TMP_DIR/xcrun.log"
 fresh_launch() { :; }
 capture() { :; }
@@ -251,12 +296,27 @@ complete_onboarding() {
   return 0
 }
 xcrun() {
-  printf '%s %s %s\n' "${1:-}" "${2:-}" "${4:-}" >> "$FAKE_XCRUN_LOG"
   if [ "${1:-}" = "simctl" ] && [ "${2:-}" = "launch" ]; then
+    printf 'LAUNCH %s %s\n' "${3:-}" "${4:-}" >> "$FAKE_XCRUN_LOG"
+    FAKE_LAUNCH_CALLS=$((FAKE_LAUNCH_CALLS + 1))
     FAKE_PAGE="auth"
     return 0
   fi
   if [ "${1:-}" = "simctl" ] && [ "${2:-}" = "terminate" ]; then
+    printf 'TERMINATE %s %s\n' "${3:-}" "${4:-}" >> "$FAKE_XCRUN_LOG"
+    return 0
+  fi
+  if [ "${1:-}" = "simctl" ] && [ "${2:-}" = "spawn" ]; then
+    printf 'INVALIDATE %s %s %s\n' "${3:-}" "${4:-}" "${5:-}" >> "$FAKE_XCRUN_LOG"
+    FAKE_INVALIDATION_CALLS=$((FAKE_INVALIDATION_CALLS + 1))
+    if [ "$FAKE_CFPREFSD_FAILURE" = "1" ]; then
+      return 1
+    fi
+    if [ "$FAKE_CFPREFSD_RESTORE" = "1" ]; then
+      # Model cfprefsd flushing its cached pre-reset dictionary after the
+      # daemon is invalidated. The real reset must detect this before launch.
+      write_preferences_plist mixed
+    fi
     return 0
   fi
   return 1
@@ -322,6 +382,10 @@ run_forced_alice_reset_case \
 
 write_preferences_plist mixed
 FAKE_PAGE="splash"
+FAKE_CFPREFSD_RESTORE=0
+FAKE_CFPREFSD_FAILURE=0
+FAKE_INVALIDATION_CALLS=0
+FAKE_LAUNCH_CALLS=0
 : >"$FAKE_XCRUN_LOG"
 stuari_real_reset_simulator_auth_tokens_to_auth_page || \
   fail_test "Given mixed plist keys When resetting simulator auth tokens Then it deletes only matching auth-token keys"
@@ -333,13 +397,23 @@ printf '%s\n' "$prefs_json" | jq -e '
   and ([keys[]? | select(test("^flutter\\.sb-.*-auth-token$"))] | length) == 0
 ' >/dev/null 2>&1 || \
   fail_test "Given mixed plist keys When resetting simulator auth tokens Then unrelated keys survive and auth-token keys are removed"
-assert_eq "simctl terminate $BUNDLE_ID
-simctl launch $BUNDLE_ID" "$(cat "$FAKE_XCRUN_LOG")" \
-  "Reset helper terminates and relaunches only the Stuari app"
+assert_eq "TERMINATE $DEVICE_ID $BUNDLE_ID
+WRITE
+INVALIDATE $DEVICE_ID /usr/bin/killall cfprefsd
+LAUNCH $DEVICE_ID $BUNDLE_ID" "$(cat "$FAKE_XCRUN_LOG")" \
+  "Reset helper terminates, writes atomically, invalidates cfprefsd once, and relaunches the Stuari app"
+assert_eq "1" "$FAKE_INVALIDATION_CALLS" \
+  "Reset helper invalidates cfprefsd exactly once"
+assert_eq "1" "$FAKE_LAUNCH_CALLS" \
+  "Successful reset launches Stuari exactly once after persistence verification"
 pass_test "Given mixed plist keys When resetting simulator auth tokens Then unrelated keys survive and only auth-token keys are deleted"
 
 write_preferences_plist mixed
 FAKE_PAGE="splash"
+FAKE_CFPREFSD_RESTORE=0
+FAKE_CFPREFSD_FAILURE=0
+FAKE_INVALIDATION_CALLS=0
+FAKE_LAUNCH_CALLS=0
 : >"$FAKE_XCRUN_LOG"
 if (
   mv() { return 1; }
@@ -347,11 +421,101 @@ if (
 ); then
   fail_test "Given plist mutation failure When resetting simulator auth tokens Then it fails closed"
 fi
-assert_eq "simctl terminate $BUNDLE_ID" "$(cat "$FAKE_XCRUN_LOG")" \
+assert_eq "TERMINATE $DEVICE_ID $BUNDLE_ID" "$(cat "$FAKE_XCRUN_LOG")" \
   "Mutation failure stops after terminating the Stuari app"
+assert_eq "0" "$FAKE_INVALIDATION_CALLS" \
+  "Mutation failure does not invalidate cfprefsd"
+assert_eq "0" "$FAKE_LAUNCH_CALLS" \
+  "Mutation failure does not launch Stuari"
 assert_eq "2" "$(stuari_auth_matching_token_keys "$FAKE_PLIST" | sed '/^$/d' | wc -l | tr -d ' ')" \
   "Mutation failure leaves matching auth-token keys intact"
 pass_test "Given plist mutation failure When resetting simulator auth tokens Then it fails closed"
+
+FAKE_CFPREFSD_RESTORE=1
+FAKE_CFPREFSD_FAILURE=0
+FAKE_INVALIDATION_CALLS=0
+FAKE_LAUNCH_CALLS=0
+write_preferences_plist mixed
+FAKE_PAGE="splash"
+: >"$FAKE_XCRUN_LOG"
+if stuari_real_reset_simulator_auth_tokens_to_auth_page; then
+  fail_test "Given persistent auth-token override When resetting Then it fails closed before launch"
+fi
+assert_eq "TERMINATE $DEVICE_ID $BUNDLE_ID
+WRITE
+INVALIDATE $DEVICE_ID /usr/bin/killall cfprefsd" "$(cat "$FAKE_XCRUN_LOG")" \
+  "Fail-closed reset terminates, writes atomically, spawns cfprefsd, and does not launch"
+assert_eq "1" "$FAKE_INVALIDATION_CALLS" \
+  "Persistent auth-token override still invalidates cfprefsd exactly once"
+assert_eq "0" "$FAKE_LAUNCH_CALLS" \
+  "Persistent auth-token override does not launch Stuari"
+prefs_json="$(stuari_auth_preferences_json "$FAKE_PLIST")" || \
+  fail_test "Given persistent auth-token override When resetting Then the plist remains readable"
+printf '%s\n' "$prefs_json" | jq -e '
+  .["app.theme"] == "sunrise"
+  and .launchCount == 7
+  and ([keys[]? | select(test("^flutter\\.sb-.*-auth-token$"))] | length) == 2
+' >/dev/null 2>&1 || \
+  fail_test "Given persistent auth-token override When resetting Then restored auth keys and unrelated prefs remain observable"
+pass_test "Given persistent auth-token override When resetting Then it fails closed without launch"
+FAKE_CFPREFSD_RESTORE=0
+
+write_preferences_plist none
+FAKE_PAGE="splash"
+FAKE_CFPREFSD_RESTORE=0
+FAKE_CFPREFSD_FAILURE=0
+FAKE_INVALIDATION_CALLS=0
+FAKE_LAUNCH_CALLS=0
+: >"$FAKE_XCRUN_LOG"
+stuari_real_reset_simulator_auth_tokens_to_auth_page || \
+  fail_test "Given no persisted auth keys When resetting Then it still invalidates cfprefsd and reaches auth"
+assert_eq "TERMINATE $DEVICE_ID $BUNDLE_ID
+INVALIDATE $DEVICE_ID /usr/bin/killall cfprefsd
+LAUNCH $DEVICE_ID $BUNDLE_ID" "$(cat "$FAKE_XCRUN_LOG")" \
+  "No-key reset still invalidates cfprefsd before launch"
+assert_eq "1" "$FAKE_INVALIDATION_CALLS" \
+  "No-key reset invalidates cfprefsd exactly once"
+pass_test "Given no persisted auth keys When resetting Then it invalidates cfprefsd once before launch"
+
+write_preferences_plist none
+FAKE_PAGE="splash"
+FAKE_CFPREFSD_RESTORE=1
+FAKE_CFPREFSD_FAILURE=0
+FAKE_INVALIDATION_CALLS=0
+FAKE_LAUNCH_CALLS=0
+: >"$FAKE_XCRUN_LOG"
+if stuari_real_reset_simulator_auth_tokens_to_auth_page; then
+  fail_test "Given no on-disk auth keys but stale cfprefsd cache When resetting Then it fails closed"
+fi
+assert_eq "TERMINATE $DEVICE_ID $BUNDLE_ID
+INVALIDATE $DEVICE_ID /usr/bin/killall cfprefsd" "$(cat "$FAKE_XCRUN_LOG")" \
+  "Stale cfprefsd cache is checked before launch even without on-disk auth keys"
+assert_eq "1" "$FAKE_INVALIDATION_CALLS" \
+  "Stale cfprefsd cache is invalidated exactly once"
+assert_eq "0" "$FAKE_LAUNCH_CALLS" \
+  "Stale cfprefsd cache prevents launch"
+pass_test "Given no on-disk auth keys but stale cfprefsd cache When resetting Then it fails closed without launch"
+
+write_preferences_plist mixed
+FAKE_PAGE="splash"
+FAKE_CFPREFSD_RESTORE=0
+FAKE_CFPREFSD_FAILURE=1
+FAKE_INVALIDATION_CALLS=0
+FAKE_LAUNCH_CALLS=0
+: >"$FAKE_XCRUN_LOG"
+if stuari_real_reset_simulator_auth_tokens_to_auth_page; then
+  fail_test "Given cfprefsd invalidation failure When resetting Then it fails closed"
+fi
+assert_eq "TERMINATE $DEVICE_ID $BUNDLE_ID
+WRITE
+INVALIDATE $DEVICE_ID /usr/bin/killall cfprefsd" "$(cat "$FAKE_XCRUN_LOG")" \
+  "cfprefsd invalidation failure stops before launch"
+assert_eq "1" "$FAKE_INVALIDATION_CALLS" \
+  "cfprefsd invalidation failure still attempts exactly one invalidation"
+assert_eq "0" "$FAKE_LAUNCH_CALLS" \
+  "cfprefsd invalidation failure does not launch Stuari"
+pass_test "Given cfprefsd invalidation failure When resetting Then it fails closed without launch"
+FAKE_CFPREFSD_FAILURE=0
 
 sqlite3 "$FAKE_DB_PATH" <<SQL
 create table users (id text primary key, email text);
