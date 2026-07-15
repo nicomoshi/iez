@@ -11,6 +11,9 @@ if [ "${STUARI_FIXTURES_LOADED:-}" = "1" ]; then return 0; fi
 STUARI_FIXTURES_LOADED=1
 
 STUARI_APP_REPO_DIR="${STUARI_APP_REPO_DIR:-$HOME/Developer/sestuary}"
+_FIXTURES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=auth.sh
+source "$_FIXTURES_DIR/auth.sh"
 
 # Reserved, idempotently rebuilt occurrence fixture. The fixed identity lets
 # flows 05/06 select exactly this card even when other habits are present in
@@ -20,6 +23,52 @@ DUE_NOW_HABIT_GROUP_ID="bbbb0000-0000-0000-0000-000000000010"
 DUE_NOW_HABIT_CARD_ID="habit_card_$DUE_NOW_HABIT_GROUP_ID"
 DUE_NOW_HABIT_NAME="IEZ Due Now Check-In"
 export DUE_NOW_HABIT_GROUP_ID DUE_NOW_HABIT_CARD_ID DUE_NOW_HABIT_NAME
+
+stuari_fixture_app_container_data_path() {
+  if [ -n "${STUARI_FIXTURE_APP_CONTAINER_DATA_PATH:-}" ]; then
+    printf '%s\n' "$STUARI_FIXTURE_APP_CONTAINER_DATA_PATH"
+    return 0
+  fi
+  xcrun simctl get_app_container "$DEVICE_ID" "$BUNDLE_ID" data 2>/dev/null
+}
+
+stuari_fixture_drift_db_path() {
+  if [ -n "${STUARI_FIXTURE_DB_PATH:-}" ]; then
+    printf '%s\n' "$STUARI_FIXTURE_DB_PATH"
+    return 0
+  fi
+
+  local app_container
+  app_container="$(stuari_fixture_app_container_data_path)"
+  if [ -z "$app_container" ]; then
+    return 1
+  fi
+
+  printf '%s/tmp/stuari_offline.sqlite\n' "$app_container"
+}
+
+stuari_fixture_sqlite_query() {
+  local db_path="$1" sql="$2"
+  sqlite3 -noheader -batch "$db_path" "$sql"
+}
+
+stuari_fixture_now_epoch_ms() {
+  date +%s000
+}
+
+run_stuari_linked_sql_file() {
+  local sql_file="$1" failure_message="$2"
+  (
+    cd "$STUARI_APP_REPO_DIR" &&
+      supabase db query --linked -f "$sql_file" >/dev/null 2>&1
+  )
+  local rc=$?
+  if [ $rc -ne 0 ]; then
+    info "$failure_message"
+    return $rc
+  fi
+  return 0
+}
 
 # ── Core helpers ────────────────────────────────────────────────────
 
@@ -121,9 +170,8 @@ reseed_due_now_occurrence_fixture() {
     return 1
   fi
 
-  local test_email="${STUARI_TEST_EMAIL:-alice@seed.dev}"
-  if [ "$test_email" != "alice@seed.dev" ]; then
-    info "Due-now occurrence fixture requires authenticated seed account alice@seed.dev (got $test_email)"
+  if ! persisted_session_is_verified_alice; then
+    info "Due-now occurrence fixture requires a verified Alice persisted session"
     return 1
   fi
 
@@ -308,19 +356,149 @@ $fixture$;
 commit;
 SQL
 
-  (
-    cd "$STUARI_APP_REPO_DIR" &&
-      supabase db query --linked -f "$sql_file" >/dev/null 2>&1
-  )
+  run_stuari_linked_sql_file "$sql_file" "Due-now occurrence fixture reseed failed"
   local rc=$?
   rm -f "$sql_file"
   if [ $rc -ne 0 ]; then
-    info "Due-now occurrence fixture reseed failed"
     return $rc
   fi
 
   info "Reseeded authenticated Alice due-now occurrence fixture ($DUE_NOW_HABIT_GROUP_ID)"
   return 0
+}
+
+cleanup_due_now_occurrence_fixture() {
+  if ! command -v supabase >/dev/null 2>&1; then
+    info "Supabase CLI not installed — cannot clean reserved due-now occurrence fixture"
+    return 1
+  fi
+
+  if ! persisted_session_is_verified_alice; then
+    info "Reserved due-now occurrence cleanup requires a verified Alice persisted session"
+    return 1
+  fi
+
+  local sql_file
+  sql_file=$(mktemp "${TMPDIR:-/tmp}/stuari_due_now_occurrence_cleanup.XXXXXX.sql") || {
+    info "Could not allocate temporary due-now occurrence cleanup SQL"
+    return 1
+  }
+
+  cat >"$sql_file" <<SQL
+begin;
+
+do \$fixture\$
+declare
+  _user_id uuid;
+begin
+  if current_database() not in ('postgres', 'stuari_dev', 'supabase_db') then
+    raise exception 'iez_due_now_fixture_cleanup_requires_dev_database';
+  end if;
+
+  select au.id
+    into _user_id
+    from auth.users au
+    join stuari_dev.users su on su.id = au.id
+   where au.id = '$STUARI_AUTH_ALICE_USER_ID'::uuid
+     and au.email = '$STUARI_AUTH_ALICE_EMAIL'
+     and su.email = '$STUARI_AUTH_ALICE_EMAIL'
+   limit 1;
+  if _user_id is null then
+    raise exception 'iez_due_now_fixture_cleanup_seed_account_missing';
+  end if;
+
+  delete from stuari_dev.groups
+   where id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
+     and name = '$DUE_NOW_HABIT_NAME'
+     and created_by = _user_id;
+
+  if exists (
+    select 1
+      from stuari_dev.groups
+     where id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
+  ) then
+    raise exception 'iez_due_now_fixture_cleanup_reserved_id_occupied';
+  end if;
+end
+\$fixture\$;
+
+commit;
+SQL
+
+  run_stuari_linked_sql_file "$sql_file" "Due-now occurrence fixture cleanup failed"
+  local rc=$?
+  rm -f "$sql_file"
+  if [ $rc -ne 0 ]; then
+    return $rc
+  fi
+
+  info "Cleaned reserved due-now occurrence fixture ($DUE_NOW_HABIT_GROUP_ID)"
+  return 0
+}
+
+wait_for_due_now_occurrence_drift_authority() {
+  local timeout="${1:-20}" interval="${2:-1}" attempt=0
+  local db_path drift_probe now_ms group_count=0 alice_count=0 occurrence_count=0
+
+  db_path="$(stuari_fixture_drift_db_path)" || {
+    info "Could not resolve local Drift database path for due-now occurrence fixture"
+    return 1
+  }
+  if [ ! -f "$db_path" ]; then
+    info "Local Drift database missing for due-now occurrence fixture ($db_path)"
+    return 1
+  fi
+  if ! stuari_fixture_sqlite_query "$db_path" "select 1;" >/dev/null 2>&1; then
+    info "Local Drift database unreadable for due-now occurrence fixture ($db_path)"
+    return 1
+  fi
+
+  while [ "$attempt" -lt "$timeout" ]; do
+    now_ms="$(stuari_fixture_now_epoch_ms)"
+    drift_probe="$(stuari_fixture_sqlite_query "$db_path" "
+      select
+        (select count(*)
+           from groups
+          where id = '$DUE_NOW_HABIT_GROUP_ID'
+            and created_by = '$STUARI_AUTH_ALICE_USER_ID'
+            and name = '$DUE_NOW_HABIT_NAME'
+            and deleted_at is null),
+        (select count(*)
+           from users
+          where id = '$STUARI_AUTH_ALICE_USER_ID'
+            and email = '$STUARI_AUTH_ALICE_EMAIL'),
+        (select count(*)
+           from occurrence_snapshots
+          where group_id = '$DUE_NOW_HABIT_GROUP_ID'
+            and habit_id = '$DUE_NOW_HABIT_GROUP_ID'
+            and user_id = '$STUARI_AUTH_ALICE_USER_ID'
+            and coalesce(occurrence_id, '') <> ''
+            and status in ('open', 'overdue')
+            and post_id is null
+            and cast(opens_at as integer) <= $now_ms
+            and cast(submission_closes_at as integer) >= $now_ms
+            and cast(submission_closes_at as integer) >= cast(opens_at as integer));
+    " 2>/dev/null)"
+    if [ -z "$drift_probe" ]; then
+      info "Local Drift authority probe failed for due-now occurrence fixture"
+      return 1
+    fi
+
+    group_count="$(printf '%s\n' "$drift_probe" | awk -F'|' '{print $1}')"
+    alice_count="$(printf '%s\n' "$drift_probe" | awk -F'|' '{print $2}')"
+    occurrence_count="$(printf '%s\n' "$drift_probe" | awk -F'|' '{print $3}')"
+
+    if [ "$group_count" = "1" ] && [ "$alice_count" = "1" ] && [ "$occurrence_count" = "1" ]; then
+      pass "Local Drift authority ready for reserved due-now occurrence fixture"
+      return 0
+    fi
+
+    sleep "$interval"
+    attempt=$((attempt + 1))
+  done
+
+  info "Timed out waiting for exact Drift authority (group=$group_count, alice=$alice_count, occurrences=$occurrence_count)"
+  return 1
 }
 
 # Reseed deterministic pending posts for every Alice test group so approval

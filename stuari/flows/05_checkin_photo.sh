@@ -22,15 +22,65 @@ source "$SCRIPT_DIR/../lib/fixtures.sh"
 
 section "Flow 05: Check-In with Photo"
 
-if ! reseed_due_now_occurrence_fixture; then
-  fail "Due-now authoritative occurrence fixture available for photo flow"
+PHOTO_FIXTURE_CLEANUP_RAN=0
+PHOTO_FIXTURE_RESEEDED=0
+cleanup_photo_due_now_fixture() {
+  if [ "${PHOTO_FIXTURE_CLEANUP_RAN:-0}" = "1" ]; then
+    return 0
+  fi
+  PHOTO_FIXTURE_CLEANUP_RAN=1
+  if [ "${PHOTO_FIXTURE_RESEEDED:-0}" != "1" ]; then
+    return 0
+  fi
+  if ! cleanup_due_now_occurrence_fixture; then
+    fail "Reserved due-now occurrence fixture cleanup succeeded for photo flow"
+    return 1
+  fi
+}
+
+finish_photo_flow() {
+  cleanup_photo_due_now_fixture
+  trap - EXIT INT TERM
   print_summary
   exit $FAIL
+}
+
+exit_photo_flow_for_signal() {
+  local signal_status="${1:-1}"
+  cleanup_photo_due_now_fixture
+  trap - EXIT INT TERM
+  exit "$signal_status"
+}
+
+trap cleanup_photo_due_now_fixture EXIT
+trap 'exit_photo_flow_for_signal 130' INT
+trap 'exit_photo_flow_for_signal 143' TERM
+
+if ! ensure_verified_alice_session; then
+  fail "Verified Alice persisted session ready for photo flow"
+  capture "05_alice_session_not_ready"
+  finish_photo_flow
 fi
 
+if ! reseed_due_now_occurrence_fixture; then
+  fail "Due-now authoritative occurrence fixture available for photo flow"
+  finish_photo_flow
+fi
+PHOTO_FIXTURE_RESEEDED=1
+
 fresh_launch; sleep 2
-if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
+if ! persisted_session_is_verified_alice; then
+  fail "Fresh relaunch preserved verified Alice persisted session for photo flow"
+  capture "05_relaunch_lost_alice"
+  finish_photo_flow
+fi
+if ! wait_for_due_now_occurrence_drift_authority 20 1; then
+  fail "Local Drift authority ready for due-now photo fixture"
+  capture "05_drift_authority_missing"
+  finish_photo_flow
+fi
+
 go_home
 capture "05_home"
 
@@ -45,18 +95,32 @@ camera_shell_visible() {
     has_id "camera_mode_photo_button" ||
     tree_contains "Take photo"
 }
-if wait_for_habit_card_id "$habit_id" 15; then
-  r=$(run_iez "$IEZ" ui tap --id "$habit_id")
-  if [ "$(json_ok "$r")" = "true" ]; then
-    pass "Tap: Tap habit card by id ('$habit_id')"
-  else
-    info "Habit id tap did not report success; trying visible card coordinates"
-  fi
+if ! select_habit_card_by_id "$habit_id"; then
+  fail "Reserved due-now fixture card selected exactly for photo flow"
+  capture "05_habit_selection_failed"
+  finish_photo_flow
+fi
+
+selected_habit_id="$(current_visible_habit_card_id)"
+selected_habit_label="$(current_visible_habit_card_label)"
+if [ "$selected_habit_id" != "$habit_id" ]; then
+  fail "Centered habit card matched the reserved due-now fixture id"
+  capture "05_wrong_centered_habit"
+  finish_photo_flow
+fi
+if ! habit_card_label_is_actionable "$selected_habit_label"; then
+  fail "Reserved due-now fixture card is actionable before camera entry"
+  capture "05_non_actionable_selected_habit"
+  finish_photo_flow
+fi
+pass "Selected exact actionable due-now fixture card"
+capture "05_habit_selected"
+
+r=$(run_iez "$IEZ" ui tap --id "$habit_id")
+if [ "$(json_ok "$r")" = "true" ]; then
+  pass "Tap: Tap habit card by id ('$habit_id')"
 else
-  fail "Reserved due-now fixture card not available for photo flow"
-  capture "05_no_actionable_habit"
-  print_summary
-  exit $FAIL
+  info "Habit id tap did not report success; trying visible card coordinates"
 fi
 
 sleep 1
@@ -70,23 +134,9 @@ sleep 1
 
 sleep 2
 if ! camera_shell_visible; then
-  app_container=$(xcrun simctl get_app_container "$DEVICE_ID" "$BUNDLE_ID" data 2>/dev/null)
-  db_path="$app_container/tmp/stuari_offline.sqlite"
-  occurrence_count=""
-  if [ -f "$db_path" ]; then
-    occurrence_count=$(sqlite3 "$db_path" \
-      "select count(*) from occurrence_snapshots where group_id = '$DUE_NOW_HABIT_GROUP_ID';" 2>/dev/null)
-  fi
-  info "Local authoritative occurrence snapshots for fixture group $DUE_NOW_HABIT_GROUP_ID: ${occurrence_count:-unavailable}"
-  if tree_contains "Refresh this habit before checking in" ||
-    [ "${occurrence_count:-0}" -eq 0 ]; then
-    fail "Authoritative occurrence capture context unavailable; check-in failed closed"
-  else
-    fail "Camera shell did not open for the selected actionable habit"
-  fi
+  fail "Camera shell opened for the selected exact actionable habit"
   capture "05_occurrence_capture_context_blocked"
-  print_summary
-  exit $FAIL
+  finish_photo_flow
 fi
 pass "Camera shell opened for the selected occurrence"
 capture "05_camera_opened"
@@ -210,5 +260,4 @@ else
   skip "Post button" "not visible (may need to scroll or fill required fields)"
 fi
 
-print_summary
-exit $FAIL
+finish_photo_flow

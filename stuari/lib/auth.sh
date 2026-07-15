@@ -26,6 +26,16 @@ _AUTH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_AUTH_DIR/common.sh"
 
 # ── Labels ──────────────────────────────────────────────────────────
+# Reserved dev-seed principals. Due-now occurrence fixture setup must run as
+# Alice and fail closed for Bob or any other persisted session. These are
+# fixed test invariants and must not be env-overridable.
+STUARI_AUTH_ALICE_USER_ID="aaaa0000-0000-0000-0000-000000000001"
+STUARI_AUTH_ALICE_EMAIL="alice@seed.dev"
+STUARI_AUTH_BOB_USER_ID="aaaa0000-0000-0000-0000-000000000002"
+STUARI_AUTH_BOB_EMAIL="bob@seed.dev"
+export STUARI_AUTH_ALICE_USER_ID STUARI_AUTH_ALICE_EMAIL
+export STUARI_AUTH_BOB_USER_ID STUARI_AUTH_BOB_EMAIL
+
 # Dev magic login form (dev flavor only)
 LABEL_DEV_EMAIL="Dev email"
 LABEL_DEV_PASSWORD="Dev password"
@@ -67,6 +77,199 @@ has_dev_magic_login() {
   has_label "$LABEL_DEV_SIGN_IN"
 }
 
+stuari_auth_app_container_data_path() {
+  if [ -n "${STUARI_AUTH_APP_CONTAINER_DATA_PATH:-}" ]; then
+    printf '%s\n' "$STUARI_AUTH_APP_CONTAINER_DATA_PATH"
+    return 0
+  fi
+  xcrun simctl get_app_container "$DEVICE_ID" "$BUNDLE_ID" data 2>/dev/null
+}
+
+stuari_auth_preferences_path() {
+  if [ -n "${STUARI_AUTH_PREFERENCES_PATH:-}" ]; then
+    printf '%s\n' "$STUARI_AUTH_PREFERENCES_PATH"
+    return 0
+  fi
+
+  local app_container
+  app_container="$(stuari_auth_app_container_data_path)"
+  if [ -z "$app_container" ]; then
+    return 1
+  fi
+
+  printf '%s/Library/Preferences/%s.plist\n' "$app_container" "$BUNDLE_ID"
+}
+
+stuari_auth_preferences_json() {
+  local preferences_path="${1:-}"
+  if [ -z "$preferences_path" ] || [ ! -f "$preferences_path" ]; then
+    return 1
+  fi
+
+  plutil -convert json -o - "$preferences_path" 2>/dev/null
+}
+
+stuari_auth_write_preferences_json_atomically() {
+  local preferences_path="$1" preferences_json="$2"
+  local tmp_json="" tmp_plist=""
+
+  if [ -z "$preferences_path" ] || [ -z "$preferences_json" ]; then
+    return 1
+  fi
+
+  tmp_json="$(mktemp "${TMPDIR:-/tmp}/stuari_auth_preferences.XXXXXX.json")" || return 1
+  tmp_plist="$(mktemp "${TMPDIR:-/tmp}/stuari_auth_preferences.XXXXXX.plist")" || {
+    rm -f "$tmp_json"
+    return 1
+  }
+
+  if ! printf '%s\n' "$preferences_json" >"$tmp_json"; then
+    rm -f "$tmp_json" "$tmp_plist"
+    return 1
+  fi
+  if ! plutil -convert xml1 -o "$tmp_plist" "$tmp_json" >/dev/null 2>&1; then
+    rm -f "$tmp_json" "$tmp_plist"
+    return 1
+  fi
+  if ! mv "$tmp_plist" "$preferences_path"; then
+    rm -f "$tmp_json" "$tmp_plist"
+    return 1
+  fi
+
+  rm -f "$tmp_json"
+}
+
+stuari_auth_matching_token_keys() {
+  local preferences_path="${1:-}"
+  if [ -z "$preferences_path" ] || [ ! -f "$preferences_path" ]; then
+    return 1
+  fi
+
+  stuari_auth_preferences_json "$preferences_path" \
+    | jq -r 'keys[]? | select(test("^flutter\\.sb-.*-auth-token$"))' 2>/dev/null
+}
+
+stuari_auth_read_principal_json_for_key() {
+  local token_key="$1" preferences_path="$2"
+  if [ -z "$token_key" ] || [ -z "$preferences_path" ] || [ ! -f "$preferences_path" ]; then
+    return 1
+  fi
+
+  stuari_auth_preferences_json "$preferences_path" \
+    | jq -cer --arg key "$token_key" '
+        .[$key]
+        | select(type == "string")
+        | fromjson
+        | .user
+        | select(type == "object")
+        | {
+            id: (.id // empty),
+            email: (.email // empty)
+          }
+        | select(
+            (.id | type) == "string" and
+            (.id | length) > 0 and
+            (.email | type) == "string" and
+            (.email | length) > 0
+          )
+      ' 2>/dev/null
+}
+
+read_persisted_session_principal_json() {
+  local preferences_path token_keys_count token_key token_keys_raw principal_json
+  preferences_path="$(stuari_auth_preferences_path)" || return 1
+  [ -f "$preferences_path" ] || return 1
+
+  token_keys_raw="$(stuari_auth_matching_token_keys "$preferences_path" 2>/dev/null)" || return 1
+  token_keys_count="$(printf '%s\n' "$token_keys_raw" | sed '/^$/d' | wc -l | tr -d ' ')"
+  if [ "$token_keys_count" != "1" ]; then
+    return 1
+  fi
+
+  token_key="$(printf '%s\n' "$token_keys_raw" | sed -n '1p')"
+  [ -n "$token_key" ] || return 1
+
+  principal_json="$(stuari_auth_read_principal_json_for_key "$token_key" "$preferences_path" 2>/dev/null)" || return 1
+  printf '%s\n' "$principal_json"
+}
+
+has_any_persisted_session_token() {
+  local preferences_path token_keys_raw
+  preferences_path="$(stuari_auth_preferences_path)" || return 1
+  [ -f "$preferences_path" ] || return 1
+
+  token_keys_raw="$(stuari_auth_matching_token_keys "$preferences_path" 2>/dev/null)" || return 1
+  printf '%s\n' "$token_keys_raw" | sed '/^$/d' | grep -q .
+}
+
+persisted_session_is_verified_alice() {
+  local principal_json
+  principal_json="$(read_persisted_session_principal_json 2>/dev/null)" || return 1
+
+  printf '%s\n' "$principal_json" \
+    | jq -e \
+      --arg expected_id "$STUARI_AUTH_ALICE_USER_ID" \
+      --arg expected_email "$STUARI_AUTH_ALICE_EMAIL" '
+        .id == $expected_id and .email == $expected_email
+      ' >/dev/null 2>&1
+}
+
+persisted_session_is_bob() {
+  local principal_json
+  principal_json="$(read_persisted_session_principal_json 2>/dev/null)" || return 1
+
+  printf '%s\n' "$principal_json" \
+    | jq -e \
+      --arg bob_id "$STUARI_AUTH_BOB_USER_ID" \
+      --arg bob_email "$STUARI_AUTH_BOB_EMAIL" '
+        .id == $bob_id and .email == $bob_email
+      ' >/dev/null 2>&1
+}
+
+reset_simulator_auth_tokens_to_auth_page() {
+  local preferences_path preferences_json token_keys_json updated_json
+  local wait_i=0
+
+  preferences_path="$(stuari_auth_preferences_path)" || return 1
+
+  xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" 2>/dev/null || true
+  sleep 0.5
+
+  if [ -e "$preferences_path" ]; then
+    [ -r "$preferences_path" ] || return 1
+    preferences_json="$(stuari_auth_preferences_json "$preferences_path")" || return 1
+    printf '%s\n' "$preferences_json" | jq -e 'type == "object"' >/dev/null 2>&1 || return 1
+
+    token_keys_json="$(
+      printf '%s\n' "$preferences_json" \
+        | jq -c '[keys[]? | select(test("^flutter\\.sb-.*-auth-token$"))]' 2>/dev/null
+    )" || return 1
+
+    if [ "$token_keys_json" != "[]" ]; then
+      updated_json="$(
+        printf '%s\n' "$preferences_json" \
+          | jq -c --argjson token_keys "$token_keys_json" '
+              reduce $token_keys[] as $token_key (.;
+                del(.[$token_key]))
+            ' 2>/dev/null
+      )" || return 1
+
+      stuari_auth_write_preferences_json_atomically "$preferences_path" "$updated_json" || return 1
+    fi
+  fi
+
+  xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID" >/dev/null 2>&1 || return 1
+  while [ "$wait_i" -lt 10 ]; do
+    if on_auth_page; then
+      return 0
+    fi
+    sleep 1
+    wait_i=$((wait_i + 1))
+  done
+
+  return 1
+}
+
 # ── Actions ──────────────────────────────────────────────────────────
 
 # sign_in_google — tap the Google OAuth button (simulator will typically
@@ -100,24 +303,40 @@ sign_in_apple() {
 # login_with_dev_magic — drive the dev-flavor email+password form.
 # Returns 0 on reaching home/onboarding, 1 otherwise.
 login_with_dev_magic() {
-  local email="${STUARI_TEST_EMAIL:-alice@seed.dev}"
-  local password="${STUARI_TEST_PASSWORD:-iez-test-password-2026}"
-
-  info "Dev magic login as $email"
-  capture "auth_pre_dev_magic"
-
-  # The form ships with pre-filled default values, but we set them
-  # explicitly for safety (e.g., when using a non-Alice account).
-  # The DevMagicLogin form initialises the controllers with the default
-  # alice@seed.dev credentials. For the common case (STUARI_TEST_EMAIL
-  # unset OR == alice@seed.dev) we can skip typing entirely — just tap
-  # Dev sign in. For any other account, overwrite the fields.
   local default_email="alice@seed.dev"
   local default_password="iez-test-password-2026"
+  local email password
+  local force_email_type=0
+  local force_password_type=0
   local need_email_type=1
   local need_password_type=1
-  [ "$email" = "$default_email" ] && need_email_type=0
-  [ "$password" = "$default_password" ] && need_password_type=0
+
+  if [ "$#" -ge 1 ]; then
+    email="$1"
+    force_email_type=1
+  else
+    email="${STUARI_TEST_EMAIL:-$default_email}"
+  fi
+  if [ "$#" -ge 2 ]; then
+    password="$2"
+    force_password_type=1
+  else
+    password="${STUARI_TEST_PASSWORD:-$default_password}"
+  fi
+
+  info "Dev magic login"
+  capture "auth_pre_dev_magic"
+
+  # The form ships with pre-filled default values. Preserve the no-argument
+  # fast path for those defaults, but treat explicit arguments as a command to
+  # deterministically overwrite the field even when the value matches Alice's
+  # seeded credentials.
+  if [ "$force_email_type" != "1" ] && [ "$email" = "$default_email" ]; then
+    need_email_type=0
+  fi
+  if [ "$force_password_type" != "1" ] && [ "$password" = "$default_password" ]; then
+    need_password_type=0
+  fi
 
   local r
   # Clear a focused field by sending backspace 40x (HID keycode 42).
@@ -181,6 +400,57 @@ login_with_dev_magic() {
   fail "Dev magic login did not reach Home/Onboarding within 20s"
   capture "auth_dev_magic_timeout"
   return 1
+}
+
+ensure_verified_alice_session() {
+  local wait_i=0
+
+  fresh_launch
+  sleep 2
+
+  if persisted_session_is_verified_alice; then
+    while [ "$wait_i" -lt 6 ]; do
+      if on_onboarding_page; then
+        info "Verified Alice persisted session found; completing onboarding"
+        complete_onboarding || return 1
+        sleep 1
+      fi
+
+      if persisted_session_is_verified_alice && (on_home_page || on_onboarding_page); then
+        pass "Verified Alice persisted session ready"
+        return 0
+      fi
+
+      sleep 1
+      wait_i=$((wait_i + 1))
+    done
+  fi
+
+  info "Resetting persisted auth tokens before Alice sign-in"
+  reset_simulator_auth_tokens_to_auth_page || return 1
+
+  if ! on_auth_page; then
+    fail "Verified Alice session setup could not reach the auth page"
+    return 1
+  fi
+
+  login_with_dev_magic "$STUARI_AUTH_ALICE_EMAIL" "${STUARI_TEST_PASSWORD:-iez-test-password-2026}" || return 1
+  if on_onboarding_page; then
+    complete_onboarding || return 1
+    sleep 1
+  fi
+
+  if ! persisted_session_is_verified_alice; then
+    if persisted_session_is_bob; then
+      fail "Persisted principal remained Bob after Alice sign-in"
+    else
+      fail "Persisted principal did not verify as Alice after sign-in"
+    fi
+    return 1
+  fi
+
+  pass "Verified Alice persisted session ready"
+  return 0
 }
 
 # login_with_test_user — unified entry point used by every flow.

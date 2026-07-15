@@ -13,15 +13,65 @@ source "$SCRIPT_DIR/../lib/fixtures.sh"
 
 section "Flow 06: Check-In with Video"
 
-if ! reseed_due_now_occurrence_fixture; then
-  fail "Due-now authoritative occurrence fixture available for video flow"
+VIDEO_FIXTURE_CLEANUP_RAN=0
+VIDEO_FIXTURE_RESEEDED=0
+cleanup_video_due_now_fixture() {
+  if [ "${VIDEO_FIXTURE_CLEANUP_RAN:-0}" = "1" ]; then
+    return 0
+  fi
+  VIDEO_FIXTURE_CLEANUP_RAN=1
+  if [ "${VIDEO_FIXTURE_RESEEDED:-0}" != "1" ]; then
+    return 0
+  fi
+  if ! cleanup_due_now_occurrence_fixture; then
+    fail "Reserved due-now occurrence fixture cleanup succeeded for video flow"
+    return 1
+  fi
+}
+
+finish_video_flow() {
+  cleanup_video_due_now_fixture
+  trap - EXIT INT TERM
   print_summary
   exit $FAIL
+}
+
+exit_video_flow_for_signal() {
+  local signal_status="${1:-1}"
+  cleanup_video_due_now_fixture
+  trap - EXIT INT TERM
+  exit "$signal_status"
+}
+
+trap cleanup_video_due_now_fixture EXIT
+trap 'exit_video_flow_for_signal 130' INT
+trap 'exit_video_flow_for_signal 143' TERM
+
+if ! ensure_verified_alice_session; then
+  fail "Verified Alice persisted session ready for video flow"
+  capture "06_alice_session_not_ready"
+  finish_video_flow
 fi
 
+if ! reseed_due_now_occurrence_fixture; then
+  fail "Due-now authoritative occurrence fixture available for video flow"
+  finish_video_flow
+fi
+VIDEO_FIXTURE_RESEEDED=1
+
 fresh_launch; sleep 2
-if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
+if ! persisted_session_is_verified_alice; then
+  fail "Fresh relaunch preserved verified Alice persisted session for video flow"
+  capture "06_relaunch_lost_alice"
+  finish_video_flow
+fi
+if ! wait_for_due_now_occurrence_drift_authority 20 1; then
+  fail "Local Drift authority ready for due-now video fixture"
+  capture "06_drift_authority_missing"
+  finish_video_flow
+fi
+
 go_home
 
 # Open camera by tapping the reserved due-now fixture card. Mock camera
@@ -29,23 +79,38 @@ go_home
 habit_id="$DUE_NOW_HABIT_CARD_ID"
 camera_shell_visible() {
   has_id "camera_capture_video_button" ||
-    has_id "camera_mode_video_button" ||
-    has_id "camera_mode_photo_button" ||
-    tree_contains "Video mode" ||
-    tree_contains "Take photo"
+  has_id "camera_mode_video_button" ||
+  has_id "camera_mode_photo_button" ||
+  tree_contains "Video mode" ||
+  tree_contains "Take photo"
 }
-if wait_for_habit_card_id "$habit_id" 15; then
-  r=$(run_iez "$IEZ" ui tap --id "$habit_id")
-  if [ "$(json_ok "$r")" = "true" ]; then
-    pass "Tap: Tap habit card by id ('$habit_id')"
-  else
-    info "Habit id tap did not report success; trying visible card coordinates"
-  fi
+capture "06_home"
+if ! select_habit_card_by_id "$habit_id"; then
+  fail "Reserved due-now fixture card selected exactly for video flow"
+  capture "06_habit_selection_failed"
+  finish_video_flow
+fi
+
+selected_habit_id="$(current_visible_habit_card_id)"
+selected_habit_label="$(current_visible_habit_card_label)"
+if [ "$selected_habit_id" != "$habit_id" ]; then
+  fail "Centered habit card matched the reserved due-now fixture id"
+  capture "06_wrong_centered_habit"
+  finish_video_flow
+fi
+if ! habit_card_label_is_actionable "$selected_habit_label"; then
+  fail "Reserved due-now fixture card is actionable before video camera entry"
+  capture "06_non_actionable_selected_habit"
+  finish_video_flow
+fi
+pass "Selected exact actionable due-now fixture card"
+capture "06_habit_selected"
+
+r=$(run_iez "$IEZ" ui tap --id "$habit_id")
+if [ "$(json_ok "$r")" = "true" ]; then
+  pass "Tap: Tap habit card by id ('$habit_id')"
 else
-  fail "Reserved due-now fixture card not available for video flow"
-  capture "06_no_actionable_habit"
-  print_summary
-  exit $FAIL
+  info "Habit id tap did not report success; trying visible card coordinates"
 fi
 sleep 1
 if ! camera_shell_visible; then
@@ -58,23 +123,9 @@ sleep 1
 
 sleep 2
 if ! camera_shell_visible; then
-  app_container=$(xcrun simctl get_app_container "$DEVICE_ID" "$BUNDLE_ID" data 2>/dev/null)
-  db_path="$app_container/tmp/stuari_offline.sqlite"
-  occurrence_count=""
-  if [ -f "$db_path" ]; then
-    occurrence_count=$(sqlite3 "$db_path" \
-      "select count(*) from occurrence_snapshots where group_id = '$DUE_NOW_HABIT_GROUP_ID';" 2>/dev/null)
-  fi
-  info "Local authoritative occurrence snapshots for fixture group $DUE_NOW_HABIT_GROUP_ID: ${occurrence_count:-unavailable}"
-  if tree_contains "Refresh this habit before checking in" ||
-    [ "${occurrence_count:-0}" -eq 0 ]; then
-    fail "Authoritative occurrence capture context unavailable; video check-in failed closed"
-  else
-    fail "Camera shell did not open for the selected actionable habit"
-  fi
+  fail "Camera shell opened for the selected exact actionable habit"
   capture "06_occurrence_capture_context_blocked"
-  print_summary
-  exit $FAIL
+  finish_video_flow
 fi
 pass "Camera shell opened for the selected occurrence"
 capture "06_camera_opened"
@@ -160,5 +211,4 @@ else
   fail "Post button not visible after video capture"
 fi
 
-print_summary
-exit $FAIL
+finish_video_flow

@@ -467,6 +467,108 @@ current_visible_habit_card_label() {
     | head -1
 }
 
+habit_card_label_for_id() {
+  local id="$1"
+  if [ -z "$id" ]; then
+    return 1
+  fi
+
+  run_iez "$IEZ" ui tree --compact \
+    | jq -r --arg id "$id" '.data.elements[]
+        | select(.id == $id)
+        | .label // empty' 2>/dev/null \
+    | head -1
+}
+
+habit_card_label_is_actionable() {
+  local label="${1:-}"
+  printf '%s\n' "$label" \
+    | grep -Eq '^Habit card: .+ habit, (Tap to check in|Streak at risk)(, .+)?$'
+}
+
+habit_card_search_settle_interval() {
+  printf '%s\n' "${STUARI_HABIT_CARD_SETTLE_INTERVAL:-0.8}"
+}
+
+swipe_habit_cards_toward_start() {
+  run_iez "$IEZ" ui swipe \
+    --from "${STUARI_HABIT_CARD_SWIPE_TO_START_FROM:-320,340}" \
+    --to "${STUARI_HABIT_CARD_SWIPE_TO_START_TO:-70,340}"
+}
+
+swipe_habit_cards_toward_end() {
+  run_iez "$IEZ" ui swipe \
+    --from "${STUARI_HABIT_CARD_SWIPE_TO_END_FROM:-70,340}" \
+    --to "${STUARI_HABIT_CARD_SWIPE_TO_END_TO:-320,340}"
+}
+
+_search_habit_card_by_id_in_direction() {
+  local target_id="$1" direction="$2" max_steps="$3" settle_interval="$4"
+  local current_id next_id swipe_result step=0 visited_ids
+
+  current_id="$(current_visible_habit_card_id)"
+  if [ -z "$current_id" ]; then
+    return 1
+  fi
+  if [ "$current_id" = "$target_id" ]; then
+    return 0
+  fi
+
+  visited_ids="|$current_id|"
+  while [ "$step" -lt "$max_steps" ]; do
+    if [ "$direction" = "toward_start" ]; then
+      swipe_result="$(swipe_habit_cards_toward_start)"
+    else
+      swipe_result="$(swipe_habit_cards_toward_end)"
+    fi
+    if [ "$(json_ok "$swipe_result")" != "true" ]; then
+      return 1
+    fi
+
+    sleep "$settle_interval"
+    next_id="$(current_visible_habit_card_id)"
+    if [ -z "$next_id" ]; then
+      return 1
+    fi
+    if [ "$next_id" = "$target_id" ]; then
+      return 0
+    fi
+    if [ "$next_id" = "$current_id" ]; then
+      return 1
+    fi
+    case "$visited_ids" in
+      *"|$next_id|"*)
+        return 1
+        ;;
+    esac
+
+    visited_ids="${visited_ids}${next_id}|"
+    current_id="$next_id"
+    step=$((step + 1))
+  done
+
+  return 1
+}
+
+select_habit_card_by_id() {
+  local target_id="$1"
+  local max_steps="${2:-${STUARI_HABIT_CARD_SEARCH_MAX_STEPS:-100}}"
+  local settle_interval="${3:-$(habit_card_search_settle_interval)}"
+
+  if [ -z "$target_id" ]; then
+    return 1
+  fi
+
+  if _search_habit_card_by_id_in_direction "$target_id" "toward_start" "$max_steps" "$settle_interval"; then
+    return 0
+  fi
+  if _search_habit_card_by_id_in_direction "$target_id" "toward_end" "$max_steps" "$settle_interval"; then
+    return 0
+  fi
+
+  [ "$(current_visible_habit_card_id)" = "$target_id" ]
+}
+
 actionable_habit_card_id() {
   run_iez "$IEZ" ui tree --compact \
     | jq -r '.data.elements[]
