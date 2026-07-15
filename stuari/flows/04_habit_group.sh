@@ -115,9 +115,11 @@ if tree_contains "e.g. Morning Run"; then
   type_into "e.g. Morning Run" "$HABIT_NAME"
   run_iez "$IEZ" ui swipe down >/dev/null 2>&1
   sleep 0.5
-  if has_label "Continue"; then
-    tap_element "Continue" "label" "Name → Continue"
+  if tap_first_matching_exact_labels \
+    "Continue" "Continue: habit name" "Name → Continue"; then
     sleep 1
+  else
+    fail "Name Continue action not reachable"
   fi
 else
   fail "Name step did not expose the expected habit-name field"
@@ -146,16 +148,21 @@ fi
 
 if tree_contains "Change cover image" || tree_contains "Change Image"; then
   # Mock succeeded — Continue is now enabled.
-  tap_element "Continue" "label" "Image → Continue (cover image selected)"
+  if tap_first_matching_exact_labels \
+    "Continue" "Continue: habit image" \
+    "Image → Continue (cover image selected)"; then
+    sleep 1
+  else
+    fail "Image Continue action not reachable after selecting a cover image"
+  fi
+elif tap_first_matching_exact_labels \
+  "Skip" "Skip: habit image" "Image → Skip (no cover image selected)"; then
   sleep 1
-elif has_label "Skip"; then
-  tap_element "Skip" "label" "Image → Skip (no cover image selected)"
-  sleep 1
-elif has_label "Continue"; then
+elif tap_first_matching_exact_labels \
+  "Continue" "Continue: habit image" "Image → Continue (fallback)"; then
   # Last-resort: try Continue anyway. This is usually a no-op when
   # disabled but keeps the flow compatible with any future UX where
   # the image step is optional-but-default-Continue.
-  tap_element "Continue" "label" "Image → Continue (fallback)"
   sleep 1
 else
   skip "Image step" "neither Continue nor Skip reachable"
@@ -164,16 +171,22 @@ fi
 # Walk through the remaining Continue-gated steps in wizard order:
 # frequency (default=daily skips schedule) → checkins → milestone.
 for step in frequency checkins milestone; do
+  case "$step" in
+    frequency) continue_semantic_label="Continue: habit frequency" ;;
+    checkins) continue_semantic_label="Continue: check-in times" ;;
+    milestone) continue_semantic_label="Continue: habit milestone" ;;
+  esac
   capture "04_${step}_page"
-  if has_label "Continue"; then
-    tap_element "Continue" "label" "Step '$step' → Continue"
+  if tap_first_matching_exact_labels \
+    "Continue" "$continue_semantic_label" "Step '$step' → Continue"; then
     sleep 1
   else
     info "Continue button not visible on '$step' step — may need to scroll or fill form"
     run_iez "$IEZ" ui swipe up >/dev/null 2>&1
     sleep 0.3
-    if has_label "Continue"; then
-      tap_element "Continue" "label" "Step '$step' → Continue (after scroll)"
+    if tap_first_matching_exact_labels \
+      "Continue" "$continue_semantic_label" \
+      "Step '$step' → Continue (after scroll)"; then
       sleep 1
     else
       fail "Step '$step' Continue action not reachable"
@@ -183,13 +196,11 @@ done
 
 # Review page — final Create Habit button
 capture "04_review_page"
-if has_label "Create Habit"; then
-  if tap_element "Create Habit" "label" "Review → Create Habit (submit)"; then
-    CREATE_SUBMITTED=1
-    pass "Submitted habit create form"
-  else
-    fail "Create Habit submit action failed"
-  fi
+if tap_first_matching_exact_labels \
+  "Create Habit" "Create Habit: habit review" \
+  "Review → Create Habit (submit)"; then
+  CREATE_SUBMITTED=1
+  pass "Submitted habit create form"
   capture "04_post_create"
 else
   fail "Final Create Habit button not reachable from review page"

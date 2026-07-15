@@ -567,10 +567,81 @@ pass_test "Given mismatched Drift habit_id When waiting for due-now occurrence T
 
 flow04_file="$ROOT_DIR/stuari/flows/04_habit_group.sh"
 flow04_created_checks=$(sed -n '/if \[ "$CREATE_SUBMITTED" = "1" \]; then/,/^# Invite flow:/p' "$flow04_file")
+flow04_wizard_actions=$(sed -n '/^# Step 1: Name/,/^# Create Habit should return/p' "$flow04_file")
 assert_file_contains 'HABIT_NAME="${STUARI_FLOW04_HABIT_NAME:-$(test_habit_name)}"' "$flow04_file" \
   "Flow 04 generates a unique habit name unless an enclosing flow supplies one"
 assert_file_contains 'type_into "e.g. Morning Run" "$HABIT_NAME"' "$flow04_file" \
   "Flow 04 types the generated habit name into the create form"
+
+wizard_semantic_fixture='{"ok":true,"data":{"elements":[{"label":"Continue: habit name","frame":{"x":0,"y":0,"width":0,"height":0}},{"label":"Continue to post","frame":{"x":20,"y":500,"width":200,"height":56}},{"label":"Continue: habit name extra","frame":{"x":20,"y":560,"width":240,"height":56}},{"label":"Continue: habit name","frame":{"x":100,"y":600,"width":160,"height":56}}]}}'
+wizard_legacy_fixture='{"ok":true,"data":{"elements":[{"label":"Continue: habit milestone","frame":{"x":24,"y":540,"width":354,"height":56}},{"label":"Continue","frame":{"x":24,"y":600,"width":354,"height":56}}]}}'
+wizard_review_fixture='{"ok":true,"data":{"elements":[{"label":"Create Habit. Tap to start a new journey.","frame":{"x":16,"y":200,"width":370,"height":100}},{"label":"Create Habit: habit review","frame":{"x":16,"y":694,"width":370,"height":56}}]}}'
+wizard_tap_log="$TMP_DIR/wizard_action.tap"
+
+semantic_continue_coords="$(
+  run_iez() { printf '%s\n' "$wizard_semantic_fixture"; }
+  first_coords_matching_exact_labels "Continue" "Continue: habit name"
+)"
+legacy_continue_coords="$(
+  run_iez() { printf '%s\n' "$wizard_legacy_fixture"; }
+  first_coords_matching_exact_labels "Continue" "Continue: habit image"
+)"
+semantic_review_coords="$(
+  run_iez() { printf '%s\n' "$wizard_review_fixture"; }
+  first_coords_matching_exact_labels \
+    "Create Habit" "Create Habit: habit review"
+)"
+distractor_coords="$(
+  run_iez() { printf '%s\n' "$wizard_semantic_fixture"; }
+  first_coords_matching_exact_labels "Continue" "Continue: habit image"
+)"
+
+if ! (
+  run_iez() {
+    if [ "${2:-}" = "ui" ] && [ "${3:-}" = "tree" ]; then
+      printf '%s\n' "$wizard_semantic_fixture"
+    elif [ "${2:-}" = "ui" ] && [ "${3:-}" = "tap" ] && \
+      [ "${4:-}" = "--coords" ]; then
+      printf '%s\n' "${5:-}" > "$wizard_tap_log"
+      printf '%s\n' '{"ok":true,"data":{"tapped":true}}'
+    fi
+  }
+  tap_first_matching_exact_labels \
+    "Continue" "Continue: habit name" "Fixture semantic Continue"
+) >/dev/null; then
+  fail_test "Wizard exact-label helper must tap a visible semantic action"
+fi
+
+assert_eq "180,628" "$semantic_continue_coords" \
+  "Wizard selector chooses the visible anchored semantic Continue label"
+assert_eq "201,628" "$legacy_continue_coords" \
+  "Wizard selector preserves the exact legacy Continue label"
+assert_eq "201,722" "$semantic_review_coords" \
+  "Wizard selector chooses the semantic review submit label without matching the Home CTA"
+assert_eq "" "$distractor_coords" \
+  "Wizard selector rejects labels with extra prefixes or suffixes"
+assert_eq "180,628" "$(cat "$wizard_tap_log")" \
+  "Wizard selector taps the center of the matched semantic action"
+
+for semantic_label in \
+  "Continue: habit name" \
+  "Continue: habit image" \
+  "Continue: habit frequency" \
+  "Continue: check-in times" \
+  "Continue: habit milestone" \
+  "Create Habit: habit review"
+do
+  assert_file_contains "\"$semantic_label\"" "$flow04_file" \
+    "Flow 04 accepts exact semantic action label: $semantic_label"
+done
+assert_file_contains \
+  'tap_first_matching_exact_labels' "$flow04_file" \
+  "Flow 04 uses exact legacy-or-semantic action selection"
+printf '%s\n' "$flow04_wizard_actions" \
+  | grep -Eq 'has_label "Continue"|tap_element "Continue" "label"' && \
+  fail_test "Flow 04 wizard actions must not require the exact legacy Continue label"
+pass_test "Given legacy and semantic wizard labels When Flow 04 selects actions Then only exact compatible labels are tapped"
+
 assert_eq "4" "$(printf '%s\n' "$flow04_created_checks" | grep -Fc 'wait_for_visible_habit_card_name "$HABIT_NAME"')" \
   "Flow 04 uses centered-card matching at all four created-habit checkpoints"
 assert_eq "4" "$(printf '%s\n' "$flow04_created_checks" | grep -Fc 'current_visible_habit_card_label')" \
@@ -655,7 +726,7 @@ for prior_check in \
   'capture "04_name_page"' \
   'capture "04_image_page"' \
   'capture "04_review_page"' \
-  'tap_element "Create Habit" "label" "Review → Create Habit (submit)"' \
+  '"Create Habit" "Create Habit: habit review"' \
   'capture "04_post_create"' \
   'has_label "Members"' \
   'tap_element "Invite" "label" "Tap Invite"' \

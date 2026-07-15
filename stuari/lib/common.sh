@@ -424,6 +424,34 @@ tap_first_matching_label_regex() {
   return 0
 }
 
+# Resolve one of two exact AX labels to a visible target. This is intended for
+# controls that may expose either a legacy label or a context-rich semantic
+# label; exact equality keeps unrelated prefix/suffix labels out of the match.
+first_coords_matching_exact_labels() {
+  local legacy_label="$1" semantic_label="$2"
+  run_iez "$IEZ" ui tree --compact \
+    | jq -r --arg legacy "$legacy_label" --arg semantic "$semantic_label" '
+      .data.elements[]
+      | select(.label == $legacy or .label == $semantic)
+      | select(.frame != null and .frame.width > 0 and .frame.height > 0)
+      | .frame
+      | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
+    | head -1
+}
+
+tap_first_matching_exact_labels() {
+  local legacy_label="$1" semantic_label="$2" desc="${3:-$1}"
+  local coords
+  coords=$(first_coords_matching_exact_labels "$legacy_label" "$semantic_label")
+  if [ -z "$coords" ] || [ "$coords" = "null" ] || [ "$coords" = "," ]; then
+    return 1
+  fi
+  local r
+  r=$(run_iez "$IEZ" ui tap --coords "$coords")
+  assert_ok "$r" "Tap: $desc"
+  return $?
+}
+
 coords_for_id() {
   local id="$1"
   run_iez "$IEZ" ui tree --compact \
