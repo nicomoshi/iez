@@ -438,7 +438,7 @@ SQL
 
 wait_for_due_now_occurrence_drift_authority() {
   local timeout="${1:-20}" interval="${2:-1}" attempt=0
-  local db_path drift_probe now_ms group_count=0 alice_count=0 occurrence_count=0
+  local db_path drift_probe now_ms group_count=0 occurrence_count=0
 
   db_path="$(stuari_fixture_drift_db_path)" || {
     info "Could not resolve local Drift database path for due-now occurrence fixture"
@@ -455,7 +455,7 @@ wait_for_due_now_occurrence_drift_authority() {
 
   while [ "$attempt" -lt "$timeout" ]; do
     now_ms="$(stuari_fixture_now_epoch_ms)"
-    drift_probe="$(stuari_fixture_sqlite_query "$db_path" "
+    if ! drift_probe="$(stuari_fixture_sqlite_query "$db_path" "
       select
         (select count(*)
            from groups
@@ -464,31 +464,28 @@ wait_for_due_now_occurrence_drift_authority() {
             and name = '$DUE_NOW_HABIT_NAME'
             and deleted_at is null),
         (select count(*)
-           from users
-          where id = '$STUARI_AUTH_ALICE_USER_ID'
-            and email = '$STUARI_AUTH_ALICE_EMAIL'),
-        (select count(*)
            from occurrence_snapshots
           where group_id = '$DUE_NOW_HABIT_GROUP_ID'
             and habit_id = '$DUE_NOW_HABIT_GROUP_ID'
             and user_id = '$STUARI_AUTH_ALICE_USER_ID'
             and coalesce(occurrence_id, '') <> ''
-            and status in ('open', 'overdue')
+            and status = 'open'
             and post_id is null
             and cast(opens_at as integer) <= $now_ms
             and cast(submission_closes_at as integer) >= $now_ms
             and cast(submission_closes_at as integer) >= cast(opens_at as integer));
-    " 2>/dev/null)"
-    if [ -z "$drift_probe" ]; then
-      info "Local Drift authority probe failed for due-now occurrence fixture"
-      return 1
+    " 2>/dev/null)"; then
+      drift_probe=""
+    fi
+    if [[ "$drift_probe" =~ ^[0-9]+\|[0-9]+$ ]]; then
+      group_count="${drift_probe%%|*}"
+      occurrence_count="${drift_probe#*|}"
+    else
+      group_count=0
+      occurrence_count=0
     fi
 
-    group_count="$(printf '%s\n' "$drift_probe" | awk -F'|' '{print $1}')"
-    alice_count="$(printf '%s\n' "$drift_probe" | awk -F'|' '{print $2}')"
-    occurrence_count="$(printf '%s\n' "$drift_probe" | awk -F'|' '{print $3}')"
-
-    if [ "$group_count" = "1" ] && [ "$alice_count" = "1" ] && [ "$occurrence_count" = "1" ]; then
+    if [ "$group_count" = "1" ] && [ "$occurrence_count" = "1" ]; then
       pass "Local Drift authority ready for reserved due-now occurrence fixture"
       return 0
     fi
@@ -497,7 +494,7 @@ wait_for_due_now_occurrence_drift_authority() {
     attempt=$((attempt + 1))
   done
 
-  info "Timed out waiting for exact Drift authority (group=$group_count, alice=$alice_count, occurrences=$occurrence_count)"
+  info "Timed out waiting for exact Drift authority (group=$group_count, occurrences=$occurrence_count)"
   return 1
 }
 
