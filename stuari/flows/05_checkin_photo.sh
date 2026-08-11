@@ -23,13 +23,13 @@ source "$SCRIPT_DIR/../lib/fixtures.sh"
 section "Flow 05: Check-In with Photo"
 
 PHOTO_FIXTURE_CLEANUP_RAN=0
-PHOTO_FIXTURE_RESEEDED=0
+STUARI_DUE_NOW_FIXTURE_CLEANUP_REQUIRED=0
 cleanup_photo_due_now_fixture() {
   if [ "${PHOTO_FIXTURE_CLEANUP_RAN:-0}" = "1" ]; then
     return 0
   fi
   PHOTO_FIXTURE_CLEANUP_RAN=1
-  if [ "${PHOTO_FIXTURE_RESEEDED:-0}" != "1" ]; then
+  if [ "${STUARI_DUE_NOW_FIXTURE_CLEANUP_REQUIRED:-0}" != "1" ]; then
     return 0
   fi
   if ! cleanup_due_now_occurrence_fixture; then
@@ -66,7 +66,6 @@ if ! reseed_due_now_occurrence_fixture; then
   fail "Due-now authoritative occurrence fixture available for photo flow"
   finish_photo_flow
 fi
-PHOTO_FIXTURE_RESEEDED=1
 
 fresh_launch; sleep 2
 if on_onboarding_page; then complete_onboarding; fi
@@ -181,20 +180,16 @@ pass "Photo capture opened the real post composer"
 # Type an optional caption. Keep the value in memory so the feed assertion can
 # prove the just-submitted post is visible immediately, before confirmation.
 post_description="$(test_post_description)"
-post_description_display="$(
-  printf '%s' "$post_description" \
-    | awk '{print toupper(substr($0,1,1)) substr($0,2)}'
-)"
 if ! type_into_checkin_route_field "Share your progress..." "$post_description"; then
   capture "05_caption_interaction_failed"
   finish_photo_flow
 fi
-if ! wait_for_checkin_caption "$post_description" 8 0.25; then
-  fail "Photo caption propagated after scaled composer interaction"
-  capture "05_caption_not_propagated"
+if ! wait_for_checkin_input_progress "$post_description" 8 0.25; then
+  fail "Photo input length/progress reflected after composer interaction"
+  capture "05_input_progress_missing"
   finish_photo_flow
 fi
-pass "Photo caption propagated into the composer"
+pass "Photo input length/progress reflected in the composer"
 if ! dismiss_checkin_route_keyboard; then
   capture "05_keyboard_dismissal_failed"
   finish_photo_flow
@@ -203,7 +198,7 @@ fi
 capture "05_compose"
 
 # Submit — "Post" button
-if ! tap_checkin_route_control_by_label "Post" "AXButton" "Submit post"; then
+if ! submit_checkin_post_with_one_delivery_retry "Submit post" 15 0.25 0; then
   capture "05_post_interaction_failed"
   finish_photo_flow
 fi
@@ -216,14 +211,15 @@ pass "Photo check-in submitted and returned to Home"
 capture "05_posted"
 
 expand_home_sheet_to_feed
-capture "05_feed_after_post"
-if wait_for_tree_text "$post_description" 12 ||
-   wait_for_tree_text "$post_description_display" 2; then
-  pass "New check-in appears in feed immediately"
-elif tree_contains "Posting..." || tree_contains "Syncing..." || tree_contains "Retrying..."; then
-  pass "New check-in appears as optimistic feed card"
+if wait_for_exact_post_caption "$post_description" 12 0.25; then
+  capture "05_feed_after_post"
+  if tree_contains "Posting..." || tree_contains "Syncing..." || tree_contains "Retrying..."; then
+    pass "Exact photo caption appears in an optimistic feed post"
+  else
+    pass "Exact photo caption appears in the published feed post"
+  fi
 else
-  fail "New check-in did not appear in feed after posting"
+  fail "Exact photo caption did not appear in a rendered feed post"
   capture "05_feed_missing_new_post"
 fi
 

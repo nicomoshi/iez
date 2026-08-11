@@ -42,6 +42,7 @@ export SCREENSHOTS="$TMP_DIR/screenshots"
 export AX_TREES="$TMP_DIR/ax"
 export STUARI_AUTH_PREFERENCES_PATH="$FAKE_PLIST"
 export STUARI_FIXTURE_APP_CONTAINER_DATA_PATH="$FAKE_APP_CONTAINER"
+export STUARI_APP_REPO_DIR="$TMP_DIR"
 export IEZ="fake-iez"
 export DEVICE_ID="test-device"
 
@@ -49,6 +50,51 @@ source "$ROOT_DIR/stuari/lib/common.sh"
 source "$ROOT_DIR/stuari/lib/auth.sh"
 source "$ROOT_DIR/stuari/lib/fixtures.sh"
 eval "$(declare -f reset_simulator_auth_tokens_to_auth_page | sed '1s/reset_simulator_auth_tokens_to_auth_page/stuari_real_reset_simulator_auth_tokens_to_auth_page/')"
+
+root_only_ax='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev"}]}}'
+if stuari_auth_compact_ax_is_ready "$root_only_ax"; then
+  fail_test "Root-only compact AX must not be treated as actionable"
+fi
+for ready_ax in \
+  '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Dev sign in"}]}}' \
+  '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Get Started"}]}}' \
+  '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"}]}}'; do
+  stuari_auth_compact_ax_is_ready "$ready_ax" || \
+    fail_test "Actionable auth, onboarding, and home semantics must be ready"
+done
+for not_ready_ax in '' '{}' 'not-json' \
+  '{"ok":true,"data":{"elements":[]}}' \
+  '{"ok":true,"data":{"elements":[{"role":"AXStaticText","label":"Splash"}]}}'; do
+  if stuari_auth_compact_ax_is_ready "$not_ready_ax"; then
+    fail_test "Invalid, empty, and splash compact AX must not be ready"
+  fi
+done
+pass_test "Given compact AX fixtures When checking readiness Then only actionable Stuari semantics pass"
+
+READINESS_CALLS="$TMP_DIR/readiness.calls"
+: >"$READINESS_CALLS"
+if (
+  STUARI_AUTH_AX_READY_ATTEMPTS=2
+  STUARI_AUTH_AX_READY_INTERVAL=0
+  run_iez() { printf '%s\n' "$root_only_ax"; }
+  sleep() { printf 'WAIT\n' >>"$READINESS_CALLS"; }
+  capture() { printf 'CAPTURE %s\n' "$1" >>"$READINESS_CALLS"; }
+  terminate_app() { printf 'TERMINATE\n' >>"$READINESS_CALLS"; }
+  fresh_launch() { printf 'FRESH_LAUNCH\n' >>"$READINESS_CALLS"; }
+  fail() { :; }
+  gate_stuari_auth_ax_readiness
+); then
+  fail_test "Permanently root-only AX must fail readiness"
+fi
+assert_eq "1" "$(grep -c '^TERMINATE$' "$READINESS_CALLS")" \
+  "Readiness recovery terminates exactly once"
+assert_eq "1" "$(grep -c '^FRESH_LAUNCH$' "$READINESS_CALLS")" \
+  "Readiness recovery relaunches exactly once"
+assert_eq "2" "$(grep -c '^WAIT$' "$READINESS_CALLS")" \
+  "Two bounded two-attempt waits sleep only between attempts"
+assert_eq "2" "$(grep -c '^CAPTURE ' "$READINESS_CALLS")" \
+  "Failed readiness captures before and after its only recovery"
+pass_test "Given AX never becomes actionable When gating Then waits are bounded and recovery occurs once"
 
 _stuari_real_write_decl="$(declare -f stuari_auth_write_preferences_json_atomically)"
 eval "$(printf '%s\n' "$_stuari_real_write_decl" | sed '1s/stuari_auth_write_preferences_json_atomically/_stuari_real_write_inner/')"
@@ -70,7 +116,7 @@ write_preferences_plist() {
 <plist version="1.0">
 <dict>
   <key>flutter.sb-test-auth-token</key>
-  <string>{"user":{"id":"$STUARI_AUTH_ALICE_USER_ID","email":"$STUARI_AUTH_ALICE_EMAIL"}}</string>
+  <string>{"access_token":"${FAKE_ALICE_ACCESS_TOKEN:-fixture-token}","user":{"id":"$STUARI_AUTH_ALICE_USER_ID","email":"$STUARI_AUTH_ALICE_EMAIL"}}</string>
 </dict>
 </plist>
 EOF
@@ -393,8 +439,20 @@ FAKE_CFPREFSD_FAILURE=0
 FAKE_INVALIDATION_CALLS=0
 FAKE_LAUNCH_CALLS=0
 FAKE_XCRUN_LOG="$TMP_DIR/xcrun.log"
-fresh_launch() { :; }
+fresh_launch() {
+  [ "${FAKE_PAGE:-auth}" = "splash" ] && FAKE_PAGE="auth"
+  return 0
+}
 capture() { :; }
+terminate_app() { return 0; }
+run_iez() {
+  case "${FAKE_PAGE:-auth}" in
+    auth) printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Dev sign in"}]}}' ;;
+    onboarding) printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Get Started"}]}}' ;;
+    home) printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"}]}}' ;;
+    *) printf '%s\n' "$root_only_ax" ;;
+  esac
+}
 on_home_page() { [ "${FAKE_PAGE:-auth}" = "home" ]; }
 on_auth_page() { [ "${FAKE_PAGE:-auth}" = "auth" ]; }
 on_onboarding_page() { [ "${FAKE_PAGE:-auth}" = "onboarding" ]; }
@@ -483,6 +541,134 @@ printf '0\n' > "$PERSISTED_ALICE_WAIT_CALLS"
 assert_eq "3" "$(cat "$PERSISTED_ALICE_WAIT_CALLS")" \
   "Exact Alice persistence wait does not accept before the principal is readable"
 pass_test "Given delayed Alice plist persistence When waiting Then it remains bounded and exact"
+
+# A local user object is not proof that the JWT is fresh or belongs to this
+# Supabase issuer. Verify the exact persisted bearer against the real auth
+# contract without ever printing or recording it.
+cat > "$STUARI_APP_REPO_DIR/.env.dev" <<'EOF'
+SUPABASE_URL=https://stuari-auth-fixture.supabase.co
+SUPABASE_ANON_KEY=fixture-anon-key
+EOF
+
+base64url() {
+  openssl base64 -A | tr '+/' '-_' | tr -d '='
+}
+
+make_auth_token() {
+  local issuer="$1" expiry="$2" subject="${3:-$STUARI_AUTH_ALICE_USER_ID}"
+  local header payload
+  header="$(printf '%s' '{"alg":"HS256","typ":"JWT"}' | base64url)"
+  payload="$(printf '{"iss":"%s","exp":%s,"sub":"%s","email":"%s"}' \
+    "$issuer" "$expiry" "$subject" "$STUARI_AUTH_ALICE_EMAIL" | base64url)"
+  printf '%s.%s.signature' "$header" "$payload"
+}
+
+REMOTE_AUTH_CALLS="$TMP_DIR/remote_auth.calls"
+REMOTE_AUTH_MODE="alice"
+: > "$REMOTE_AUTH_CALLS"
+curl() {
+  printf 'CALL\n' >> "$REMOTE_AUTH_CALLS"
+  case "$REMOTE_AUTH_MODE" in
+    alice)
+      printf '{"id":"%s","email":"%s"}\n' \
+        "$STUARI_AUTH_ALICE_USER_ID" "$STUARI_AUTH_ALICE_EMAIL"
+      ;;
+    bob)
+      printf '{"id":"%s","email":"%s"}\n' \
+        "$STUARI_AUTH_BOB_USER_ID" "$STUARI_AUTH_BOB_EMAIL"
+      ;;
+    failure)
+      return 22
+      ;;
+  esac
+}
+
+now_epoch="$(date +%s)"
+FAKE_ALICE_ACCESS_TOKEN="$(make_auth_token \
+  'https://stuari-auth-fixture.supabase.co/auth/v1' "$((now_epoch + 3600))")"
+write_preferences_plist alice
+remote_auth_output="$(persisted_session_is_remotely_verified_alice 2>&1)" || \
+  fail_test "Given fresh Alice JWT and matching auth endpoint When verifying Then it succeeds"
+[ "$(cat "$REMOTE_AUTH_CALLS")" = "CALL" ] || \
+  fail_test "fresh Alice verification must call the auth endpoint exactly once"
+[ -z "$remote_auth_output" ] || \
+  fail_test "remote Alice verification must not print credentials or tokens"
+pass_test "Given fresh issuer-bound Alice JWT When verifying remotely Then exact endpoint identity succeeds without token logs"
+
+: > "$REMOTE_AUTH_CALLS"
+FAKE_ALICE_ACCESS_TOKEN="$(make_auth_token \
+  'https://wrong-project.supabase.co/auth/v1' "$((now_epoch + 3600))")"
+write_preferences_plist alice
+if persisted_session_is_remotely_verified_alice >/dev/null 2>&1; then
+  fail_test "wrong JWT issuer must fail remote Alice verification"
+fi
+[ ! -s "$REMOTE_AUTH_CALLS" ] || \
+  fail_test "wrong JWT issuer must fail before any bearer is sent"
+
+FAKE_ALICE_ACCESS_TOKEN="$(make_auth_token \
+  'https://stuari-auth-fixture.supabase.co/auth/v1' "$((now_epoch - 1))")"
+write_preferences_plist alice
+if persisted_session_is_remotely_verified_alice >/dev/null 2>&1; then
+  fail_test "expired JWT must fail remote Alice verification"
+fi
+[ ! -s "$REMOTE_AUTH_CALLS" ] || \
+  fail_test "expired JWT must fail before any bearer is sent"
+
+FAKE_ALICE_ACCESS_TOKEN="$(make_auth_token \
+  'https://stuari-auth-fixture.supabase.co/auth/v1' "$((now_epoch + 3600))")"
+write_preferences_plist alice
+REMOTE_AUTH_MODE="bob"
+if persisted_session_is_remotely_verified_alice >/dev/null 2>&1; then
+  fail_test "endpoint response for Bob must fail exact Alice verification"
+fi
+REMOTE_AUTH_MODE="alice"
+pass_test "Given wrong issuer, expiry, or endpoint principal When verifying Alice Then it fails closed"
+
+# The session setup path must gate success on the live auth endpoint. Stub only
+# that network boundary for the remaining local state-machine fixtures.
+auth_file="$ROOT_DIR/stuari/lib/auth.sh"
+ensure_alice_block="$(sed -n '/^ensure_verified_alice_session() {/,/^}/p' "$auth_file")"
+printf '%s\n' "$ensure_alice_block" | grep -Fq 'persisted_session_is_remotely_verified_alice' || \
+  fail_test "Alice session setup must require live issuer/freshness verification"
+persisted_session_is_remotely_verified_alice() { return 0; }
+
+READINESS_ORDER="$TMP_DIR/readiness_order.calls"
+: >"$READINESS_ORDER"
+if (
+  STUARI_AUTH_AX_READY_ATTEMPTS=1
+  STUARI_AUTH_AX_READY_INTERVAL=0
+  run_iez() { printf '%s\n' "$root_only_ax"; }
+  capture() { :; }
+  terminate_app() { :; }
+  fresh_launch() { :; }
+  persisted_session_is_verified_alice() { printf 'TOKEN\n' >>"$READINESS_ORDER"; return 1; }
+  reset_simulator_auth_tokens_to_auth_page() { printf 'RESET\n' >>"$READINESS_ORDER"; return 1; }
+  login_with_dev_magic() { printf 'LOGIN\n' >>"$READINESS_ORDER"; return 1; }
+  fail() { :; }
+  ensure_verified_alice_session
+); then
+  fail_test "Unready AX must fail the Alice session setup"
+fi
+[ ! -s "$READINESS_ORDER" ] || \
+  fail_test "Alice session setup must not inspect tokens, reset, or login before AX is ready"
+
+READY_ORDER="$TMP_DIR/ready_order.calls"
+: >"$READY_ORDER"
+(
+  run_iez() { printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"}]}}'; }
+  persisted_session_is_verified_alice() { printf 'TOKEN\n' >>"$READY_ORDER"; return 0; }
+  persisted_session_is_remotely_verified_alice() { printf 'REMOTE\n' >>"$READY_ORDER"; return 0; }
+  on_home_page() { return 0; }
+  on_onboarding_page() { return 1; }
+  reset_simulator_auth_tokens_to_auth_page() { printf 'RESET\n' >>"$READY_ORDER"; return 1; }
+  login_with_dev_magic() { printf 'LOGIN\n' >>"$READY_ORDER"; return 1; }
+  ensure_verified_alice_session
+) || fail_test "Actionable ready AX must proceed into verified Alice handling"
+assert_eq "TOKEN
+TOKEN
+REMOTE" "$(cat "$READY_ORDER")" \
+  "Ready AX proceeds through local and remote Alice verification without reset/login"
+pass_test "Given readiness gating When AX is unready or ready Then auth mutation is blocked or proceeds respectively"
 
 write_preferences_plist malformed
 if read_persisted_session_principal_json >/dev/null 2>&1; then

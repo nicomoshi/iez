@@ -14,13 +14,13 @@ source "$SCRIPT_DIR/../lib/fixtures.sh"
 section "Flow 06: Check-In with Video"
 
 VIDEO_FIXTURE_CLEANUP_RAN=0
-VIDEO_FIXTURE_RESEEDED=0
+STUARI_DUE_NOW_FIXTURE_CLEANUP_REQUIRED=0
 cleanup_video_due_now_fixture() {
   if [ "${VIDEO_FIXTURE_CLEANUP_RAN:-0}" = "1" ]; then
     return 0
   fi
   VIDEO_FIXTURE_CLEANUP_RAN=1
-  if [ "${VIDEO_FIXTURE_RESEEDED:-0}" != "1" ]; then
+  if [ "${STUARI_DUE_NOW_FIXTURE_CLEANUP_REQUIRED:-0}" != "1" ]; then
     return 0
   fi
   if ! cleanup_due_now_occurrence_fixture; then
@@ -57,7 +57,6 @@ if ! reseed_due_now_occurrence_fixture; then
   fail "Due-now authoritative occurrence fixture available for video flow"
   finish_video_flow
 fi
-VIDEO_FIXTURE_RESEEDED=1
 
 fresh_launch; sleep 2
 if on_onboarding_page; then complete_onboarding; fi
@@ -204,12 +203,12 @@ if ! type_into_checkin_route_field \
   capture "06_caption_interaction_failed"
   finish_video_flow
 fi
-if ! wait_for_checkin_caption "$video_post_description" 8 0.25; then
-  fail "Video caption propagated after scaled composer interaction"
-  capture "06_caption_not_propagated"
+if ! wait_for_checkin_input_progress "$video_post_description" 8 0.25; then
+  fail "Video input length/progress reflected after composer interaction"
+  capture "06_input_progress_missing"
   finish_video_flow
 fi
-pass "Video caption propagated into the composer"
+pass "Video input length/progress reflected in the composer"
 if ! dismiss_checkin_route_keyboard; then
   capture "06_keyboard_dismissal_failed"
   finish_video_flow
@@ -217,7 +216,7 @@ fi
 
 capture "06_compose"
 
-if ! tap_checkin_route_control_by_label "Post" "AXButton" "Submit video post"; then
+if ! submit_checkin_post_with_one_delivery_retry "Submit video post" 20 0.25 0; then
   capture "06_post_interaction_failed"
   finish_video_flow
 fi
@@ -228,5 +227,18 @@ if ! wait_for_checkin_post_completion 20 0.25; then
 fi
 pass "Video check-in submitted and returned to Home"
 capture "06_posted"
+
+expand_home_sheet_to_feed
+if wait_for_exact_post_caption "$video_post_description" 15 0.25; then
+  capture "06_feed_after_post"
+  if tree_contains "Posting..." || tree_contains "Syncing..." || tree_contains "Retrying..."; then
+    pass "Exact video caption appears in an optimistic feed post"
+  else
+    pass "Exact video caption appears in the published feed post"
+  fi
+else
+  fail "Exact video caption did not appear in a rendered feed post"
+  capture "06_feed_missing_new_post"
+fi
 
 finish_video_flow

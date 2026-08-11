@@ -73,6 +73,70 @@ on_home_page() {
     || tree_contains "Tab 1 of 3"
 }
 
+# A launched process is not necessarily an actionable Stuari UI. In particular,
+# compact AX can briefly contain only the application/root node while Flutter is
+# still attaching. Accept only semantics that let the auth state machine act.
+stuari_auth_compact_ax_is_ready() {
+  local tree="${1:-}"
+  [ -n "$tree" ] || return 1
+
+  printf '%s\n' "$tree" | jq -e '
+    (.ok == true)
+    and ((.data.elements // []) | type == "array")
+    and any((.data.elements // [])[]?;
+      ((.label // "") as $label
+        | $label == "Dev sign in"
+          or $label == "Sign in with Apple"
+          or $label == "Sign in with Google"
+          or $label == "Get Started"
+          or $label == "Skip"
+          or $label == "Your name"
+          or $label == "Home tab"
+          or $label == "Home tab, selected"
+          or $label == "Home tab, selected tab"
+          or $label == "Create new habit"
+          or $label == "Create Habit"
+          or $label == "Feed tab"
+          or ($label | contains("Tab 1 of 3"))))
+  ' >/dev/null 2>&1
+}
+
+wait_for_stuari_auth_compact_ax_ready() {
+  local attempts="${1:-6}" interval="${2:-1}" attempt=0 tree=""
+  while [ "$attempt" -lt "$attempts" ]; do
+    tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+    if stuari_auth_compact_ax_is_ready "$tree"; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    if [ "$attempt" -lt "$attempts" ]; then
+      sleep "$interval"
+    fi
+  done
+  return 1
+}
+
+gate_stuari_auth_ax_readiness() {
+  local attempts="${STUARI_AUTH_AX_READY_ATTEMPTS:-6}"
+  local interval="${STUARI_AUTH_AX_READY_INTERVAL:-1}"
+
+  if wait_for_stuari_auth_compact_ax_ready "$attempts" "$interval"; then
+    return 0
+  fi
+
+  capture "auth_ax_not_ready_initial"
+  terminate_app
+  fresh_launch
+
+  if wait_for_stuari_auth_compact_ax_ready "$attempts" "$interval"; then
+    return 0
+  fi
+
+  capture "auth_ax_not_ready_final"
+  fail "Stuari auth setup could not reach an actionable AX state"
+  return 1
+}
+
 has_dev_magic_login() {
   has_label "$LABEL_DEV_SIGN_IN"
 }
@@ -243,6 +307,64 @@ read_persisted_session_principal_json() {
   printf '%s\n' "$principal_json"
 }
 
+read_persisted_session_access_token() {
+  local preferences_path token_keys_count token_key token_keys_raw
+  preferences_path="$(stuari_auth_preferences_path)" || return 1
+  [ -f "$preferences_path" ] || return 1
+
+  token_keys_raw="$(stuari_auth_matching_token_keys "$preferences_path" 2>/dev/null)" || return 1
+  token_keys_count="$(printf '%s\n' "$token_keys_raw" | sed '/^$/d' | wc -l | tr -d ' ')"
+  [ "$token_keys_count" = "1" ] || return 1
+  token_key="$(printf '%s\n' "$token_keys_raw" | sed -n '1p')"
+  [ -n "$token_key" ] || return 1
+
+  stuari_auth_preferences_json "$preferences_path" \
+    | jq -jer --arg key "$token_key" '
+        .[$key]
+        | select(type == "string")
+        | fromjson
+        | .access_token
+        | select(type == "string" and length > 0)
+      ' 2>/dev/null
+}
+
+stuari_auth_env_value() {
+  local key="$1" env_file="${STUARI_APP_REPO_DIR:-$HOME/Developer/sestuary}/.env.dev"
+  local value=""
+  [ -f "$env_file" ] || return 1
+  value="$(
+    awk -v key="$key" '
+      index($0, key "=") == 1 {
+        value = substr($0, length(key) + 2)
+        sub(/\r$/, "", value)
+        print value
+        exit
+      }
+    ' "$env_file"
+  )"
+  [ -n "$value" ] || return 1
+  case "$value" in
+    \"*\") value="${value#\"}"; value="${value%\"}" ;;
+    \'*\') value="${value#\'}"; value="${value%\'}" ;;
+  esac
+  [ -n "$value" ] || return 1
+  printf '%s\n' "$value"
+}
+
+stuari_auth_decode_jwt_payload() {
+  local token="$1" header="" payload="" signature="" extra="" padded=""
+  IFS='.' read -r header payload signature extra <<< "$token"
+  [ -n "$header" ] && [ -n "$payload" ] && [ -n "$signature" ] && [ -z "$extra" ] || return 1
+  padded="$(printf '%s' "$payload" | tr '_-' '/+')"
+  case $((${#padded} % 4)) in
+    0) ;;
+    2) padded="${padded}==" ;;
+    3) padded="${padded}=" ;;
+    *) return 1 ;;
+  esac
+  printf '%s' "$padded" | openssl base64 -d -A 2>/dev/null
+}
+
 has_any_persisted_session_token() {
   local preferences_path token_keys_raw
   preferences_path="$(stuari_auth_preferences_path)" || return 1
@@ -262,6 +384,47 @@ persisted_session_is_verified_alice() {
       --arg expected_email "$STUARI_AUTH_ALICE_EMAIL" '
         .id == $expected_id and .email == $expected_email
       ' >/dev/null 2>&1
+}
+
+persisted_session_is_remotely_verified_alice() {
+  local access_token="" supabase_url="" anon_key="" payload_json=""
+  local expected_issuer="" now_epoch="" response=""
+
+  command -v curl >/dev/null 2>&1 || return 1
+  command -v openssl >/dev/null 2>&1 || return 1
+  persisted_session_is_verified_alice || return 1
+  access_token="$(read_persisted_session_access_token)" || return 1
+  supabase_url="$(stuari_auth_env_value SUPABASE_URL)" || return 1
+  anon_key="$(stuari_auth_env_value SUPABASE_ANON_KEY)" || return 1
+  supabase_url="${supabase_url%/}"
+  expected_issuer="$supabase_url/auth/v1"
+  now_epoch="$(date +%s)"
+
+  payload_json="$(stuari_auth_decode_jwt_payload "$access_token")" || return 1
+  printf '%s\n' "$payload_json" | jq -e \
+    --arg issuer "$expected_issuer" \
+    --arg subject "$STUARI_AUTH_ALICE_USER_ID" \
+    --arg email "$STUARI_AUTH_ALICE_EMAIL" \
+    --argjson now "$now_epoch" '
+      .iss == $issuer
+      and .sub == $subject
+      and .email == $email
+      and (.exp | type) == "number"
+      and .exp > ($now + 5)
+    ' >/dev/null 2>&1 || return 1
+
+  response="$(
+    printf 'header = "apikey: %s"\nheader = "Authorization: Bearer %s"\n' \
+      "$anon_key" "$access_token" \
+      | curl --silent --show-error --fail --max-time 10 \
+          --config - "$supabase_url/auth/v1/user" 2>/dev/null
+  )" || return 1
+
+  printf '%s\n' "$response" | jq -e \
+    --arg expected_id "$STUARI_AUTH_ALICE_USER_ID" \
+    --arg expected_email "$STUARI_AUTH_ALICE_EMAIL" '
+      .id == $expected_id and .email == $expected_email
+    ' >/dev/null 2>&1
 }
 
 wait_for_verified_alice_persisted_session() {
@@ -570,8 +733,7 @@ login_with_dev_magic() {
 ensure_verified_alice_session() {
   local wait_i=0 alice_password="${STUARI_TEST_PASSWORD:-iez-test-password-2026}"
 
-  fresh_launch
-  sleep 2
+  gate_stuari_auth_ax_readiness || return 1
 
   if persisted_session_is_verified_alice; then
     while [ "$wait_i" -lt 6 ]; do
@@ -582,8 +744,12 @@ ensure_verified_alice_session() {
       fi
 
       if persisted_session_is_verified_alice && (on_home_page || on_onboarding_page); then
-        pass "Verified Alice persisted session ready"
-        return 0
+        if persisted_session_is_remotely_verified_alice; then
+          pass "Verified Alice persisted session ready"
+          return 0
+        fi
+        info "Persisted Alice session failed live issuer/freshness verification"
+        break
       fi
 
       sleep 1
@@ -615,6 +781,10 @@ ensure_verified_alice_session() {
     else
       fail "Persisted principal did not verify as Alice after sign-in"
     fi
+    return 1
+  fi
+  if ! persisted_session_is_remotely_verified_alice; then
+    fail "Persisted Alice session failed live issuer/freshness verification after sign-in"
     return 1
   fi
 

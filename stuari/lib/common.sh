@@ -480,20 +480,7 @@ coords_for_id() {
 # as the target so a route transition cannot race coordinate resolution.
 checkin_route_scale_from_tree() {
   local tree="$1"
-  local override="${STUARI_CHECKIN_AX_COORD_SCALE:-${STUARI_CAMERA_AX_COORD_SCALE:-}}"
-  local widths=""
-
-  if [ -n "$override" ]; then
-    awk -v ratio="$override" 'BEGIN {
-      if (ratio !~ /^[0-9]+([.][0-9]+)?$/) exit 1
-      rounded = int(ratio + 0.5)
-      delta = ratio - rounded
-      if (delta < 0) delta = -delta
-      if (rounded < 1 || rounded > 3 || delta > 0.05) exit 1
-      print rounded
-    }'
-    return $?
-  fi
+  local widths="" composer_is_unambiguous=""
 
   widths="$(
     printf '%s\n' "$tree" | jq -er '
@@ -509,7 +496,53 @@ checkin_route_scale_from_tree() {
       | [$app[0], $mock[0]]
       | @tsv
     ' 2>/dev/null
-  )" || return 1
+  )" || widths=""
+
+  if [ -z "$widths" ]; then
+    composer_is_unambiguous="$(
+      printf '%s\n' "$tree" | jq -er '
+        [(.data.elements // [])[]
+          | select(.role == "AXApplication")
+          | .frame
+          | select(
+              type == "object"
+              and (.width | type) == "number" and .width > 0
+              and (.height | type) == "number" and .height > 0
+            )] as $apps
+        | [(.data.elements // [])[]
+            | select(.role == "AXStaticText" and .label == "Mock camera (simulator)")] as $cameraRoots
+        | [(.data.elements // [])[]
+            | select(.role == "AXStaticText" and .label == "New Check-in")] as $titles
+        | [(.data.elements // [])[]
+            | select(.role == "AXButton" and .label == "Go back")] as $backs
+        | [(.data.elements // [])[]
+            | select(.role == "AXButton" and .label == "Post")
+            | .frame
+            | select(
+                type == "object"
+                and (.x | type) == "number"
+                and (.y | type) == "number"
+                and (.width | type) == "number" and .width > 0
+                and (.height | type) == "number" and .height > 0
+              )] as $posts
+        | select(
+            ($apps | length) == 1
+            and ($cameraRoots | length) == 0
+            and ($titles | length) == 1
+            and ($backs | length) == 1
+            and ($posts | length) == 1
+            and $posts[0].x >= 0
+            and $posts[0].y >= 0
+            and ($posts[0].x + $posts[0].width) <= $apps[0].width
+            and ($posts[0].y + $posts[0].height) <= $apps[0].height
+          )
+        | "true"
+      ' 2>/dev/null
+    )" || return 1
+    [ "$composer_is_unambiguous" = "true" ] || return 1
+    printf '1\n'
+    return 0
+  fi
 
   awk -F '\t' 'NF == 2 {
     ratio = $1 / $2
@@ -527,15 +560,44 @@ checkin_route_coords_for_id() {
   scale="$(checkin_route_scale_from_tree "$tree")" || return 1
 
   frame="$(
-    printf '%s\n' "$tree" | jq -r --arg id "$id" '
-          .data.elements[]?
-          | select(.id == $id)
-          | select(.frame != null and .frame.width > 0 and .frame.height > 0)
-          | [.frame.x, .frame.y, .frame.width, .frame.height]
-          | @tsv
-        ' 2>/dev/null \
-      | head -1
-  )"
+    printf '%s\n' "$tree" | jq -er --arg id "$id" '
+      [(.data.elements // [])[]
+        | select(.id == $id)
+        | select(.frame != null and .frame.width > 0 and .frame.height > 0)
+        | [.frame.x, .frame.y, .frame.width, .frame.height]
+        | @tsv] as $frames
+      | select(($frames | length) == 1)
+      | $frames[0]
+    ' 2>/dev/null
+  )" || return 1
+  if [ -z "$frame" ]; then
+    return 1
+  fi
+
+  awk -F '\t' -v scale="$scale" '
+    NF == 4 {
+      printf "%d,%d\n", (($1 + ($3 / 2)) * scale), (($2 + ($4 / 2)) * scale)
+    }
+  ' <<< "$frame"
+}
+
+checkin_route_coords_for_label_from_tree() {
+  local label="$1" role="${2:-}" tree="$3" scale="" frame=""
+  scale="$(checkin_route_scale_from_tree "$tree")" || return 1
+
+  frame="$(
+    printf '%s\n' "$tree" | jq -er --arg label "$label" --arg role "$role" '
+      [(.data.elements // [])[]
+        | select(.label == $label)
+        | select($role == "" or .role == $role)
+        | select(.enabled != false)
+        | select(.frame != null and .frame.width > 0 and .frame.height > 0)
+        | [.frame.x, .frame.y, .frame.width, .frame.height]
+        | @tsv] as $frames
+      | select(($frames | length) == 1)
+      | $frames[0]
+    ' 2>/dev/null
+  )" || return 1
   if [ -z "$frame" ]; then
     return 1
   fi
@@ -548,30 +610,9 @@ checkin_route_coords_for_id() {
 }
 
 checkin_route_coords_for_label() {
-  local label="$1" role="${2:-}" tree="" scale="" frame=""
+  local label="$1" role="${2:-}" tree=""
   tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null)" || return 1
-  scale="$(checkin_route_scale_from_tree "$tree")" || return 1
-
-  frame="$(
-    printf '%s\n' "$tree" | jq -r --arg label "$label" --arg role "$role" '
-          .data.elements[]?
-          | select(.label == $label)
-          | select($role == "" or .role == $role)
-          | select(.frame != null and .frame.width > 0 and .frame.height > 0)
-          | [.frame.x, .frame.y, .frame.width, .frame.height]
-          | @tsv
-        ' 2>/dev/null \
-      | head -1
-  )"
-  if [ -z "$frame" ]; then
-    return 1
-  fi
-
-  awk -F '\t' -v scale="$scale" '
-    NF == 4 {
-      printf "%d,%d\n", (($1 + ($3 / 2)) * scale), (($2 + ($4 / 2)) * scale)
-    }
-  ' <<< "$frame"
+  checkin_route_coords_for_label_from_tree "$label" "$role" "$tree"
 }
 
 camera_coords_for_id() {
@@ -614,6 +655,77 @@ tap_checkin_route_control_by_label() {
   return 1
 }
 
+checkin_post_retry_tree_is_stable() {
+  local tree="$1"
+  printf '%s\n' "$tree" | jq -e '
+    [(.data.elements // [])[]?] as $elements
+    | [ $elements[] | select(.role == "AXApplication" and .frame != null and .frame.width > 0 and .frame.height > 0) ] as $apps
+    | [ $elements[] | select(.role == "AXStaticText" and .label == "New Check-in") ] as $titles
+    | [ $elements[] | select(.role == "AXButton" and .label == "Go back") ] as $backs
+    | [ $elements[]
+        | select(.role == "AXButton" and .label == "Post" and .enabled != false)
+        | select(.frame != null and .frame.width > 0 and .frame.height > 0) ] as $posts
+    | [ $elements[]
+        | select((.label // "" | ascii_downcase)
+          | test("posting\\.\\.\\.|syncing\\.\\.\\.|retrying\\.\\.\\.|error|failed|try again|unavailable")) ] as $unstable
+    | [ $elements[]
+        | select(.role == "AXButton")
+        | select((.label // "") | test(" tab(, selected)?$")) ] as $routes
+    | ($apps | length) == 1
+      and ($titles | length) == 1
+      and ($backs | length) == 1
+      and ($posts | length) == 1
+      and ($unstable | length) == 0
+      and ($routes | length) == 0
+      and $posts[0].frame.x >= 0
+      and $posts[0].frame.y >= 0
+      and ($posts[0].frame.x + $posts[0].frame.width) <= $apps[0].frame.width
+      and ($posts[0].frame.y + $posts[0].frame.height) <= $apps[0].frame.height
+  ' >/dev/null 2>&1
+}
+
+submit_checkin_post_with_one_delivery_retry() {
+  local desc="${1:-Submit post}" timeout="${2:-12}" interval="${3:-0.25}"
+  local coords="" response="" tree=""
+
+  coords="$(checkin_route_coords_for_label "Post" "AXButton")"
+  if [ -z "$coords" ] || [ "$coords" = "," ]; then
+    fail "Check-in Post coordinates unavailable: $desc"
+    return 1
+  fi
+
+  response="$(run_iez "$IEZ" ui tap --coords "$coords")"
+  if [ "$(json_ok "$response")" != "true" ]; then
+    info "Initial Post delivery did not report success; checking one fresh-tree retry"
+  else
+    pass "Tap: $desc"
+  fi
+
+  if wait_for_checkin_post_completion "$timeout" "$interval"; then
+    return 0
+  fi
+
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  if ! checkin_post_retry_tree_is_stable "$tree"; then
+    fail "Post delivery did not complete and the composer was not a stable retry target"
+    return 1
+  fi
+
+  coords="$(checkin_route_coords_for_label_from_tree "Post" "AXButton" "$tree")"
+  if [ -z "$coords" ] || [ "$coords" = "," ]; then
+    fail "Fresh-tree Post retry coordinates unavailable: $desc"
+    return 1
+  fi
+
+  response="$(run_iez "$IEZ" ui tap --coords "$coords")"
+  if [ "$(json_ok "$response")" != "true" ]; then
+    fail "Fresh-tree Post retry: $desc" "$response"
+    return 1
+  fi
+  pass "Fresh-tree Post retry: $desc"
+  wait_for_checkin_post_completion "$timeout" "$interval"
+}
+
 type_into_checkin_route_field() {
   local label="$1" text="$2" coords="" response=""
   coords="$(checkin_route_coords_for_label "$label" "AXTextField")"
@@ -639,7 +751,7 @@ type_into_checkin_route_field() {
   sleep 0.3
 }
 
-wait_for_checkin_caption() {
+wait_for_checkin_input_progress() {
   local caption="$1" timeout="${2:-8}" interval="${3:-0.25}"
   local attempts=0 max_attempts tree="" remaining_count="" remaining_label=""
   max_attempts=$((timeout * 4))
@@ -666,6 +778,52 @@ wait_for_checkin_caption() {
   done
 
   return 1
+}
+
+post_tree_has_exact_caption() {
+  local tree="$1" caption="$2"
+  printf '%s\n' "$tree" | jq -e --arg caption "$caption" '
+    [(.data.elements // [])[]
+      | select(
+          .role == "AXStaticText"
+          and ((.label // "") | split("\n") | any(. == $caption))
+        )] as $captionMatches
+    | [(.data.elements // [])[]
+        | select(
+            .role == "AXStaticText"
+            and (((.label // "") | split("\n")) as $lines
+              | any($lines[]; . == "Feed")
+              and any($lines[]; . == "Tab 1 of 3"))
+          )] as $selectedFeed
+    | ($captionMatches | length) == 1
+      and ($selectedFeed | length) == 1
+      and ((($captionMatches[0].label // "") | split("\n")) as $captionLines
+        | any($captionLines[]; . == "Confirmed")
+          or (
+            any($captionLines[]; . == "Just now")
+            and any($captionLines[];
+              . == "Posting..."
+              or . == "Syncing..."
+              or . == "Retrying...")
+          )
+      )
+  ' >/dev/null 2>&1
+}
+
+wait_for_exact_post_caption() {
+  local caption="$1" timeout="${2:-12}" interval="${3:-0.25}"
+  local attempts=0 max_attempts tree=""
+  max_attempts=$((timeout * 4))
+
+  while [ "$attempts" -lt "$max_attempts" ]; do
+    tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+    post_tree_has_exact_caption "$tree" "$caption" && return 0
+    sleep "$interval"
+    attempts=$((attempts + 1))
+  done
+
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  post_tree_has_exact_caption "$tree" "$caption"
 }
 
 dismiss_checkin_route_keyboard() {

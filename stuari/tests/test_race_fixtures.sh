@@ -144,7 +144,9 @@ wait_for_due_now_occurrence_drift_authority 5 0 || \
 pass_test "bounded wait accepts the exact fresh remote occurrence only once propagated"
 
 # ── 4. Bounded actionable label wait ────────────────────────────────
-ACTIONABLE_TARGET_ID="habit_card_bbbb0000-0000-0000-0000-000000000010"
+ACTIONABLE_TARGET_ID="$DUE_NOW_HABIT_CARD_ID"
+ACTIONABLE_TARGET_NAME="$DUE_NOW_HABIT_NAME"
+HISTORICAL_FIXED_CARD_ID="habit_card_bbbb0000-0000-0000-0000-000000000010"
 AX_CALLS_FILE="$TMP_DIR/ax_calls"
 AX_MODE="delayed-actionable"
 printf '0\n' > "$AX_CALLS_FILE"
@@ -156,10 +158,12 @@ run_iez() {
     calls="$(cat "$AX_CALLS_FILE")"
     calls=$((calls + 1))
     printf '%s\n' "$calls" > "$AX_CALLS_FILE"
-    if [ "$AX_MODE" = "delayed-actionable" ] && [ "$calls" -ge 3 ]; then
-      printf '%s\n' '{"ok":true,"data":{"elements":[{"id":"habit_card_bbbb0000-0000-0000-0000-000000000010","label":"Habit card: IEZ Due Now Check-In habit, Tap to check in","frame":{"x":150,"y":250,"width":92,"height":120},"enabled":true}]}}'
+    if [ "$AX_MODE" = "stale-fixed-card-only" ]; then
+      printf '{"ok":true,"data":{"elements":[{"id":"%s","label":"Habit card: %s habit, Tap to check in","frame":{"x":150,"y":250,"width":92,"height":120},"enabled":true}]} }\n' "$HISTORICAL_FIXED_CARD_ID" "IEZ Due Now Check-In"
+    elif [ "$AX_MODE" = "delayed-actionable" ] && [ "$calls" -ge 3 ]; then
+      printf '{"ok":true,"data":{"elements":[{"id":"%s","label":"Habit card: %s habit, Tap to check in","frame":{"x":150,"y":250,"width":92,"height":120},"enabled":true}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
     else
-      printf '%s\n' '{"ok":true,"data":{"elements":[{"id":"habit_card_bbbb0000-0000-0000-0000-000000000010","label":"Habit card: IEZ Due Now Check-In habit, On track","frame":{"x":150,"y":250,"width":92,"height":120},"enabled":true}]}}'
+      printf '{"ok":true,"data":{"elements":[{"id":"%s","label":"Habit card: %s habit, On track","frame":{"x":150,"y":250,"width":92,"height":120},"enabled":true}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
     fi
     return 0
   fi
@@ -178,8 +182,15 @@ if wait_for_habit_card_actionable "$ACTIONABLE_TARGET_ID" 2 0; then
 fi
 [ "$(cat "$AX_CALLS_FILE")" = "8" ] || \
   fail_test "bounded wait must respect the exact poll bound (reads=$(cat "$AX_CALLS_FILE"), expected 8)"
+
+AX_MODE="stale-fixed-card-only"
+printf '0\n' > "$AX_CALLS_FILE"
+if wait_for_habit_card_actionable \
+  "habit_card_11111111-2222-4333-8444-555555555555" 2 0; then
+  fail_test "the historical fixed fixture card must never satisfy a new dynamic lifecycle selector"
+fi
 unset -f sleep
-pass_test "bounded actionable label wait accepts on render and fails closed on timeout"
+pass_test "bounded actionable label wait accepts propagation and rejects stale fixed cards"
 
 # -- 5. Flow 20 semantic wizard actions ------------------------------
 FLOW20_FILE="$ROOT_DIR/stuari/flows/20_habit_edit.sh"
@@ -239,11 +250,25 @@ pass_test "Flow 34 waits for an exact case-insensitive habit card name without c
 
 # -- 7. Camera controls use rendered coordinates and terminal states -------
 CAMERA_TREE_CALLS_FILE="$TMP_DIR/camera_tree.calls"
+POST_TAP_CALLS_FILE="$TMP_DIR/post_tap.calls"
 CAMERA_TREE_MODE="scaled-control"
 printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+printf '0\n' > "$POST_TAP_CALLS_FILE"
 run_iez() {
-  local _binary="$1" calls=""
+  local _binary="$1" calls="" tap_calls=""
   shift
+  if [ "${1:-}" = "ui" ] && [ "${2:-}" = "tap" ]; then
+    case "$CAMERA_TREE_MODE" in
+      post-retry-success|post-inflight-no-retry|post-route-changed-no-retry)
+        tap_calls="$(cat "$POST_TAP_CALLS_FILE")"
+        tap_calls=$((tap_calls + 1))
+        printf '%s\n' "$tap_calls" > "$POST_TAP_CALLS_FILE"
+        printf '%s\n' '{"ok":true,"data":{"target":"coords"}}'
+        return 0
+        ;;
+    esac
+    return 1
+  fi
   if [ "${1:-}" = "ui" ] && [ "${2:-}" = "tree" ]; then
     calls="$(cat "$CAMERA_TREE_CALLS_FILE")"
     calls=$((calls + 1))
@@ -274,6 +299,12 @@ run_iez() {
       scaled-composer-control)
         printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":134,"height":291.3333333333}},{"role":"AXButton","label":"Post","frame":{"x":6.6666666667,"y":254.6666666667,"width":120.6666666667,"height":17.3333333333}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":6.6666666667,"y":205.6666666667,"width":120.6666666667,"height":38.3333333333}}]}}'
         ;;
+      normal-composer-without-camera-root)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Go back"},{"role":"AXButton","label":"Post","frame":{"x":20,"y":764,"width":362,"height":52}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":20,"y":617,"width":362,"height":115}}]}}'
+        ;;
+      ambiguous-route-without-camera-root)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Post","frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
+        ;;
       delayed-caption)
         if [ "$calls" -ge 3 ]; then
           printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXGenericElement","label":"271 characters remaining"}]}}'
@@ -283,6 +314,24 @@ run_iez() {
         ;;
       wrong-caption-count)
         printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXTextField","label":"Share your progress...","value":""},{"role":"AXGenericElement","label":"270 characters remaining"}]}}'
+        ;;
+      equal-length-wrong-input)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXGenericElement","label":"271 characters remaining"}]}}'
+        ;;
+      exact-post-caption)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"},{"role":"AXStaticText","label":"Feed\nTab 1 of 3"},{"role":"AXStaticText","label":"Confirmed\nday 42 ok"},{"role":"AXButton","label":"Open post by Alice"}]}}'
+        ;;
+      exact-optimistic-post-caption)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"},{"role":"AXStaticText","label":"Feed\nTab 1 of 3"},{"role":"AXStaticText","label":"A\nAlice\nJust now\nRetrying...\nday 42 ok"},{"role":"AXStaticText","label":"1 check-in retrying..."}]}}'
+        ;;
+      unrelated-caption-static-text)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"},{"role":"AXStaticText","label":"Feed\nTab 1 of 3"},{"role":"AXStaticText","label":"day 42 ok"},{"role":"AXStaticText","label":"Alice\nJust now\nRetrying..."},{"role":"AXButton","label":"Open post by Alice"}]}}'
+        ;;
+      equal-length-wrong-post-caption)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"},{"role":"AXStaticText","label":"Feed\nTab 1 of 3"},{"role":"AXStaticText","label":"Confirmed\nday 24 ko"},{"role":"AXButton","label":"Open post by Alice"}]}}'
+        ;;
+      home-without-post)
+        printf '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"},{"id":"%s","label":"Habit card: %s habit, 0/1 confirmed"}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
         ;;
       compose-ready)
         printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Go back"},{"role":"AXStaticText","label":"269 characters remaining"},{"role":"AXButton","label":"Post","frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
@@ -296,9 +345,33 @@ run_iez() {
         ;;
       delayed-post-home)
         if [ "$calls" -ge 3 ]; then
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"},{"id":"habit_card_bbbb0000-0000-0000-0000-000000000010","label":"Habit card: IEZ Due Now Check-In habit, Waiting for confirmation","frame":{"x":78,"y":118,"width":245,"height":382}}]}}'
+          printf '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"},{"id":"%s","label":"Habit card: %s habit, Waiting for confirmation","frame":{"x":78,"y":118,"width":245,"height":382}}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
         else
           printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Post"},{"role":"AXTextField","label":"Share your progress...","value":"day 42 ok"}]}}'
+        fi
+        ;;
+      post-retry-success)
+        tap_calls="$(cat "$POST_TAP_CALLS_FILE")"
+        if [ "$tap_calls" -ge 2 ]; then
+          printf '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected"},{"id":"%s","label":"Habit card: %s habit, Waiting for confirmation","frame":{"x":78,"y":118,"width":245,"height":382}}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
+        else
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Go back"},{"role":"AXStaticText","label":"271 characters remaining"},{"role":"AXButton","label":"Post","enabled":true,"frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
+        fi
+        ;;
+      post-inflight-no-retry)
+        tap_calls="$(cat "$POST_TAP_CALLS_FILE")"
+        if [ "$tap_calls" -ge 1 ]; then
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Go back"},{"role":"AXStaticText","label":"Posting..."},{"role":"AXButton","label":"Post","enabled":true,"frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
+        else
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Go back"},{"role":"AXStaticText","label":"271 characters remaining"},{"role":"AXButton","label":"Post","enabled":true,"frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
+        fi
+        ;;
+      post-route-changed-no-retry)
+        tap_calls="$(cat "$POST_TAP_CALLS_FILE")"
+        if [ "$tap_calls" -ge 1 ]; then
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Profile tab, selected"},{"role":"AXStaticText","label":"Profile"}]}}'
+        else
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Go back"},{"role":"AXStaticText","label":"271 characters remaining"},{"role":"AXButton","label":"Post","enabled":true,"frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
         fi
         ;;
     esac
@@ -350,17 +423,66 @@ printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
 [ "$(checkin_route_coords_for_label "Post" "AXButton")" = "201,790" ] || \
   fail_test "check-in Post control must use its scaled rendered center"
 
+CAMERA_TREE_MODE="normal-composer-without-camera-root"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+[ "$(checkin_route_coords_for_label "Share your progress..." "AXTextField")" = "201,674" ] || \
+  fail_test "normal composer without a retained camera root must safely use scale 1"
+[ "$(checkin_route_coords_for_label "Post" "AXButton")" = "201,790" ] || \
+  fail_test "normal composer Post without a retained camera root must safely use scale 1"
+
+CAMERA_TREE_MODE="ambiguous-route-without-camera-root"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+if checkin_route_coords_for_label "Post" "AXButton" >/dev/null; then
+  fail_test "missing camera root must not imply scale 1 without positive composer identity"
+fi
+
 CAMERA_TREE_MODE="delayed-caption"
 printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
-wait_for_checkin_caption "day 42 ok" 5 0 || \
-  fail_test "caption wait must require the typed value to propagate into AX"
+wait_for_checkin_input_progress "day 42 ok" 5 0 || \
+  fail_test "input-progress wait must accept exact value or matching character progress"
 [ "$(cat "$CAMERA_TREE_CALLS_FILE")" = "3" ] || \
-  fail_test "caption wait must not accept a wrong remaining-character count"
+  fail_test "input-progress wait must not accept a wrong remaining-character count"
 
 CAMERA_TREE_MODE="wrong-caption-count"
 printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
-if wait_for_checkin_caption "day 42 ok" 2 0; then
-  fail_test "caption wait must reject an empty field with the wrong remaining count"
+if wait_for_checkin_input_progress "day 42 ok" 2 0; then
+  fail_test "input-progress wait must reject an empty field with the wrong remaining count"
+fi
+
+# Character progress alone cannot prove content identity. An equal-length
+# substitution may satisfy the pre-submit progress gate, but must never satisfy
+# the post/feed terminal proof.
+CAMERA_TREE_MODE="equal-length-wrong-input"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+wait_for_checkin_input_progress "day 42 ok" 2 0 || \
+  fail_test "equal-length input should honestly satisfy only the progress gate"
+
+CAMERA_TREE_MODE="equal-length-wrong-post-caption"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+if wait_for_exact_post_caption "day 42 ok" 2 0; then
+  fail_test "equal-length wrong text must not satisfy exact published-post proof"
+fi
+
+CAMERA_TREE_MODE="home-without-post"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+if wait_for_exact_post_caption "day 42 ok" 2 0; then
+  fail_test "Home route transition alone must not satisfy published-post proof"
+fi
+
+CAMERA_TREE_MODE="exact-post-caption"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+wait_for_exact_post_caption "day 42 ok" 2 0 || \
+  fail_test "exact unique caption inside merged post semantics must satisfy terminal proof"
+
+CAMERA_TREE_MODE="exact-optimistic-post-caption"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+wait_for_exact_post_caption "day 42 ok" 2 0 || \
+  fail_test "exact caption plus same-post optimistic status must satisfy terminal proof"
+
+CAMERA_TREE_MODE="unrelated-caption-static-text"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+if wait_for_exact_post_caption "day 42 ok" 2 0; then
+  fail_test "exact caption in an unrelated static text must not borrow post evidence from sibling elements"
 fi
 
 CAMERA_TREE_MODE="compose-ready"
@@ -383,6 +505,32 @@ wait_for_checkin_post_completion 5 0 || \
   fail_test "Post completion must require composer disappearance and the selected Home surface"
 [ "$(cat "$CAMERA_TREE_CALLS_FILE")" = "3" ] || \
   fail_test "Post completion must fail closed while the composer remains visible"
+
+CAMERA_TREE_MODE="post-retry-success"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+printf '0\n' > "$POST_TAP_CALLS_FILE"
+submit_checkin_post_with_one_delivery_retry "Submit fixture post" 1 1 0 || \
+  fail_test "unchanged positive composer must receive one bounded same-tree Post retry"
+[ "$(cat "$POST_TAP_CALLS_FILE")" = "2" ] || \
+  fail_test "Post delivery recovery must tap exactly twice including the initial attempt"
+
+CAMERA_TREE_MODE="post-inflight-no-retry"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+printf '0\n' > "$POST_TAP_CALLS_FILE"
+if submit_checkin_post_with_one_delivery_retry "Submit in-flight fixture" 1 1 0; then
+  fail_test "an in-flight composer must fail closed instead of retrying Post"
+fi
+[ "$(cat "$POST_TAP_CALLS_FILE")" = "1" ] || \
+  fail_test "Posting/Syncing/Retrying semantics must suppress the delivery retry"
+
+CAMERA_TREE_MODE="post-route-changed-no-retry"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+printf '0\n' > "$POST_TAP_CALLS_FILE"
+if submit_checkin_post_with_one_delivery_retry "Submit changed-route fixture" 1 1 0; then
+  fail_test "a route that left the composer without reaching Home must fail closed"
+fi
+[ "$(cat "$POST_TAP_CALLS_FILE")" = "1" ] || \
+  fail_test "route change must suppress the delivery retry"
 unset -f sleep
 
 for flow_file in \
@@ -393,10 +541,12 @@ do
     fail_test "$(basename "$flow_file") must fail closed until captured media semantics appear"
   grep -Fq 'wait_for_camera_state "compose"' "$flow_file" || \
     fail_test "$(basename "$flow_file") must fail closed until the real composer appears"
-  grep -Fq 'tap_checkin_route_control_by_label "Post" "AXButton"' "$flow_file" || \
-    fail_test "$(basename "$flow_file") must submit Post at the scaled rendered coordinate"
-  grep -Fq 'wait_for_checkin_post_completion' "$flow_file" || \
-    fail_test "$(basename "$flow_file") must fail closed until Post returns to Home"
+  grep -Fq 'submit_checkin_post_with_one_delivery_retry' "$flow_file" || \
+    fail_test "$(basename "$flow_file") must share the bounded Post delivery-retry contract"
+  grep -Fq 'wait_for_exact_post_caption' "$flow_file" || \
+    fail_test "$(basename "$flow_file") must prove the exact unique caption in a rendered post"
+  grep -Fq 'wait_for_checkin_input_progress' "$flow_file" || \
+    fail_test "$(basename "$flow_file") must name the pre-submit character assertion honestly"
   grep -Fq 'dismiss_checkin_route_keyboard' "$flow_file" || \
     fail_test "$(basename "$flow_file") must dismiss the keyboard before resolving Post"
 done

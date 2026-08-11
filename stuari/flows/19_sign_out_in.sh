@@ -35,10 +35,29 @@ fi
 
 capture "19_after_sign_out"
 
-# Sign back in with same credentials
+# Exercise the persisted auth boundary independently of the in-process
+# sign-out transition. The explicit terminate keeps this checkpoint visible
+# in the flow and makes the ordering contract testable.
+terminate_app
+fresh_launch; sleep 2
+
+if on_auth_page && ! on_home_page; then
+  pass "Auth page survives terminate/relaunch with Home absent"
+else
+  fail "Terminate/relaunch did not preserve the signed-out auth page with Home absent"
+fi
+
+capture "19_after_terminate_relaunch"
+
+# Sign back in with same credentials only after the post-relaunch auth
+# checkpoint has passed.
 if has_dev_magic_login; then
   login_with_dev_magic
   sleep 2
+  if on_onboarding_page; then
+    complete_onboarding
+    sleep 2
+  fi
   if on_home_page; then
     pass "Sign-in after sign-out reached Home"
   else

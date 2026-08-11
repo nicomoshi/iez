@@ -15,14 +15,12 @@ _FIXTURES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=auth.sh
 source "$_FIXTURES_DIR/auth.sh"
 
-# Reserved, idempotently rebuilt occurrence fixture. The fixed identity lets
-# flows 05/06 select exactly this card even when other habits are present in
-# the carousel, while the transaction below removes the previous occurrence
-# graph before materializing a fresh authoritative row.
-DUE_NOW_HABIT_GROUP_ID="bbbb0000-0000-0000-0000-000000000010"
-DUE_NOW_HABIT_CARD_ID="habit_card_$DUE_NOW_HABIT_GROUP_ID"
-DUE_NOW_HABIT_NAME="IEZ Due Now Check-In"
-export DUE_NOW_HABIT_GROUP_ID DUE_NOW_HABIT_CARD_ID DUE_NOW_HABIT_NAME
+# Each occurrence-capture lifecycle owns a fresh production-shaped group UUID.
+# Reusing one deleted UUID lets stale local posts/outbox state masquerade as the
+# new fixture, which cannot happen for real user-created groups.
+DUE_NOW_HABIT_GROUP_ID=""
+DUE_NOW_HABIT_CARD_ID=""
+DUE_NOW_HABIT_NAME=""
 
 stuari_fixture_app_container_data_path() {
   if [ -n "${STUARI_FIXTURE_APP_CONTAINER_DATA_PATH:-}" ]; then
@@ -104,6 +102,95 @@ unique_id() {
   printf '%s_%s_%s' "$prefix" "$(now_epoch)" "$(rand_tail)"
 }
 
+new_due_now_occurrence_fixture_identity() {
+  local group_id="" short_id=""
+  command -v uuidgen >/dev/null 2>&1 || return 1
+  group_id="$(uuidgen | tr '[:upper:]' '[:lower:]')" || return 1
+  [[ "$group_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || return 1
+  short_id="${group_id%%-*}"
+
+  DUE_NOW_HABIT_GROUP_ID="$group_id"
+  DUE_NOW_HABIT_CARD_ID="habit_card_$group_id"
+  DUE_NOW_HABIT_NAME="IEZ Due Now $short_id"
+  export DUE_NOW_HABIT_GROUP_ID DUE_NOW_HABIT_CARD_ID DUE_NOW_HABIT_NAME
+}
+
+if ! new_due_now_occurrence_fixture_identity; then
+  printf 'Could not allocate a dynamic due-now fixture identity\n' >&2
+  return 1
+fi
+
+validate_due_now_fixture_identity() {
+  [[ "$DUE_NOW_HABIT_GROUP_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || return 1
+  [ "$DUE_NOW_HABIT_CARD_ID" = "habit_card_$DUE_NOW_HABIT_GROUP_ID" ] || return 1
+  [[ "$DUE_NOW_HABIT_NAME" =~ ^IEZ\ Due\ Now\ [0-9a-f]{8}$ ]] || return 1
+  [ "${#DUE_NOW_HABIT_NAME}" -le 40 ]
+}
+
+validate_due_now_occurrence_id() {
+  [[ "$1" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]
+}
+
+record_due_now_fixture_occurrence_ownership() {
+  local occurrence_id="$1"
+  validate_due_now_fixture_identity || return 1
+  validate_due_now_occurrence_id "$occurrence_id" || return 1
+  STUARI_DUE_NOW_OCCURRENCE_ID="$occurrence_id"
+  export STUARI_DUE_NOW_OCCURRENCE_ID
+}
+
+owned_due_now_fixture_occurrence_id() {
+  local occurrence_id="${STUARI_DUE_NOW_OCCURRENCE_ID:-}"
+  validate_due_now_fixture_identity || return 1
+  validate_due_now_occurrence_id "$occurrence_id" || return 1
+  printf '%s\n' "$occurrence_id"
+}
+
+parse_single_due_now_occurrence_id() {
+  local query_json="$1" occurrence_id=""
+  occurrence_id="$(
+    printf '%s\n' "$query_json" | jq -er '
+      select(type == "array" and length == 1)
+      | .[0]
+      | select(type == "object")
+      | .occurrence_id
+      | select(type == "string")
+    ' 2>/dev/null
+  )" || return 1
+  if [[ ! "$occurrence_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+    return 1
+  fi
+  printf '%s\n' "$occurrence_id"
+}
+
+query_due_now_occurrence_id() {
+  local sql_file="" query_json="" occurrence_id=""
+  validate_due_now_fixture_identity || return 1
+  sql_file="$(mktemp "${TMPDIR:-/tmp}/stuari_due_now_occurrence_lookup.XXXXXX")" || return 1
+  cat >"$sql_file" <<SQL
+select o.id::text as occurrence_id
+  from stuari_dev.habit_occurrences o
+  join stuari_dev.habit_occurrence_member_states ms
+    on ms.occurrence_id = o.id
+ where o.habit_id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
+   and ms.member_id = '$STUARI_AUTH_ALICE_USER_ID'::uuid
+   and o.opens_at <= clock_timestamp()
+   and o.submission_closes_at >= clock_timestamp()
+   and ms.status in ('open', 'overdue')
+   and ms.post_id is null
+ order by o.opens_at desc
+ limit 1;
+SQL
+  if ! query_json="$(run_stuari_linked_sql_file_json \
+    "$sql_file" "Due-now occurrence ownership lookup failed")"; then
+    rm -f "$sql_file"
+    return 1
+  fi
+  rm -f "$sql_file"
+  occurrence_id="$(parse_single_due_now_occurrence_id "$query_json")" || return 1
+  printf '%s\n' "$occurrence_id"
+}
+
 # ── Fixtures ────────────────────────────────────────────────────────
 
 # test_email — test+$(epoch)@stuari.dev
@@ -176,8 +263,8 @@ test_invite_code() {
 # simulator's local SQLite database and not an app-side eligibility bypass.
 # The SQL calls the existing occurrence schedule materializer, then verifies
 # the rows consumed by list_my_occurrence_snapshots_v2 are present and open.
-# Only alice@seed.dev is supported because the flow login defaults to that
-# authenticated account and the fixed card must remain deterministic.
+# Only the verified Alice seed account is supported because the flow login
+# defaults to that authenticated account.
 reseed_due_now_occurrence_fixture() {
   if ! command -v supabase >/dev/null 2>&1; then
     info "Supabase CLI not installed — cannot provision due-now occurrence fixture"
@@ -189,16 +276,29 @@ reseed_due_now_occurrence_fixture() {
     return 1
   fi
 
-  local sql_file query_json occurrence_id
+  local sql_file query_json="" occurrence_id="" query_succeeded=0
+  if ! new_due_now_occurrence_fixture_identity; then
+    info "Could not allocate a fresh due-now fixture identity"
+    return 1
+  fi
+  validate_due_now_fixture_identity || {
+    info "Fresh due-now fixture identity failed validation"
+    return 1
+  }
+
   sql_file=$(mktemp "${TMPDIR:-/tmp}/stuari_due_now_occurrence.XXXXXX") || {
     info "Could not allocate temporary due-now occurrence fixture SQL"
     return 1
   }
 
-  cat >"$sql_file" <<'SQL'
+  STUARI_DUE_NOW_FIXTURE_CLEANUP_REQUIRED=1
+  export STUARI_DUE_NOW_FIXTURE_CLEANUP_REQUIRED
+  unset STUARI_DUE_NOW_OCCURRENCE_ID
+
+  cat >"$sql_file" <<SQL
 begin;
 
-do $fixture$
+do \$fixture\$
 declare
   _user_id uuid;
   _rules jsonb;
@@ -215,27 +315,23 @@ begin
     into _user_id
     from auth.users au
     join stuari_dev.users su on su.id = au.id
-   where au.id = 'aaaa0000-0000-0000-0000-000000000001'::uuid
-     and au.email = 'alice@seed.dev'
-     and su.email = 'alice@seed.dev'
+   where au.id = '$STUARI_AUTH_ALICE_USER_ID'::uuid
+     and au.email = '$STUARI_AUTH_ALICE_EMAIL'
+     and su.email = '$STUARI_AUTH_ALICE_EMAIL'
    limit 1;
   if _user_id is null then
     raise exception 'iez_due_now_fixture_seed_account_missing';
   end if;
 
-  -- Deleting the reserved group cascades its old schedule, periods,
-  -- occurrences, states, baselines, and any prior fixture posts. Restrict the
-  -- delete to the expected owner/name so a reused reserved id fails closed
-  -- instead of deleting an unrelated group.
-  delete from stuari_dev.groups
-   where id = 'bbbb0000-0000-0000-0000-000000000010'::uuid
-     and name = 'IEZ Due Now Check-In'
-     and created_by = _user_id;
+  -- The UUID and bounded name are fresh per lifecycle. A collision must
+  -- fail closed instead of mutating a group owned by another run.
   if exists (
-    select 1 from stuari_dev.groups
-     where id = 'bbbb0000-0000-0000-0000-000000000010'::uuid
+    select 1
+      from stuari_dev.groups
+     where id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
+        or (name = '$DUE_NOW_HABIT_NAME' and created_by = _user_id)
   ) then
-    raise exception 'iez_due_now_fixture_reserved_id_occupied';
+    raise exception 'iez_due_now_fixture_dynamic_id_collision';
   end if;
 
   _rules := jsonb_build_object(
@@ -256,8 +352,8 @@ begin
   insert into stuari_dev.groups (
     id, name, description, image_url, created_by, rules
   ) values (
-    'bbbb0000-0000-0000-0000-000000000010'::uuid,
-    'IEZ Due Now Check-In',
+    '$DUE_NOW_HABIT_GROUP_ID'::uuid,
+    '$DUE_NOW_HABIT_NAME',
     'Reserved iEZ occurrence capture fixture',
     'https://picsum.photos/640/640?stuari-iez-due-now',
     _user_id,
@@ -267,7 +363,7 @@ begin
   insert into stuari_dev.group_members (
     group_id, user_id, role, current_streak, longest_streak, total_check_ins
   ) values (
-    'bbbb0000-0000-0000-0000-000000000010'::uuid,
+    '$DUE_NOW_HABIT_GROUP_ID'::uuid,
     _user_id,
     'owner',
     0,
@@ -279,7 +375,7 @@ begin
   -- path. Passing the seed owner explicitly preserves the owner/member
   -- contract while keeping this setup independent of a simulator session.
   select stuari_dev.__occurrence_publish_schedule_v2(
-    'bbbb0000-0000-0000-0000-000000000010'::uuid,
+    '$DUE_NOW_HABIT_GROUP_ID'::uuid,
     'daily'::stuari_dev.habit_frequency,
     'Australia/Sydney',
     _rules,
@@ -297,7 +393,7 @@ begin
   select p.id
     into _baseline_period_id
     from stuari_dev.habit_periods p
-   where p.habit_id = 'bbbb0000-0000-0000-0000-000000000010'::uuid
+   where p.habit_id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
      and p.starts_at <= clock_timestamp()
    order by p.starts_at desc
    limit 1;
@@ -308,7 +404,7 @@ begin
   insert into stuari_dev.habit_streak_baselines (
     habit_id, member_id, baseline_streak, cutover_period_id, audit
   ) values (
-    'bbbb0000-0000-0000-0000-000000000010'::uuid,
+    '$DUE_NOW_HABIT_GROUP_ID'::uuid,
     _user_id,
     0,
     _baseline_period_id,
@@ -332,7 +428,7 @@ begin
       on ms.occurrence_id = o.id and ms.member_id = _user_id
     join stuari_dev.habit_streak_baselines b
       on b.habit_id = o.habit_id and b.member_id = _user_id
-   where o.habit_id = 'bbbb0000-0000-0000-0000-000000000010'::uuid
+   where o.habit_id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
      and o.opens_at <= clock_timestamp()
      and o.submission_closes_at >= clock_timestamp()
      and ms.status in ('open', 'overdue')
@@ -351,12 +447,12 @@ begin
   select count(*)
     into _rpc_count
     from stuari_dev.list_my_occurrence_snapshots_v2(
-      array['bbbb0000-0000-0000-0000-000000000010'::uuid],
+      array['$DUE_NOW_HABIT_GROUP_ID'::uuid],
       'current',
       0,
       100
     ) snapshot
-   where snapshot.habit_id = 'bbbb0000-0000-0000-0000-000000000010'::uuid
+   where snapshot.habit_id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
      and snapshot.status in ('open', 'overdue')
      and snapshot.post_id is null
      and snapshot.schedule_version >= 1
@@ -365,7 +461,7 @@ begin
     raise exception 'iez_due_now_fixture_rpc_expected_one_open_snapshot (got %)', _rpc_count;
   end if;
 end
-$fixture$;
+\$fixture\$;
 
 commit;
 
@@ -373,8 +469,8 @@ select o.id::text as occurrence_id
   from stuari_dev.habit_occurrences o
   join stuari_dev.habit_occurrence_member_states ms
     on ms.occurrence_id = o.id
- where o.habit_id = 'bbbb0000-0000-0000-0000-000000000010'::uuid
-   and ms.member_id = 'aaaa0000-0000-0000-0000-000000000001'::uuid
+ where o.habit_id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
+   and ms.member_id = '$STUARI_AUTH_ALICE_USER_ID'::uuid
    and o.opens_at <= clock_timestamp()
    and o.submission_closes_at >= clock_timestamp()
    and ms.status in ('open', 'overdue')
@@ -383,24 +479,26 @@ select o.id::text as occurrence_id
  limit 1;
 SQL
 
-  if ! query_json="$(run_stuari_linked_sql_file_json \
+  if query_json="$(run_stuari_linked_sql_file_json \
     "$sql_file" "Due-now occurrence fixture reseed failed")"; then
-    rm -f "$sql_file"
-    return 1
+    query_succeeded=1
   fi
   rm -f "$sql_file"
 
-  occurrence_id="$(
-    printf '%s\n' "$query_json" | jq -er '
-      .[]? | .occurrence_id | select(type == "string")
-    ' 2>/dev/null | head -1
-  )"
-  if [[ ! "$occurrence_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
-    info "Due-now occurrence fixture did not return one authoritative occurrence id"
+  if [ "$query_succeeded" = "1" ]; then
+    occurrence_id="$(parse_single_due_now_occurrence_id "$query_json")" || occurrence_id=""
+  fi
+  if [ -z "$occurrence_id" ]; then
+    info "Due-now occurrence fixture output was unavailable or malformed; recovering exact ownership once"
+    occurrence_id="$(query_due_now_occurrence_id)" || occurrence_id=""
+    if [ -n "$occurrence_id" ]; then
+      record_due_now_fixture_occurrence_ownership "$occurrence_id" || return 1
+    fi
+    # The setup response contract failed even if recovery found enough state
+    # for the caller's cleanup trap to delete the committed fixture exactly.
     return 1
   fi
-  STUARI_DUE_NOW_OCCURRENCE_ID="$occurrence_id"
-  export STUARI_DUE_NOW_OCCURRENCE_ID
+  record_due_now_fixture_occurrence_ownership "$occurrence_id" || return 1
 
   info "Reseeded authenticated Alice due-now occurrence fixture ($DUE_NOW_HABIT_GROUP_ID, occurrence=$STUARI_DUE_NOW_OCCURRENCE_ID)"
   return 0
@@ -408,16 +506,27 @@ SQL
 
 cleanup_due_now_occurrence_fixture() {
   if ! command -v supabase >/dev/null 2>&1; then
-    info "Supabase CLI not installed — cannot clean reserved due-now occurrence fixture"
+    info "Supabase CLI not installed — cannot clean due-now occurrence fixture"
     return 1
   fi
 
   if ! persisted_session_is_verified_alice; then
-    info "Reserved due-now occurrence cleanup requires a verified Alice persisted session"
+    info "Due-now occurrence cleanup requires a verified Alice persisted session"
     return 1
   fi
 
-  local sql_file
+  validate_due_now_fixture_identity || {
+    info "Due-now occurrence cleanup identity is invalid"
+    return 1
+  }
+
+  local sql_file expected_occurrence_id="${STUARI_DUE_NOW_OCCURRENCE_ID:-}"
+  if [ -n "$expected_occurrence_id" ] &&
+    ! validate_due_now_occurrence_id "$expected_occurrence_id"; then
+    info "Due-now occurrence cleanup occurrence ownership is invalid"
+    return 1
+  fi
+
   sql_file=$(mktemp "${TMPDIR:-/tmp}/stuari_due_now_occurrence_cleanup.XXXXXX") || {
     info "Could not allocate temporary due-now occurrence cleanup SQL"
     return 1
@@ -446,17 +555,71 @@ begin
     raise exception 'iez_due_now_fixture_cleanup_seed_account_missing';
   end if;
 
+  if (
+    select count(*)
+      from stuari_dev.groups
+     where id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
+       and name = '$DUE_NOW_HABIT_NAME'
+       and created_by = _user_id
+  ) <> 1 then
+    raise exception 'iez_due_now_fixture_cleanup_group_mismatch';
+  end if;
+
+  if (
+    select count(*)
+      from stuari_dev.group_members
+     where group_id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
+       and user_id = _user_id
+  ) <> 1 then
+    raise exception 'iez_due_now_fixture_cleanup_alice_membership_mismatch';
+  end if;
+end
+\$fixture\$;
+SQL
+
+  if [ -n "$expected_occurrence_id" ]; then
+    cat >>"$sql_file" <<SQL
+do \$fixture\$
+declare
+  _user_id uuid;
+begin
+  select id
+    into _user_id
+    from stuari_dev.users
+   where id = '$STUARI_AUTH_ALICE_USER_ID'::uuid
+     and email = '$STUARI_AUTH_ALICE_EMAIL'
+   limit 1;
+
+  if _user_id is null or (
+    select count(*)
+      from stuari_dev.habit_occurrences o
+      join stuari_dev.habit_occurrence_member_states ms
+        on ms.occurrence_id = o.id
+     where o.id = '$expected_occurrence_id'::uuid
+       and o.habit_id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
+       and ms.member_id = _user_id
+  ) <> 1 then
+    raise exception 'iez_due_now_fixture_cleanup_occurrence_mismatch';
+  end if;
+end
+\$fixture\$;
+SQL
+  fi
+
+  cat >>"$sql_file" <<SQL
+do \$fixture\$
+begin
   delete from stuari_dev.groups
    where id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
      and name = '$DUE_NOW_HABIT_NAME'
-     and created_by = _user_id;
+     and created_by = '$STUARI_AUTH_ALICE_USER_ID'::uuid;
 
   if exists (
     select 1
       from stuari_dev.groups
      where id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
   ) then
-    raise exception 'iez_due_now_fixture_cleanup_reserved_id_occupied';
+    raise exception 'iez_due_now_fixture_cleanup_dynamic_id_occupied';
   end if;
 end
 \$fixture\$;
@@ -471,7 +634,9 @@ SQL
     return $rc
   fi
 
-  info "Cleaned reserved due-now occurrence fixture ($DUE_NOW_HABIT_GROUP_ID)"
+  STUARI_DUE_NOW_FIXTURE_CLEANUP_REQUIRED=0
+  export STUARI_DUE_NOW_FIXTURE_CLEANUP_REQUIRED
+  info "Cleaned due-now occurrence fixture ($DUE_NOW_HABIT_GROUP_ID)"
   return 0
 }
 
@@ -480,7 +645,11 @@ wait_for_due_now_occurrence_drift_authority() {
   local db_path drift_probe now_ms group_count=0 occurrence_count=0
   local expected_occurrence_id="${STUARI_DUE_NOW_OCCURRENCE_ID:-}"
 
-  if [[ ! "$expected_occurrence_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+  if ! validate_due_now_fixture_identity; then
+    info "Dynamic due-now fixture identity is missing or invalid"
+    return 1
+  fi
+  if ! validate_due_now_occurrence_id "$expected_occurrence_id"; then
     info "Exact remote due-now occurrence id is missing or invalid"
     return 1
   fi
