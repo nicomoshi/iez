@@ -79,10 +79,11 @@ run_iez "$IEZ" ui swipe down >/dev/null 2>&1
 sleep 0.5
 
 # Walk forward through the PageView wizard. Some steps have gated
-# Continue buttons — we provide input where needed. Stop as soon as
-# "Save Changes" appears, or after 10 iterations.
+# Continue buttons — we provide input where needed. Stop as soon as either
+# exact review submit label appears, or after 10 iterations.
 for step in $(seq 1 10); do
-  if has_label "Save Changes"; then
+  if [ -n "$(first_coords_matching_exact_labels \
+      "Save Changes" "Save Changes: habit review")" ]; then
     info "Reached Review page at step $step"
     break
   fi
@@ -130,8 +131,9 @@ for step in $(seq 1 10); do
 done
 
 # Final save
-if has_label "Save Changes"; then
-  tap_element "Save Changes" "label" "Save Changes"
+if tap_first_matching_exact_labels \
+    "Save Changes" "Save Changes: habit review" \
+    "Save Changes"; then
   sleep 2
   pass "Submitted edit habit form"
 else

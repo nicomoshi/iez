@@ -214,6 +214,52 @@ enabled_action_coords="$(
   fail_test "exact wizard action helper must ignore disabled semantic controls"
 pass_test "Flow 20 uses enabled exact legacy-or-semantic wizard actions"
 
+# Flow 20 review submit action: accept only the two exact AX labels exposed by
+# the legacy and semantic review buttons. Prefix/suffix collisions must not
+# satisfy the selector.
+FLOW20_FILE="$ROOT_DIR/stuari/flows/20_habit_edit.sh"
+flow20_save_block="$(sed -n '/^# Final save/,$p' "$FLOW20_FILE")"
+printf '%s\n' "$flow20_save_block" \
+  | grep -Fq 'tap_first_matching_exact_labels' || \
+  fail_test "Flow 20 review submit must use the exact-label tap helper"
+printf '%s\n' "$flow20_save_block" \
+  | grep -Fq '"Save Changes: habit review"' || \
+  fail_test "Flow 20 review submit must accept the semantic Save Changes label"
+if printf '%s\n' "$flow20_save_block" \
+  | grep -Eq 'has_label "Save Changes"|tap_element "Save Changes" "label"'; then
+  fail_test "Flow 20 review submit must not use legacy-only label probing or tapping"
+fi
+save_submit_line="$(grep -n 'if tap_first_matching_exact_labels' "$FLOW20_FILE" | tail -1 | cut -d: -f1)"
+submitted_line="$(grep -n 'pass "Submitted edit habit form"' "$FLOW20_FILE" | cut -d: -f1)"
+[ -n "$save_submit_line" ] && [ -n "$submitted_line" ] && \
+  [ "$save_submit_line" -lt "$submitted_line" ] || \
+  fail_test "Flow 20 must report submission only after the exact save tap succeeds"
+
+save_review_legacy_fixture='{"ok":true,"data":{"elements":[{"label":"Save Changes","frame":{"x":24,"y":600,"width":354,"height":56}}]}}'
+save_review_semantic_fixture='{"ok":true,"data":{"elements":[{"label":"Save Changes: habit review","frame":{"x":24,"y":600,"width":354,"height":56}}]}}'
+save_review_collision_fixture='{"ok":true,"data":{"elements":[{"label":"Save Changes now","frame":{"x":24,"y":500,"width":354,"height":56}},{"label":"Save Changes: habit review extra","frame":{"x":24,"y":560,"width":354,"height":56}},{"label":"Not Save Changes","frame":{"x":24,"y":620,"width":354,"height":56}}]}}'
+
+save_review_legacy_coords="$(
+  run_iez() { printf '%s\n' "$save_review_legacy_fixture"; }
+  first_coords_matching_exact_labels "Save Changes" "Save Changes: habit review"
+)"
+save_review_semantic_coords="$(
+  run_iez() { printf '%s\n' "$save_review_semantic_fixture"; }
+  first_coords_matching_exact_labels "Save Changes" "Save Changes: habit review"
+)"
+save_review_collision_coords="$(
+  run_iez() { printf '%s\n' "$save_review_collision_fixture"; }
+  first_coords_matching_exact_labels "Save Changes" "Save Changes: habit review"
+)"
+
+[ "$save_review_legacy_coords" = "201,628" ] || \
+  fail_test "Flow 20 review selector accepts the exact legacy Save Changes label"
+[ "$save_review_semantic_coords" = "201,628" ] || \
+  fail_test "Flow 20 review selector accepts the exact semantic Save Changes label"
+[ -z "$save_review_collision_coords" ] || \
+  fail_test "Flow 20 review selector rejects unrelated and suffix-collision labels"
+pass_test "Flow 20 review selector accepts both exact labels and fails closed on collisions"
+
 # -- 6. Flow 34 strict case-insensitive habit-name wait --------------
 NAME_WAIT_CALLS_FILE="$TMP_DIR/name_wait.calls"
 printf '0\n' > "$NAME_WAIT_CALLS_FILE"
