@@ -30,12 +30,15 @@ cleanup_photo_due_now_fixture() {
   fi
   PHOTO_FIXTURE_CLEANUP_RAN=1
   if [ "${STUARI_DUE_NOW_FIXTURE_CLEANUP_REQUIRED:-0}" != "1" ]; then
+    mark_flow_cleanup_complete
     return 0
   fi
   if ! cleanup_due_now_occurrence_fixture; then
+    mark_flow_cleanup_required
     fail "Reserved due-now occurrence fixture cleanup succeeded for photo flow"
     return 1
   fi
+  mark_flow_cleanup_complete
 }
 
 finish_photo_flow() {
@@ -94,9 +97,15 @@ camera_shell_visible() {
     has_id "camera_mode_photo_button" ||
     tree_contains "Take photo"
 }
+if ! fail_fast_stuari_foreground_app_identity "photo flow carousel selection before"; then
+  finish_photo_flow
+fi
 if ! select_habit_card_by_id "$habit_id"; then
   fail "Reserved due-now fixture card selected exactly for photo flow"
   capture "05_habit_selection_failed"
+  finish_photo_flow
+fi
+if ! fail_fast_stuari_foreground_app_identity "photo flow carousel selection after"; then
   finish_photo_flow
 fi
 
@@ -120,19 +129,9 @@ fi
 pass "Selected exact actionable due-now fixture card"
 capture "05_habit_selected"
 
-r=$(run_iez "$IEZ" ui tap --id "$habit_id")
-if [ "$(json_ok "$r")" = "true" ]; then
-  pass "Tap: Tap habit card by id ('$habit_id')"
-else
-  info "Habit id tap did not report success; trying visible card coordinates"
-fi
-
-sleep 1
-if ! camera_shell_visible; then
-  habit_coords=$(coords_for_id "$habit_id")
-  if [ -n "$habit_coords" ] && [ "$habit_coords" != "null" ] && [ "$habit_coords" != "," ]; then
-    tap_element "$habit_coords" "coords" "Tap visible habit card center ('$habit_id')"
-  fi
+if ! tap_element "$habit_id" "id" "Tap exact actionable habit card ('$habit_id')" "AXButton"; then
+  capture "05_habit_tap_failed"
+  finish_photo_flow
 fi
 sleep 1
 
@@ -179,7 +178,11 @@ pass "Photo capture opened the real post composer"
 
 # Type an optional caption. Keep the value in memory so the feed assertion can
 # prove the just-submitted post is visible immediately, before confirmation.
-post_description="$(test_post_description)"
+post_description="$(stuari_due_now_fixture_post_caption)"
+if [ -z "$post_description" ]; then
+  fail "Unique photo post caption derived from the active due-now fixture"
+  finish_photo_flow
+fi
 if ! type_into_checkin_route_field "Share your progress..." "$post_description"; then
   capture "05_caption_interaction_failed"
   finish_photo_flow
@@ -226,7 +229,9 @@ fi
 go_home
 sleep 1
 if ! wait_for_visible_habit_card 3; then
-  run_iez "$IEZ" ui swipe --from "200,330" --to "200,780" >/dev/null
+  if ! stuari_app_swipe "200,330" "200,780" "Reveal habit carousel after photo post"; then
+    fail "Reveal habit carousel after photo post"
+  fi
   sleep 1
 fi
 if ! wait_for_visible_habit_card 8; then

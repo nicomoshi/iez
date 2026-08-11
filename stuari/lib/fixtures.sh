@@ -103,15 +103,15 @@ unique_id() {
 }
 
 new_due_now_occurrence_fixture_identity() {
-  local group_id="" short_id=""
+  local group_id="" uuid_token=""
   command -v uuidgen >/dev/null 2>&1 || return 1
   group_id="$(uuidgen | tr '[:upper:]' '[:lower:]')" || return 1
   [[ "$group_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || return 1
-  short_id="${group_id%%-*}"
+  uuid_token="${group_id//-/}"
 
   DUE_NOW_HABIT_GROUP_ID="$group_id"
   DUE_NOW_HABIT_CARD_ID="habit_card_$group_id"
-  DUE_NOW_HABIT_NAME="IEZ Due Now $short_id"
+  DUE_NOW_HABIT_NAME="IEZ Due $uuid_token"
   export DUE_NOW_HABIT_GROUP_ID DUE_NOW_HABIT_CARD_ID DUE_NOW_HABIT_NAME
 }
 
@@ -123,8 +123,30 @@ fi
 validate_due_now_fixture_identity() {
   [[ "$DUE_NOW_HABIT_GROUP_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || return 1
   [ "$DUE_NOW_HABIT_CARD_ID" = "habit_card_$DUE_NOW_HABIT_GROUP_ID" ] || return 1
-  [[ "$DUE_NOW_HABIT_NAME" =~ ^IEZ\ Due\ Now\ [0-9a-f]{8}$ ]] || return 1
+  local uuid_token="${DUE_NOW_HABIT_GROUP_ID//-/}"
+  [ "$DUE_NOW_HABIT_NAME" = "IEZ Due $uuid_token" ] || return 1
+  [[ "$DUE_NOW_HABIT_NAME" =~ ^IEZ\ Due\ [0-9a-f]{32}$ ]] || return 1
   [ "${#DUE_NOW_HABIT_NAME}" -le 40 ]
+}
+
+validate_stuari_alice_sql_inputs() {
+  [[ "$STUARI_AUTH_ALICE_USER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || return 1
+  [ "$STUARI_AUTH_ALICE_EMAIL" = "alice@seed.dev" ] || return 1
+}
+
+validate_seeded_group_fixture_inputs() {
+  validate_stuari_alice_sql_inputs || return 1
+  [[ "$SEEDED_GROUP_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || return 1
+  [ "$STUARI_AUTH_BOB_USER_ID" = "aaaa0000-0000-0000-0000-000000000002" ] || return 1
+  [ "$STUARI_AUTH_BOB_EMAIL" = "bob@seed.dev" ] || return 1
+}
+
+validate_stuari_fixture_sql_inputs() {
+  validate_stuari_alice_sql_inputs || return 1
+  validate_due_now_fixture_identity || return 1
+  if [ -n "${STUARI_DUE_NOW_OCCURRENCE_ID:-}" ]; then
+    validate_due_now_occurrence_id "$STUARI_DUE_NOW_OCCURRENCE_ID" || return 1
+  fi
 }
 
 validate_due_now_occurrence_id() {
@@ -165,7 +187,7 @@ parse_single_due_now_occurrence_id() {
 
 query_due_now_occurrence_id() {
   local sql_file="" query_json="" occurrence_id=""
-  validate_due_now_fixture_identity || return 1
+  validate_stuari_fixture_sql_inputs || return 1
   sql_file="$(mktemp "${TMPDIR:-/tmp}/stuari_due_now_occurrence_lookup.XXXXXX")" || return 1
   cat >"$sql_file" <<SQL
 select o.id::text as occurrence_id
@@ -228,13 +250,18 @@ test_habit_name() {
 
 # test_chat_message — short deterministic message
 test_chat_message() {
-  printf 'stu test %s' "$(rand_tail)"
+  local token=""
+  token="$(uuidgen 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d '-' || true)"
+  [[ "$token" =~ ^[0-9a-f]{32}$ ]] || return 1
+  printf 'IEZ chat %s' "$token"
 }
 
 # test_comment — short comment text
 test_comment() {
-  # ASCII-only: emoji trip up simctl/AXe's text injection.
-  printf 'nice %s' "$(rand_tail)"
+  local token=""
+  token="$(uuidgen 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d '-' || true)"
+  [[ "$token" =~ ^[0-9a-f]{32}$ ]] || return 1
+  printf 'IEZ comment %s' "$token"
 }
 
 # test_journal_entry — multi-line journal entry
@@ -252,6 +279,12 @@ test_post_description() {
   printf 'day %s ok' "$(rand_tail)"
 }
 
+stuari_due_now_fixture_post_caption() {
+  validate_due_now_fixture_identity || return 1
+  local uuid_token="${DUE_NOW_HABIT_GROUP_ID//-/}"
+  printf 'IEZ due-now post %s' "$uuid_token"
+}
+
 # test_invite_code — bogus invite code for negative-path tests
 test_invite_code() {
   printf 'INV_%s' "$(rand_tail)"
@@ -266,6 +299,11 @@ test_invite_code() {
 # Only the verified Alice seed account is supported because the flow login
 # defaults to that authenticated account.
 reseed_due_now_occurrence_fixture() {
+  if [ "${STUARI_DUE_NOW_FIXTURE_CLEANUP_REQUIRED:-0}" = "1" ]; then
+    info "Due-now occurrence fixture already owns an active lifecycle; clean it up before reseeding"
+    return 1
+  fi
+
   if ! command -v supabase >/dev/null 2>&1; then
     info "Supabase CLI not installed — cannot provision due-now occurrence fixture"
     return 1
@@ -276,6 +314,11 @@ reseed_due_now_occurrence_fixture() {
     return 1
   fi
 
+  if ! validate_stuari_alice_sql_inputs; then
+    info "Alice fixture SQL inputs are invalid"
+    return 1
+  fi
+
   local sql_file query_json="" occurrence_id="" query_succeeded=0
   if ! new_due_now_occurrence_fixture_identity; then
     info "Could not allocate a fresh due-now fixture identity"
@@ -283,6 +326,10 @@ reseed_due_now_occurrence_fixture() {
   fi
   validate_due_now_fixture_identity || {
     info "Fresh due-now fixture identity failed validation"
+    return 1
+  }
+  validate_stuari_fixture_sql_inputs || {
+    info "Due-now fixture SQL inputs are invalid"
     return 1
   }
 
@@ -323,15 +370,22 @@ begin
     raise exception 'iez_due_now_fixture_seed_account_missing';
   end if;
 
-  -- The UUID and bounded name are fresh per lifecycle. A collision must
-  -- fail closed instead of mutating a group owned by another run.
+  -- The UUID and bounded name are fresh per lifecycle. Each collision class
+  -- fails explicitly instead of mutating a group owned by another run.
   if exists (
     select 1
       from stuari_dev.groups
      where id = '$DUE_NOW_HABIT_GROUP_ID'::uuid
-        or (name = '$DUE_NOW_HABIT_NAME' and created_by = _user_id)
   ) then
     raise exception 'iez_due_now_fixture_dynamic_id_collision';
+  end if;
+  if exists (
+    select 1
+      from stuari_dev.groups
+     where name = '$DUE_NOW_HABIT_NAME'
+       and created_by = _user_id
+  ) then
+    raise exception 'iez_due_now_fixture_dynamic_name_collision';
   end if;
 
   _rules := jsonb_build_object(
@@ -519,6 +573,10 @@ cleanup_due_now_occurrence_fixture() {
     info "Due-now occurrence cleanup identity is invalid"
     return 1
   }
+  validate_stuari_fixture_sql_inputs || {
+    info "Due-now occurrence cleanup SQL inputs are invalid"
+    return 1
+  }
 
   local sql_file expected_occurrence_id="${STUARI_DUE_NOW_OCCURRENCE_ID:-}"
   if [ -n "$expected_occurrence_id" ] &&
@@ -653,6 +711,10 @@ wait_for_due_now_occurrence_drift_authority() {
     info "Exact remote due-now occurrence id is missing or invalid"
     return 1
   fi
+  if ! validate_stuari_fixture_sql_inputs; then
+    info "Due-now Drift authority SQL inputs are invalid"
+    return 1
+  fi
 
   db_path="$(stuari_fixture_drift_db_path)" || {
     info "Could not resolve local Drift database path for due-now occurrence fixture"
@@ -669,6 +731,10 @@ wait_for_due_now_occurrence_drift_authority() {
 
   while [ "$attempt" -lt "$timeout" ]; do
     now_ms="$(stuari_fixture_now_epoch_ms)"
+    if ! [[ "$now_ms" =~ ^[0-9]+$ ]]; then
+      info "Due-now Drift authority timestamp is not numeric"
+      return 1
+    fi
     if ! drift_probe="$(stuari_fixture_sqlite_query "$db_path" "
       select
         (select count(*)
@@ -719,6 +785,10 @@ reseed_confirmation_fixtures() {
     info "Supabase CLI not installed — skipping confirmation fixture reseed"
     return 1
   fi
+  validate_seeded_group_fixture_inputs || {
+    info "Confirmation fixture identity is invalid"
+    return 1
+  }
 
   local sql_file
   sql_file=$(mktemp "${TMPDIR:-/tmp}/stuari_confirmation_fixtures.XXXXXX") || {
@@ -726,20 +796,28 @@ reseed_confirmation_fixtures() {
     return 1
   }
 
-  cat >"$sql_file" <<'EOF'
+  cat >"$sql_file" <<EOF
 begin;
+
+select pg_advisory_xact_lock(
+  hashtext('stuari_iez_confirmation_fixture_$SEEDED_GROUP_ID')
+);
 
 delete from stuari_dev.post_confirmations
 where post_id in (
   select id from stuari_dev.posts
-  where metadata ->> 'iez_fixture' = 'confirmation'
+  where group_id = '$SEEDED_GROUP_ID'::uuid
+    and metadata ->> 'iez_fixture' = 'confirmation'
 );
 
 delete from stuari_dev.posts
-where metadata ->> 'iez_fixture' = 'confirmation';
+where group_id = '$SEEDED_GROUP_ID'::uuid
+  and metadata ->> 'iez_fixture' = 'confirmation';
 
 with alice as (
-  select id from stuari_dev.users where email = 'alice@seed.dev' limit 1
+  select id from stuari_dev.users
+  where id = '$STUARI_AUTH_ALICE_USER_ID'::uuid
+    and email = '$STUARI_AUTH_ALICE_EMAIL'
 ), peers as (
   select id, name, ordinal
   from (
@@ -748,37 +826,19 @@ with alice as (
       ('aaaa0000-0000-0000-0000-000000000003'::uuid, 2)
   ) as peer_ids(id, ordinal)
   join stuari_dev.users u using (id)
-), target_groups as (
+), target_group as (
   select g.id, g.name, g.created_at
   from stuari_dev.groups g
   join stuari_dev.group_members gm on gm.group_id = g.id
   join alice on alice.id = gm.user_id
-  where g.deleted_at is null
-), peer_memberships as (
-  insert into stuari_dev.group_members (
-    group_id,
-    user_id,
-    role,
-    current_streak,
-    longest_streak,
-    total_check_ins,
-    joined_at
-  )
-  select
-    target_groups.id,
-    peers.id,
-    'member',
-    3,
-    5,
-    12,
-    now() - interval '30 days'
-  from target_groups
-  cross join peers
-  on conflict (group_id, user_id) do update set
-    current_streak = excluded.current_streak,
-    longest_streak = excluded.longest_streak,
-    total_check_ins = excluded.total_check_ins
-  returning group_id
+  where g.id = '$SEEDED_GROUP_ID'::uuid
+    and g.deleted_at is null
+    and (
+      select count(*)
+      from stuari_dev.group_members peer_members
+      join peers on peers.id = peer_members.user_id
+      where peer_members.group_id = g.id
+    ) = 2
 )
 insert into stuari_dev.posts (
   id,
@@ -800,13 +860,13 @@ insert into stuari_dev.posts (
 )
 select
   gen_random_uuid(),
-  target_groups.id,
+  target_group.id,
   peers.id,
   'checkIn',
   1,
   0,
   'https://picsum.photos/640/640?stuari-iez-confirm='
-    || target_groups.id::text || '-' || peers.ordinal::text,
+    || target_group.id::text || '-' || peers.ordinal::text,
   'photo',
   'pending',
   'group',
@@ -815,12 +875,24 @@ select
     else 'IEZ pending rejection fixture'
   end,
   coalesce(nullif(peers.name, ''), 'Peer'),
-  target_groups.name,
+  target_group.name,
   3,
   jsonb_build_object('iez_fixture', 'confirmation', 'ordinal', peers.ordinal),
   now() - (peers.ordinal || ' minutes')::interval
-from target_groups
+from target_group
 cross join peers;
+
+do \$fixture\$
+begin
+  if (
+    select count(*) from stuari_dev.posts
+    where group_id = '$SEEDED_GROUP_ID'::uuid
+      and metadata ->> 'iez_fixture' = 'confirmation'
+  ) <> 2 then
+    raise exception 'iez_confirmation_fixture_expected_exact_pair';
+  end if;
+end
+\$fixture\$;
 
 commit;
 EOF
@@ -841,6 +913,10 @@ reseed_feed_fixtures() {
     info "Supabase CLI not installed — skipping feed fixture reseed"
     return 1
   fi
+  validate_seeded_group_fixture_inputs || {
+    info "Feed fixture identity is invalid"
+    return 1
+  }
 
   local sql_file
   sql_file=$(mktemp "${TMPDIR:-/tmp}/stuari_feed_fixtures.XXXXXX") || {
@@ -848,59 +924,44 @@ reseed_feed_fixtures() {
     return 1
   }
 
-  cat >"$sql_file" <<'EOF'
+  cat >"$sql_file" <<EOF
 begin;
 
+select pg_advisory_xact_lock(
+  hashtext('stuari_iez_feed_fixture_$SEEDED_GROUP_ID')
+);
+
 delete from stuari_dev.comments
-where content ilike 'IEZ feed root comment%'
-   or content ilike 'nice %'
-   or content ilike 'replying %';
+where post_id in (
+  select id from stuari_dev.posts
+  where group_id = '$SEEDED_GROUP_ID'::uuid
+    and metadata ->> 'iez_fixture' = 'feed'
+);
 
 delete from stuari_dev.posts
-where metadata ->> 'iez_fixture' = 'feed';
+where group_id = '$SEEDED_GROUP_ID'::uuid
+  and metadata ->> 'iez_fixture' = 'feed';
 
 with alice as (
   select id, name
   from stuari_dev.users
-  where email = 'alice@seed.dev'
-  limit 1
+  where id = '$STUARI_AUTH_ALICE_USER_ID'::uuid
+    and email = '$STUARI_AUTH_ALICE_EMAIL'
 ), peer as (
   select id, name
   from stuari_dev.users
-  where email = 'bob@seed.dev'
-  limit 1
-), target_groups as (
+  where id = '$STUARI_AUTH_BOB_USER_ID'::uuid
+    and email = '$STUARI_AUTH_BOB_EMAIL'
+), target_group as (
   select g.id, g.name, g.created_at
   from stuari_dev.groups g
   join stuari_dev.group_members gm on gm.group_id = g.id
   join alice on alice.id = gm.user_id
-  where g.deleted_at is null
-  order by g.created_at desc
-), peer_memberships as (
-  insert into stuari_dev.group_members (
-    group_id,
-    user_id,
-    role,
-    current_streak,
-    longest_streak,
-    total_check_ins,
-    joined_at
-  )
-  select
-    target_groups.id,
-    peer.id,
-    'member',
-    7,
-    9,
-    18,
-    now() - interval '30 days'
-  from target_groups
-  cross join peer
-  on conflict (group_id, user_id) do update set
-    current_streak = excluded.current_streak,
-    longest_streak = excluded.longest_streak,
-    total_check_ins = excluded.total_check_ins
-  returning group_id, user_id
+  join stuari_dev.group_members peer_member
+    on peer_member.group_id = g.id
+  join peer on peer.id = peer_member.user_id
+  where g.id = '$SEEDED_GROUP_ID'::uuid
+    and g.deleted_at is null
 ), inserted_feed as (
   insert into stuari_dev.posts (
     id,
@@ -923,23 +984,23 @@ with alice as (
   )
   select
     gen_random_uuid(),
-    target_groups.id,
+    target_group.id,
     peer.id,
     'checkIn',
-    'https://picsum.photos/640/640?stuari-iez-feed=' || target_groups.id::text,
+    'https://picsum.photos/640/640?stuari-iez-feed=' || target_group.id::text,
     'photo',
     'confirmed',
     'group',
     'IEZ confirmed feed fixture for automated coverage',
     coalesce(nullif(peer.name, ''), 'Bob'),
-    target_groups.name,
+    target_group.name,
     7,
     1,
     1,
     1,
     jsonb_build_object('iez_fixture', 'feed'),
     now() - interval '12 minutes'
-  from target_groups
+  from target_group
   cross join peer
   returning id, group_id, user_id
 ), inserted_comments as (
@@ -974,6 +1035,18 @@ set
 from inserted_comments c
 where p.id = c.post_id;
 
+do \$fixture\$
+begin
+  if (
+    select count(*) from stuari_dev.posts
+    where group_id = '$SEEDED_GROUP_ID'::uuid
+      and metadata ->> 'iez_fixture' = 'feed'
+  ) <> 1 then
+    raise exception 'iez_feed_fixture_expected_exact_post';
+  end if;
+end
+\$fixture\$;
+
 commit;
 EOF
 
@@ -1003,7 +1076,7 @@ cleanup_generated_chat_messages() {
   cat >"$sql_file" <<'EOF'
 delete from stuari_dev.messages
 where group_id = 'bbbb0000-0000-0000-0000-000000000001'
-  and content like 'stu test %';
+  and content ~ '^IEZ chat [0-9a-f]{32}$';
 EOF
 
   run_stuari_linked_sql_file "$sql_file" "Generated chat cleanup failed"

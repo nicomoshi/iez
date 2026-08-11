@@ -13,6 +13,15 @@ source "$SCRIPT_DIR/../lib/navigation.sh"
 
 section "Flow 36: Upload Retry / Failure States"
 
+UPLOAD_FIXTURE_TOKEN="$(uuidgen 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d '-' || true)"
+if ! [[ "$UPLOAD_FIXTURE_TOKEN" =~ ^[0-9a-f]{32}$ ]]; then
+  fail "Unique upload-state fixture token available"
+  print_summary
+  exit $FAIL
+fi
+FAILED_MUTATION_ID="iez-upload-state-$UPLOAD_FIXTURE_TOKEN-failed"
+RETRYING_MUTATION_ID="iez-upload-state-$UPLOAD_FIXTURE_TOKEN-retrying"
+
 seed_upload_row() {
   local db="$1" id="$2" status="$3" retry_count="$4" last_error="$5"
   local checkpointed="${6:-false}"
@@ -93,13 +102,36 @@ SQL
 
 cleanup_upload_rows() {
   local db="$1"
-  sqlite3 "$db" "delete from pending_mutations where id like 'iez-upload-state-%';" >/dev/null 2>&1
+  sqlite3 "$db" "
+    delete from pending_mutations
+    where id in ('$FAILED_MUTATION_ID', '$RETRYING_MUTATION_ID');
+  " >/dev/null 2>&1 || return 1
+  [ "$(sqlite3 "$db" "
+    select count(*) from pending_mutations
+    where id in ('$FAILED_MUTATION_ID', '$RETRYING_MUTATION_ID');
+  " 2>/dev/null)" = "0" ]
+}
+
+run_upload_drift_write_with_app_stopped() {
+  terminate_app
+  "$@"
 }
 
 cleanup_upload_flow() {
-  [ -n "${DB_PATH:-}" ] && [ -f "$DB_PATH" ] && cleanup_upload_rows "$DB_PATH"
+  if [ -z "${DB_PATH:-}" ] || [ ! -f "$DB_PATH" ]; then
+    mark_flow_cleanup_complete
+    return 0
+  fi
+  if run_upload_drift_write_with_app_stopped cleanup_upload_rows "$DB_PATH"; then
+    mark_flow_cleanup_complete
+    return 0
+  fi
+  mark_flow_cleanup_required
+  return 1
 }
-trap cleanup_upload_flow EXIT INT TERM
+trap cleanup_upload_flow EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 assert_canonical_payload() {
   local db="$1" id="$2" expected_checkpoint="$3" count
@@ -133,10 +165,19 @@ assert_canonical_payload() {
   return 1
 }
 
+if ! ensure_verified_alice_session; then
+  fail "Verified Alice principal required before upload-state fixture mutation"
+  print_summary
+  exit $FAIL
+fi
 fresh_launch
 sleep 2
-if on_auth_page; then login_with_test_user; fi
 if on_onboarding_page; then complete_onboarding; fi
+if ! persisted_session_is_verified_alice; then
+  fail "Verified Alice principal preserved before upload-state fixture mutation"
+  print_summary
+  exit $FAIL
+fi
 go_home
 sleep 1.5
 capture "36_home_baseline"
@@ -156,41 +197,57 @@ if ! sqlite3 "$DB_PATH" "select count(*) from pending_mutations;" >/dev/null 2>&
   exit $FAIL
 fi
 
-LOCAL_USER_ID=$(sqlite3 "$DB_PATH" "select id from users where email = 'alice@seed.dev' order by updated_at desc limit 1;")
-[ -z "$LOCAL_USER_ID" ] && LOCAL_USER_ID=$(sqlite3 "$DB_PATH" "select id from users order by updated_at desc limit 1;")
-[ -z "$LOCAL_USER_ID" ] && LOCAL_USER_ID=$(sqlite3 "$DB_PATH" "select user_id from notifications order by created_at desc limit 1;")
-LOCAL_GROUP_ID=$(sqlite3 "$DB_PATH" "select id from groups where deleted_at is null order by updated_at desc limit 1;")
+LOCAL_USER_ID=$(sqlite3 "$DB_PATH" "
+  select id from users
+  where id = '$STUARI_AUTH_ALICE_USER_ID' and email = '$STUARI_AUTH_ALICE_EMAIL'
+  limit 1;")
 occurrence_row=$(sqlite3 -separator '|' "$DB_PATH" "
   select occurrence_id, group_id
   from occurrence_snapshots
-  where user_id = '$LOCAL_USER_ID'
+  where user_id = '$STUARI_AUTH_ALICE_USER_ID'
+    and occurrence_id is not null
+    and group_id is not null
   order by fetched_at desc
   limit 1;")
 if [ -n "$occurrence_row" ]; then
   LOCAL_OCCURRENCE_ID=${occurrence_row%%|*}
   LOCAL_GROUP_ID=${occurrence_row#*|}
 else
-  LOCAL_OCCURRENCE_ID="cccc0000-0000-0000-0000-000000000036"
+  LOCAL_OCCURRENCE_ID=""
+  LOCAL_GROUP_ID=""
 fi
 
-if [ -z "$LOCAL_USER_ID" ] || [ -z "$LOCAL_GROUP_ID" ]; then
+if [ "$LOCAL_USER_ID" != "$STUARI_AUTH_ALICE_USER_ID" ] \
+  || ! [[ "$LOCAL_GROUP_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
+  || ! [[ "$LOCAL_OCCURRENCE_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
   fail "Canonical upload fixture has local user and group authority"
   print_summary
   exit $FAIL
 fi
 pass "Resolved local user, group, and occurrence authority"
 
-cleanup_upload_rows "$DB_PATH"
+if ! run_upload_drift_write_with_app_stopped cleanup_upload_rows "$DB_PATH"; then
+  fail "Cleared previous exact IEZ upload-state rows"
+  print_summary
+  exit $FAIL
+fi
 pass "Cleared previous IEZ upload-state rows"
 
-seed_upload_row \
+if ! run_upload_drift_write_with_app_stopped seed_upload_row \
   "$DB_PATH" \
-  "iez-upload-state-failed" \
+  "$FAILED_MUTATION_ID" \
   3 \
   7 \
   "IEZ simulated permanent upload failure" \
-  false
-assert_canonical_payload "$DB_PATH" "iez-upload-state-failed" false
+  false; then
+  fail "Seeded exact failed upload-state row while Stuari was stopped"
+  print_summary
+  exit $FAIL
+fi
+assert_canonical_payload "$DB_PATH" "$FAILED_MUTATION_ID" false
+fresh_launch
+sleep 2
+go_home
 sleep 6
 capture "36_failed_upload_indicator"
 
@@ -200,15 +257,22 @@ else
   fail "Failed upload retry indicator missing"
 fi
 
-cleanup_upload_rows "$DB_PATH"
-seed_upload_row \
+if ! run_upload_drift_write_with_app_stopped cleanup_upload_rows "$DB_PATH" \
+  || ! run_upload_drift_write_with_app_stopped seed_upload_row \
   "$DB_PATH" \
-  "iez-upload-state-retrying" \
+  "$RETRYING_MUTATION_ID" \
   0 \
   2 \
   "IEZ simulated transient upload failure" \
-  true
-assert_canonical_payload "$DB_PATH" "iez-upload-state-retrying" true
+  true; then
+  fail "Replaced failed row with exact retrying row while Stuari was stopped"
+  print_summary
+  exit $FAIL
+fi
+assert_canonical_payload "$DB_PATH" "$RETRYING_MUTATION_ID" true
+fresh_launch
+sleep 2
+go_home
 sleep 6
 capture "36_checkpoint_retrying_indicator"
 
@@ -230,9 +294,16 @@ if tree_contains "check-in retrying"; then
 else
   fail "Retrying state disappeared after app relaunch"
 fi
-assert_canonical_payload "$DB_PATH" "iez-upload-state-retrying" true
+assert_canonical_payload "$DB_PATH" "$RETRYING_MUTATION_ID" true
 
-cleanup_upload_rows "$DB_PATH"
+if ! run_upload_drift_write_with_app_stopped cleanup_upload_rows "$DB_PATH"; then
+  fail "Removed exact upload-state fixture rows while Stuari was stopped"
+  print_summary
+  exit $FAIL
+fi
+fresh_launch
+sleep 2
+go_home
 sleep 6
 capture "36_upload_indicator_cleaned"
 

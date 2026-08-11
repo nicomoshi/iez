@@ -40,6 +40,7 @@ export PATH="$IEZ_REPO_DIR/bin:$PATH"
 PASS="${PASS:-0}"
 FAIL="${FAIL:-0}"
 SKIP="${SKIP:-0}"
+NA="${NA:-0}"
 TOTAL="${TOTAL:-0}"
 CAPTURE_SEQUENCE="${CAPTURE_SEQUENCE:-0}"
 
@@ -76,6 +77,58 @@ run_iez() {
 # Extract .ok from a JSON response; default false.
 json_ok() { echo "$1" | jq -r '.ok // false' 2>/dev/null; }
 
+stuari_expected_ax_application_label() {
+  printf '%s\n' "${STUARI_EXPECTED_AX_APPLICATION_LABEL:-${STUARI_AX_APPLICATION_LABEL:-stuari-dev}}"
+}
+
+# Inspect exactly one compact AX tree. This helper is intentionally read-only:
+# callers decide how to capture/classify a mismatch, and it never relaunches or
+# performs an action that could change the foreground app.
+stuari_ax_tree_has_expected_app_root() {
+  local tree="${1:-}" expected_label
+  expected_label="$(stuari_expected_ax_application_label)"
+  [ -n "$tree" ] || return 1
+
+  printf '%s\n' "$tree" | jq -e --arg expected "$expected_label" '
+    (.ok == true)
+    and ((.data.elements // []) | type == "array")
+    and (
+      [(.data.elements // [])[]?
+        | select(.role == "AXApplication")
+      ] as $apps
+      | ($apps | length) == 1
+      and ($apps[0].label == $expected)
+      and (
+        ($apps[0].frame // null) as $frame
+        | ($frame | type) == "object"
+        and (($frame.x | type) == "number")
+        and (($frame.y | type) == "number")
+        and (($frame.width | type) == "number")
+        and (($frame.height | type) == "number")
+        and $frame.x >= 0
+        and $frame.y >= 0
+        and $frame.width > 0
+        and $frame.height > 0
+      )
+    )
+  ' >/dev/null 2>&1
+}
+
+fail_fast_stuari_foreground_app_identity() {
+  local context="${1:-foreground app check}" tree=""
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  if stuari_ax_tree_has_expected_app_root "$tree"; then
+    return 0
+  fi
+
+  STUARI_FOREGROUND_IDENTITY_FAILURE_CONTEXT="$context"
+  export STUARI_FOREGROUND_IDENTITY_FAILURE_CONTEXT
+  info "Infrastructure contamination: expected foreground AXApplication '$(stuari_expected_ax_application_label)' before $context"
+  capture "stuari_foreground_identity_mismatch"
+  fail "Foreground app identity mismatch during $context"
+  return 1
+}
+
 # ── Logging / Counters ──────────────────────────────────────────────
 
 pass() {
@@ -94,8 +147,23 @@ skip() {
   printf '  \033[1;33m⊘\033[0m %s (skipped: %s)\n' "$1" "${2:-n/a}"
 }
 
+not_applicable() {
+  NA=$((NA + 1)); TOTAL=$((TOTAL + 1))
+  printf '  \033[1;36m–\033[0m %s (not applicable: %s)\n' "$1" "${2:-platform/tool limitation}"
+}
+
 info() {
   printf '  \033[1;34mℹ\033[0m %s\n' "$1"
+}
+
+mark_flow_cleanup_complete() {
+  [ -n "${STUARI_CLEANUP_STATUS_FILE:-}" ] || return 0
+  printf 'CLEAN\n' >"$STUARI_CLEANUP_STATUS_FILE"
+}
+
+mark_flow_cleanup_required() {
+  [ -n "${STUARI_CLEANUP_STATUS_FILE:-}" ] || return 0
+  printf 'CLEANUP_REQUIRED\n' >"$STUARI_CLEANUP_STATUS_FILE"
 }
 
 section() {
@@ -288,12 +356,36 @@ assert_element() {
 # tap_element — tap by id or label with sensible fallbacks.
 # Args: $1=identifier, $2=kind (id|label|coords), $3=desc
 tap_element() {
-  local ident="$1" kind="${2:-label}" desc="${3:-$1}"
-  local r
+  local ident="$1" kind="${2:-label}" desc="${3:-$1}" role="${4:-AXButton}"
+  local r tree
   case "$kind" in
-    id)     r=$(run_iez "$IEZ" ui tap --id "$ident") ;;
-    coords) r=$(run_iez "$IEZ" ui tap --coords "$ident") ;;
-    *)      r=$(run_iez "$IEZ" ui tap --label "$ident") ;;
+    id)
+      tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+      if ! stuari_ax_tree_has_actionable_target "$tree" "$ident" "" "$role"; then
+        fail "Refusing ambiguous or unsafe tap target: $desc"
+        return 1
+      fi
+      r=$(run_iez "$IEZ" ui tap --id "$ident")
+      ;;
+    label)
+      tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+      if ! stuari_ax_tree_has_actionable_target "$tree" "" "$ident" "$role"; then
+        fail "Refusing ambiguous or unsafe tap target: $desc"
+        return 1
+      fi
+      r=$(run_iez "$IEZ" ui tap --label "$ident")
+      ;;
+    coords)
+      if ! stuari_coords_hit_unique_actionable_target "$ident" "$role"; then
+        fail "Refusing ambiguous or unsafe coordinate tap: $desc"
+        return 1
+      fi
+      r=$(run_iez "$IEZ" ui tap --coords "$ident")
+      ;;
+    *)
+      fail "Unsupported tap selector kind: $kind"
+      return 1
+      ;;
   esac
   assert_ok "$r" "Tap: $desc"
   return $?
@@ -307,11 +399,14 @@ type_into() {
     flag="--id"; target="${target#--id }"
   fi
   local r
-  r=$(run_iez "$IEZ" ui tap $flag "$target")
-  assert_ok "$r" "Focus field: $target"
+  if [ "$flag" = "--id" ]; then
+    tap_element "$target" "id" "Focus field: $target" "AXTextField" || return 1
+  else
+    tap_element "$target" "label" "Focus field: $target" "AXTextField" || return 1
+  fi
   sleep 0.4
   r=$(run_iez "$IEZ" ui type "$text")
-  assert_ok "$r" "Type into $target: '$text'"
+  assert_ok "$r" "Type into $target" || return 1
   sleep 0.3
 }
 
@@ -319,8 +414,7 @@ type_into() {
 replace_text_at_coords() {
   local coords="$1" text="$2" desc="${3:-$1}"
   local r
-  r=$(run_iez "$IEZ" ui tap --coords "$coords")
-  assert_ok "$r" "Focus field: $desc"
+  tap_element "$coords" "coords" "Focus field: $desc" "AXTextField" || return 1
   sleep 0.4
 
   # Flutter text fields on simulator do not reliably honor command+a through
@@ -331,23 +425,25 @@ replace_text_at_coords() {
   done
   sleep 0.2
   r=$(run_iez "$IEZ" ui type "$text")
-  assert_ok "$r" "Replace text in $desc: '$text'"
+  assert_ok "$r" "Replace text in $desc" || return 1
   sleep 0.3
 }
 
 # Return a stable signature for the user-visible portion of a compact AX tree.
 # Command metadata such as duration is intentionally excluded.
 compact_tree_signature() {
-  printf '%s\n' "$1" \
-    | jq -cS '[.data.elements[] | {
+  local normalized=""
+  normalized="$(printf '%s\n' "$1" \
+    | jq -cer '[.data.elements[] | {
+        role: (.role // null),
         id: (.id // null),
         label: (.label // null),
         value: (.value // null),
         frame: (.frame // null),
         enabled: (.enabled // null)
-      }]' 2>/dev/null \
-    | shasum -a 256 \
-    | awk '{print $1}'
+      }]' 2>/dev/null)" || return 1
+  [ -n "$normalized" ] || return 1
+  printf '%s' "$normalized" | shasum -a 256 | awk '{print $1}'
 }
 
 # Wait for two consecutive compact AX snapshots to match before evidence is
@@ -359,9 +455,7 @@ wait_for_ui_settle() {
   SETTLED_TREE=""
   while [ "$attempt" -lt "$max_attempts" ]; do
     tree=$(run_iez "$IEZ" ui tree --compact)
-    if printf '%s\n' "$tree" \
-      | jq -e '.ok == true and (.data.elements | type == "array")' \
-        >/dev/null 2>&1; then
+    if stuari_ax_tree_has_expected_app_root "$tree"; then
       signature=$(compact_tree_signature "$tree")
       if [ -n "$signature" ] && [ "$signature" = "$previous_signature" ]; then
         SETTLED_TREE="$tree"
@@ -381,28 +475,69 @@ wait_for_ui_settle() {
 # Args: $1=filename stem (no extension)
 capture() {
   local stem="${1:-capture}"
-  local stamp screenshot_path ax_path screenshot_result tree_result
+  local stamp screenshot_path ax_path diagnostic_screenshot
+  local diagnostic_before diagnostic_after staging_ax screenshot_result
+  local settled_signature before_tree before_signature after_tree after_signature
 
   if ! wait_for_ui_settle; then
-    info "UI settle timeout before capture: $stem; saving the latest readable state"
+    fail "UI settle timeout before capture: $stem"
+    return 1
   fi
+
+  settled_signature="$(compact_tree_signature "$SETTLED_TREE")" || {
+    fail "Settled AX signature unavailable before capture: $stem"
+    return 1
+  }
 
   CAPTURE_SEQUENCE=$((CAPTURE_SEQUENCE + 1))
   stamp="$(date +%Y%m%d_%H%M%S)_$$_$(printf '%03d' "$CAPTURE_SEQUENCE")"
   screenshot_path="$SCREENSHOTS/${stem}_${stamp}.png"
   ax_path="$AX_TREES/${stem}_${stamp}.json"
+  diagnostic_screenshot="$SCREENSHOTS/${stem}_${stamp}.invalid.png"
+  diagnostic_before="$AX_TREES/${stem}_${stamp}.invalid-before.json"
+  diagnostic_after="$AX_TREES/${stem}_${stamp}.invalid-after.json"
+  staging_ax="$AX_TREES/${stem}_${stamp}.staging.json"
 
-  screenshot_result=$(run_iez "$IEZ" ui screenshot --out "$screenshot_path")
-  if [ "$(json_ok "$screenshot_result")" != "true" ] || [ ! -s "$screenshot_path" ]; then
+  before_tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  before_signature="$(compact_tree_signature "$before_tree" 2>/dev/null || true)"
+  if ! stuari_ax_tree_has_expected_app_root "$before_tree" \
+    || [ -z "$before_signature" ] \
+    || [ "$before_signature" != "$settled_signature" ]; then
+    redact_compact_ax_tree "$before_tree" >"$diagnostic_before" 2>/dev/null || true
+    fail "AX state changed before screenshot capture: $stem"
+    return 1
+  fi
+
+  screenshot_result=$(run_iez "$IEZ" ui screenshot --out "$diagnostic_screenshot")
+  if [ "$(json_ok "$screenshot_result")" != "true" ] || [ ! -s "$diagnostic_screenshot" ]; then
     fail "Capture screenshot: $stem" "$screenshot_result"
     return 1
   fi
 
-  tree_result=$(run_iez "$IEZ" ui tree --compact)
-  if ! printf '%s\n' "$tree_result" \
-    | jq -e 'select(.ok == true and (.data.elements | type == "array"))' >"$ax_path" 2>/dev/null \
-    || [ ! -s "$ax_path" ]; then
-    fail "Capture compact AX tree: $stem" "$tree_result"
+  after_tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  after_signature="$(compact_tree_signature "$after_tree" 2>/dev/null || true)"
+  if ! stuari_ax_tree_has_expected_app_root "$after_tree" \
+    || [ -z "$after_signature" ] \
+    || [ "$after_signature" != "$before_signature" ]; then
+    redact_compact_ax_tree "$before_tree" >"$diagnostic_before" 2>/dev/null || true
+    redact_compact_ax_tree "$after_tree" >"$diagnostic_after" 2>/dev/null || true
+    info "Contaminated screenshot retained for diagnosis: $diagnostic_screenshot"
+    fail "AX state changed while capturing screenshot: $stem"
+    return 1
+  fi
+
+  if ! redact_compact_ax_tree "$after_tree" >"$staging_ax" 2>/dev/null || [ ! -s "$staging_ax" ]; then
+    fail "Capture compact AX tree: $stem"
+    return 1
+  fi
+  if ! mv "$diagnostic_screenshot" "$screenshot_path"; then
+    mv "$staging_ax" "$diagnostic_after" 2>/dev/null || true
+    fail "Publish screenshot evidence: $stem"
+    return 1
+  fi
+  if ! mv "$staging_ax" "$ax_path"; then
+    mv "$screenshot_path" "$diagnostic_screenshot" 2>/dev/null || true
+    fail "Publish AX evidence: $stem"
     return 1
   fi
 
@@ -410,45 +545,130 @@ capture() {
   info "AX tree: $ax_path"
 }
 
+redact_compact_ax_tree() {
+  printf '%s\n' "$1" | jq -c '
+    .data.elements |= map(
+      if (((.label // "") + " " + (.id // "")) | ascii_downcase
+          | test("password|passcode|secret|access.?token|refresh.?token"))
+      then .value = "<redacted>"
+      else .
+      end
+    )
+  '
+}
+
+stuari_coords_are_inside_expected_root() {
+  local coords="$1" tree="" x="" y=""
+  case "$coords" in
+    *,*) x="${coords%%,*}"; y="${coords#*,}" ;;
+    *) return 1 ;;
+  esac
+  [[ "$x" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
+  [[ "$y" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
+  printf '%s\n' "$tree" | jq -e --argjson x "$x" --argjson y "$y" '
+    [(.data.elements // [])[] | select(.role == "AXApplication")][0].frame as $root
+    | $x >= $root.x and $y >= $root.y
+      and $x <= ($root.x + $root.width)
+      and $y <= ($root.y + $root.height)
+  ' >/dev/null 2>&1
+}
+
+stuari_coords_hit_unique_actionable_target() {
+  local coords="$1" role="${2:-AXButton}" tree="" x="" y=""
+  case "$coords" in
+    *,*) x="${coords%%,*}"; y="${coords#*,}" ;;
+    *) return 1 ;;
+  esac
+  [[ "$x" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
+  [[ "$y" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
+  [ -n "$role" ] || return 1
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
+  printf '%s\n' "$tree" | jq -e --arg role "$role" --argjson x "$x" --argjson y "$y" '
+    [(.data.elements // [])[] | select(.role == "AXApplication")][0].frame as $root
+    | [(.data.elements // [])[]?
+        | select(.role == $role and .enabled != false)
+        | .frame as $frame
+        | select(($frame | type) == "object")
+        | select(($frame.x | type) == "number" and ($frame.y | type) == "number")
+        | select(($frame.width | type) == "number" and ($frame.height | type) == "number")
+        | select($frame.width > 0 and $frame.height > 0)
+        | select($frame.x >= $root.x and $frame.y >= $root.y)
+        | select(($frame.x + $frame.width) <= ($root.x + $root.width))
+        | select(($frame.y + $frame.height) <= ($root.y + $root.height))
+        | select($x >= $frame.x and $x <= ($frame.x + $frame.width))
+        | select($y >= $frame.y and $y <= ($frame.y + $frame.height))
+      ]
+    | length == 1
+  ' >/dev/null 2>&1
+}
+
 first_coords_matching_label_regex() {
-  local regex="$1" flags="${2:-}"
-  run_iez "$IEZ" ui tree --compact \
-    | jq -r --arg regex "$regex" --arg flags "$flags" '.data.elements[]
-      | select(.label != null)
-      | select(.label | test($regex; $flags))
-      | select(.frame != null and .frame.width > 0 and .frame.height > 0)
-      | .frame
-      | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
-    | head -1
+  local regex="$1" flags="${2:-}" role="${3:-AXButton}" tree=""
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
+  printf '%s\n' "$tree" | jq -er \
+    --arg regex "$regex" --arg flags "$flags" --arg role "$role" '
+      [(.data.elements // [])[] | select(.role == "AXApplication")][0].frame as $root
+      | [(.data.elements // [])[]
+          | select(.role == $role and .enabled != false)
+          | select((.label // "") | test($regex; $flags))
+          | .frame as $frame
+          | select(($frame | type) == "object")
+          | select(($frame.x | type) == "number" and ($frame.y | type) == "number")
+          | select(($frame.width | type) == "number" and ($frame.height | type) == "number")
+          | select($frame.width > 0 and $frame.height > 0)
+          | select($frame.x >= $root.x and $frame.y >= $root.y)
+          | select(($frame.x + $frame.width) <= ($root.x + $root.width))
+          | select(($frame.y + $frame.height) <= ($root.y + $root.height))
+          | "\((($frame.x + ($frame.width / 2))) | floor),\((($frame.y + ($frame.height / 2))) | floor)"
+        ] as $matches
+      | select(($matches | length) == 1)
+      | $matches[0]
+    ' 2>/dev/null
 }
 
 tap_first_matching_label_regex() {
-  local regex="$1" flags="${2:-}" desc="${3:-$1}"
+  local regex="$1" flags="${2:-}" desc="${3:-$1}" role="${4:-AXButton}"
   local coords
-  coords=$(first_coords_matching_label_regex "$regex" "$flags")
+  coords=$(first_coords_matching_label_regex "$regex" "$flags" "$role")
   if [ -z "$coords" ] || [ "$coords" = "null" ] || [ "$coords" = "," ]; then
     return 1
   fi
   local r
   r=$(run_iez "$IEZ" ui tap --coords "$coords")
   assert_ok "$r" "Tap: $desc"
-  return 0
+  return $?
 }
 
 # Resolve one of two exact AX labels to a visible target. This is intended for
 # controls that may expose either a legacy label or a context-rich semantic
 # label; exact equality keeps unrelated prefix/suffix labels out of the match.
 first_coords_matching_exact_labels() {
-  local legacy_label="$1" semantic_label="$2"
-  run_iez "$IEZ" ui tree --compact \
-    | jq -r --arg legacy "$legacy_label" --arg semantic "$semantic_label" '
-      .data.elements[]
-      | select(.label == $legacy or .label == $semantic)
-      | select(.enabled != false)
-      | select(.frame != null and .frame.width > 0 and .frame.height > 0)
-      | .frame
-      | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
-    | head -1
+  local legacy_label="$1" semantic_label="$2" role="${3:-AXButton}" tree=""
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
+  printf '%s\n' "$tree" | jq -er \
+    --arg legacy "$legacy_label" --arg semantic "$semantic_label" --arg role "$role" '
+      [(.data.elements // [])[] | select(.role == "AXApplication")][0].frame as $root
+      | [(.data.elements // [])[]
+          | select(.role == $role and .enabled != false)
+          | select(.label == $legacy or .label == $semantic)
+          | .frame as $frame
+          | select(($frame | type) == "object")
+          | select(($frame.x | type) == "number" and ($frame.y | type) == "number")
+          | select(($frame.width | type) == "number" and ($frame.height | type) == "number")
+          | select($frame.width > 0 and $frame.height > 0)
+          | select($frame.x >= $root.x and $frame.y >= $root.y)
+          | select(($frame.x + $frame.width) <= ($root.x + $root.width))
+          | select(($frame.y + $frame.height) <= ($root.y + $root.height))
+          | "\((($frame.x + ($frame.width / 2))) | floor),\((($frame.y + ($frame.height / 2))) | floor)"
+        ] as $matches
+      | select(($matches | length) == 1)
+      | $matches[0]
+    ' 2>/dev/null
 }
 
 tap_first_matching_exact_labels() {
@@ -465,14 +685,9 @@ tap_first_matching_exact_labels() {
 }
 
 coords_for_id() {
-  local id="$1"
-  run_iez "$IEZ" ui tree --compact \
-    | jq -r --arg id "$id" '.data.elements[]
-      | select(.id == $id)
-      | select(.frame != null and .frame.width > 0 and .frame.height > 0)
-      | .frame
-      | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
-    | head -1
+  local id="$1" role="${2:-AXButton}" tree=""
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  stuari_actionable_target_coords_from_tree "$tree" "$id" "" "$role"
 }
 
 # Camera and the composer pushed from it can expose either normal AX frames or
@@ -481,6 +696,8 @@ coords_for_id() {
 checkin_route_scale_from_tree() {
   local tree="$1"
   local widths="" composer_is_unambiguous=""
+
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
 
   widths="$(
     printf '%s\n' "$tree" | jq -er '
@@ -555,16 +772,26 @@ checkin_route_scale_from_tree() {
 }
 
 checkin_route_coords_for_id() {
-  local id="$1" tree="" scale="" frame=""
+  local id="$1" expected_role="${2:-}" tree="" scale="" frame=""
   tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null)" || return 1
   scale="$(checkin_route_scale_from_tree "$tree")" || return 1
 
   frame="$(
-    printf '%s\n' "$tree" | jq -er --arg id "$id" '
-      [(.data.elements // [])[]
-        | select(.id == $id)
-        | select(.frame != null and .frame.width > 0 and .frame.height > 0)
-        | [.frame.x, .frame.y, .frame.width, .frame.height]
+    printf '%s\n' "$tree" | jq -er --arg id "$id" --arg role "$expected_role" '
+      [(.data.elements // [])[] | select(.role == "AXApplication")] as $apps
+      | $apps[0].frame as $root
+      | [(.data.elements // [])[]
+        | select(.id == $id and ($role == "" or .role == $role))
+        | select(.enabled != false)
+        | .frame as $frame
+        | select(($frame | type) == "object")
+        | select(($frame.x | type) == "number" and ($frame.y | type) == "number")
+        | select(($frame.width | type) == "number" and ($frame.height | type) == "number")
+        | select($frame.width > 0 and $frame.height > 0)
+        | select($frame.x >= $root.x and $frame.y >= $root.y)
+        | select(($frame.x + $frame.width) <= ($root.x + $root.width))
+        | select(($frame.y + $frame.height) <= ($root.y + $root.height))
+        | [$frame.x, $frame.y, $frame.width, $frame.height]
         | @tsv] as $frames
       | select(($frames | length) == 1)
       | $frames[0]
@@ -587,12 +814,21 @@ checkin_route_coords_for_label_from_tree() {
 
   frame="$(
     printf '%s\n' "$tree" | jq -er --arg label "$label" --arg role "$role" '
-      [(.data.elements // [])[]
+      [(.data.elements // [])[] | select(.role == "AXApplication")] as $apps
+      | $apps[0].frame as $root
+      | [(.data.elements // [])[]
         | select(.label == $label)
         | select($role == "" or .role == $role)
         | select(.enabled != false)
-        | select(.frame != null and .frame.width > 0 and .frame.height > 0)
-        | [.frame.x, .frame.y, .frame.width, .frame.height]
+        | .frame as $frame
+        | select(($frame | type) == "object")
+        | select(($frame.x | type) == "number" and ($frame.y | type) == "number")
+        | select(($frame.width | type) == "number" and ($frame.height | type) == "number")
+        | select($frame.width > 0 and $frame.height > 0)
+        | select($frame.x >= $root.x and $frame.y >= $root.y)
+        | select(($frame.x + $frame.width) <= ($root.x + $root.width))
+        | select(($frame.y + $frame.height) <= ($root.y + $root.height))
+        | [$frame.x, $frame.y, $frame.width, $frame.height]
         | @tsv] as $frames
       | select(($frames | length) == 1)
       | $frames[0]
@@ -616,7 +852,7 @@ checkin_route_coords_for_label() {
 }
 
 camera_coords_for_id() {
-  checkin_route_coords_for_id "$1"
+  checkin_route_coords_for_id "$1" "AXButton"
 }
 
 tap_camera_control_by_id() {
@@ -657,6 +893,34 @@ tap_checkin_route_control_by_label() {
 
 checkin_post_retry_tree_is_stable() {
   local tree="$1"
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
+  if printf '%s\n' "$tree" | jq -e '
+    any(.data.elements[]?;
+      ((.label // "") | ascii_downcase)
+      | test("(uploading|submitting|processing|posting|publishing|syncing|retrying)(\\.\\.\\.|…)?"))
+  ' >/dev/null 2>&1; then
+    return 1
+  fi
+  printf '%s\n' "$tree" | jq -e '
+    [(.data.elements // [])[]? | select(.role == "AXApplication")] as $apps
+    | $apps[0].frame as $root
+    | [(.data.elements // [])[]?
+      | select((.role == "AXStaticText" and .label == "New Check-in")
+        or (.role == "AXButton" and (.label == "Go back" or .label == "Post")))
+      | select(.enabled != false)
+      | .frame as $frame
+      | select(($frame | type) == "object")
+      | select(($frame.x | type) == "number" and ($frame.y | type) == "number")
+      | select(($frame.width | type) == "number" and ($frame.height | type) == "number")
+      | select($frame.width > 0 and $frame.height > 0)
+      | select($frame.x >= $root.x and $frame.y >= $root.y)
+      | select(($frame.x + $frame.width) <= ($root.x + $root.width))
+      | select(($frame.y + $frame.height) <= ($root.y + $root.height))
+    ] as $controls
+    | ([ $controls[] | select(.label == "New Check-in") ] | length) == 1
+      and ([ $controls[] | select(.label == "Go back") ] | length) == 1
+      and ([ $controls[] | select(.label == "Post") ] | length) == 1
+  ' >/dev/null 2>&1 || return 1
   printf '%s\n' "$tree" | jq -e '
     [(.data.elements // [])[]?] as $elements
     | [ $elements[] | select(.role == "AXApplication" and .frame != null and .frame.width > 0 and .frame.height > 0) ] as $apps
@@ -764,7 +1028,8 @@ wait_for_checkin_input_progress() {
 
   while [ "$attempts" -lt "$max_attempts" ]; do
     tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
-    if printf '%s\n' "$tree" | jq -e --arg caption "$caption" --arg remaining "$remaining_label" '
+    if stuari_ax_tree_has_actionable_target "$tree" "" "Share your progress..." "AXTextField" \
+      && printf '%s\n' "$tree" | jq -e --arg caption "$caption" --arg remaining "$remaining_label" '
       any(.data.elements[]?;
         .role == "AXTextField"
         and .label == "Share your progress..."
@@ -782,6 +1047,26 @@ wait_for_checkin_input_progress() {
 
 post_tree_has_exact_caption() {
   local tree="$1" caption="$2"
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
+  printf '%s\n' "$tree" | jq -e --arg caption "$caption" '
+    [(.data.elements // [])[] | select(.role == "AXApplication")] as $apps
+    | $apps[0].frame as $root
+    | any((.data.elements // [])[]?;
+        .role == "AXStaticText"
+        and .enabled != false
+        and (((.label // "") | split("\n")) | any(. == $caption))
+        and (
+          (.frame // null) as $frame
+          | ($frame | type) == "object"
+          and ($frame.x | type) == "number"
+          and ($frame.y | type) == "number"
+          and ($frame.width | type) == "number" and $frame.width > 0
+          and ($frame.height | type) == "number" and $frame.height > 0
+          and $frame.x >= $root.x and $frame.y >= $root.y
+          and ($frame.x + $frame.width) <= ($root.x + $root.width)
+          and ($frame.y + $frame.height) <= ($root.y + $root.height)
+        ))
+  ' >/dev/null 2>&1 || return 1
   printf '%s\n' "$tree" | jq -e --arg caption "$caption" '
     [(.data.elements // [])[]
       | select(
@@ -842,62 +1127,85 @@ dismiss_checkin_route_keyboard() {
   return 0
 }
 
+stuari_actionable_target_coords_from_tree() {
+  local tree="$1" target_id="${2:-}" target_label="${3:-}" target_role="${4:-}"
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
+  [ -n "$target_id$target_label" ] || return 1
+  [ -n "$target_role" ] || return 1
+  printf '%s\n' "$tree" | jq -er \
+    --arg id "$target_id" --arg label "$target_label" --arg role "$target_role" '
+      [(.data.elements // [])[] | select(.role == "AXApplication")] as $apps
+      | $apps[0].frame as $root
+      | [(.data.elements // [])[]?
+          | select(.enabled != false)
+          | select($id == "" or .id == $id)
+          | select($label == "" or .label == $label or (($label | endswith("...")) and ((.label // "") | startswith($label[0:-3]))))
+          | select(.role == $role)
+          | .frame as $frame
+          | select(($frame | type) == "object")
+          | select(($frame.x | type) == "number" and ($frame.y | type) == "number")
+          | select(($frame.width | type) == "number" and ($frame.height | type) == "number")
+          | select($frame.width > 0 and $frame.height > 0)
+          | select($frame.x >= $root.x and $frame.y >= $root.y)
+          | select(($frame.x + $frame.width) <= ($root.x + $root.width))
+          | select(($frame.y + $frame.height) <= ($root.y + $root.height))
+          | "\((($frame.x + ($frame.width / 2))) | floor),\((($frame.y + ($frame.height / 2))) | floor)"
+        ] as $matches
+      | select(($matches | length) == 1)
+      | $matches[0]
+    ' 2>/dev/null
+}
+
+stuari_ax_tree_has_actionable_target() {
+  stuari_actionable_target_coords_from_tree "$@" >/dev/null
+}
+
 camera_tree_matches_state() {
   local expected="$1" tree="$2"
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
 
   case "$expected" in
     video)
-      printf '%s\n' "$tree" | jq -e '
-        any(.data.elements[]?; .label == "Camera mode selector. Video mode selected")
-        and any(.data.elements[]?; .id == "camera_capture_video_button")
-      ' >/dev/null 2>&1
+      stuari_ax_tree_has_actionable_target "$tree" "" "Camera mode selector. Video mode selected" "AXButton" \
+        && stuari_ax_tree_has_actionable_target "$tree" "camera_capture_video_button" "" "AXButton"
       ;;
     recording)
-      printf '%s\n' "$tree" | jq -e '
-        any(.data.elements[]?;
-          .id == "camera_stop_recording_button" or .label == "Stop recording")
-      ' >/dev/null 2>&1
+      stuari_ax_tree_has_actionable_target "$tree" "camera_stop_recording_button" "" "AXButton" \
+        || stuari_ax_tree_has_actionable_target "$tree" "" "Stop recording" "AXButton"
       ;;
     captured)
-      printf '%s\n' "$tree" | jq -e '
-        any(.data.elements[]?;
-          .id == "camera_continue_to_post_button" or .label == "Continue to post")
-      ' >/dev/null 2>&1
+      stuari_ax_tree_has_actionable_target "$tree" "camera_continue_to_post_button" "" "AXButton" \
+        || stuari_ax_tree_has_actionable_target "$tree" "" "Continue to post" "AXButton"
       ;;
     compose)
-      printf '%s\n' "$tree" | jq -e '
-        any(.data.elements[]?;
-          .role == "AXStaticText" and .label == "New Check-in")
-        and any(.data.elements[]?;
-          .role == "AXButton" and .label == "Go back")
-        and any(.data.elements[]?;
-          .role == "AXButton" and .label == "Post")
-        and any(.data.elements[]?;
-          .role == "AXTextField"
-          and ((.label // "") | startswith("Share your progress")))
-      ' >/dev/null 2>&1
+      stuari_ax_tree_has_actionable_target "$tree" "" "New Check-in" "AXStaticText" \
+        && stuari_ax_tree_has_actionable_target "$tree" "" "Go back" "AXButton" \
+        && stuari_ax_tree_has_actionable_target "$tree" "" "Post" "AXButton" \
+        && stuari_ax_tree_has_actionable_target "$tree" "" "Share your progress..." "AXTextField"
       ;;
     compose-ready)
-      printf '%s\n' "$tree" | jq -e '
-        [(.data.elements // [])[]
-          | select(.role == "AXApplication")
-          | .frame
-          | select(.height > 0)] as $app
-        | ($app | length) == 1
-        and any(.data.elements[]?;
-          .role == "AXStaticText" and .label == "New Check-in")
-        and any(.data.elements[]?;
-          .role == "AXButton" and .label == "Go back")
-        and any(.data.elements[]?;
-          ((.label // "") | test("^[0-9]+ characters? remaining$")))
-        and any(.data.elements[]?;
-          .role == "AXButton"
-          and .label == "Post"
-          and .frame != null
-          and .frame.width > 0
-          and .frame.height > 0
-          and (.frame.y + .frame.height) <= $app[0].height)
-      ' >/dev/null 2>&1
+      stuari_ax_tree_has_actionable_target "$tree" "" "New Check-in" "AXStaticText" \
+        && stuari_ax_tree_has_actionable_target "$tree" "" "Go back" "AXButton" \
+        && stuari_ax_tree_has_actionable_target "$tree" "" "Post" "AXButton" \
+        && printf '%s\n' "$tree" | jq -e '
+          [(.data.elements // [])[] | select(.role == "AXApplication")] as $apps
+          | $apps[0].frame as $root
+          | any((.data.elements // [])[]?;
+              .role == "AXStaticText"
+              and .enabled != false
+              and ((.label // "") | test("^[0-9]+ characters? remaining$"))
+              and (
+                (.frame // null) as $frame
+                | ($frame | type) == "object"
+                and ($frame.x | type) == "number"
+                and ($frame.y | type) == "number"
+                and ($frame.width | type) == "number" and $frame.width > 0
+                and ($frame.height | type) == "number" and $frame.height > 0
+                and $frame.x >= $root.x and $frame.y >= $root.y
+                and ($frame.x + $frame.width) <= ($root.x + $root.width)
+                and ($frame.y + $frame.height) <= ($root.y + $root.height)
+              ))
+        ' >/dev/null 2>&1
       ;;
     *)
       return 1
@@ -912,9 +1220,30 @@ wait_for_checkin_post_completion() {
 
   while [ "$attempts" -lt "$max_attempts" ]; do
     tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
-    if printf '%s\n' "$tree" | jq -e '
+    if stuari_ax_tree_has_expected_app_root "$tree" \
+      && printf '%s\n' "$tree" | jq -e '
+        [(.data.elements // [])[] | select(.role == "AXApplication")] as $apps
+        | $apps[0].frame as $root
+        | any(.data.elements[]?;
+          ((.id // "") | startswith("habit_card_"))
+          and (((.id // "") | startswith("habit_card_menu_")) | not)
+          and (
+            (.frame // null) as $frame
+            | ($frame | type) == "object"
+            and ($frame.x | type) == "number"
+            and ($frame.y | type) == "number"
+            and ($frame.width | type) == "number" and $frame.width > 0
+            and ($frame.height | type) == "number" and $frame.height > 0
+            and $frame.x >= $root.x and $frame.y >= $root.y
+            and ($frame.x + $frame.width) <= ($root.x + $root.width)
+            and ($frame.y + $frame.height) <= ($root.y + $root.height)
+          ))
+      ' >/dev/null 2>&1 \
+      && printf '%s\n' "$tree" | jq -e '
       any(.data.elements[]?;
-        .role == "AXButton" and .label == "Home tab, selected")
+        .role == "AXButton" and .label == "Home tab, selected"
+        and .enabled != false
+        and .frame != null and .frame.width > 0 and .frame.height > 0)
       and any(.data.elements[]?;
         ((.id // "") | startswith("habit_card_"))
         and (((.id // "") | startswith("habit_card_menu_")) | not))
@@ -952,50 +1281,74 @@ wait_for_camera_state() {
 }
 
 current_visible_habit_card_id() {
-  local center_x="${1:-196}"
-  run_iez "$IEZ" ui tree --compact \
-    | jq -r --argjson center_x "$center_x" '
-      def abs: if . < 0 then -1 * . else . end;
-      .data.elements[]
-      | select(.id != null)
-      | select(.id | startswith("habit_card_"))
-      | select(.id | startswith("habit_card_menu_") | not)
-      | select(.frame != null and .frame.width > 40 and .frame.height > 40)
-      | [
-          (((.frame.x + (.frame.width / 2)) - $center_x) | abs),
-          (-1 * (.frame.width * .frame.height)),
-          .id
-        ]
-      | @tsv' 2>/dev/null \
-    | sort -n \
-    | head -1 \
-    | awk -F '\t' '{print $3}'
+  local tree=""
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  stuari_centered_habit_card_id_from_tree "$tree"
+}
+
+stuari_centered_habit_card_id_from_tree() {
+  local tree="$1"
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
+  printf '%s\n' "$tree" | jq -er '
+    def abs: if . < 0 then -1 * . else . end;
+    [(.data.elements // [])[] | select(.role == "AXApplication")][0].frame as $root
+    | ($root.x + ($root.width / 2)) as $center_x
+    | [(.data.elements // [])[]
+        | select(.role == "AXButton" and .enabled != false)
+        | select((.id // "") | startswith("habit_card_"))
+        | select((((.id // "") | startswith("habit_card_menu_")) | not))
+        | .frame as $frame
+        | select(($frame | type) == "object")
+        | select(($frame.x | type) == "number" and ($frame.y | type) == "number")
+        | select(($frame.width | type) == "number" and ($frame.height | type) == "number")
+        | select($frame.width > 40 and $frame.height > 40)
+        | select($frame.x >= $root.x and $frame.y >= $root.y)
+        | select(($frame.x + $frame.width) <= ($root.x + $root.width))
+        | select(($frame.y + $frame.height) <= ($root.y + $root.height))
+        | {
+            distance: ((($frame.x + ($frame.width / 2)) - $center_x) | abs),
+            area: ($frame.width * $frame.height),
+            id: .id
+          }
+      ] | sort_by(.distance, (-.area)) as $cards
+    | select(($cards | length) > 0)
+    | $cards[0] as $best
+    | select(([ $cards[] | select(.distance == $best.distance) ] | length) == 1)
+    | $best.id
+  ' 2>/dev/null
 }
 
 current_visible_habit_card_label() {
-  local id
-  id=$(current_visible_habit_card_id)
+  local tree="" id=""
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  id="$(stuari_centered_habit_card_id_from_tree "$tree" 2>/dev/null || true)"
   if [ -z "$id" ]; then
     return 1
   fi
-  run_iez "$IEZ" ui tree --compact \
-    | jq -r --arg id "$id" '.data.elements[]
-        | select(.id == $id)
-        | .label // empty' 2>/dev/null \
-    | head -1
+  printf '%s\n' "$tree" | jq -er --arg id "$id" '
+    [(.data.elements // [])[]
+      | select(.role == "AXButton" and .id == $id)
+      | (.label // empty)] as $labels
+    | select(($labels | length) == 1)
+    | $labels[0]
+  ' 2>/dev/null
 }
 
 habit_card_label_for_id() {
-  local id="$1"
+  local id="$1" tree=""
   if [ -z "$id" ]; then
     return 1
   fi
-
-  run_iez "$IEZ" ui tree --compact \
-    | jq -r --arg id "$id" '.data.elements[]
-        | select(.id == $id)
-        | .label // empty' 2>/dev/null \
-    | head -1
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
+  printf '%s\n' "$tree" | jq -er --arg id "$id" '
+    [(.data.elements // [])[]
+      | select(.role == "AXButton" and .enabled != false and .id == $id)
+      | select(.frame != null and .frame.width > 40 and .frame.height > 40)
+      | (.label // empty)] as $labels
+    | select(($labels | length) == 1)
+    | $labels[0]
+  ' 2>/dev/null
 }
 
 habit_card_label_is_actionable() {
@@ -1011,31 +1364,15 @@ wait_for_habit_card_actionable() {
 
   while [ "$attempts" -lt "$max_attempts" ]; do
     tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
-    centered="$(
-      printf '%s\n' "$tree" | jq -r '
-        def abs: if . < 0 then -1 * . else . end;
-        [
-          .data.elements[]?
-          | select((.id // "") | startswith("habit_card_"))
-          | select(((.id // "") | startswith("habit_card_menu_")) | not)
-          | select(.frame != null and .frame.width > 40 and .frame.height > 40)
-          | {
-              distance: (((.frame.x + (.frame.width / 2)) - 196) | abs),
-              area: (.frame.width * .frame.height),
-              id: .id,
-              label: (.label // "")
-            }
-        ]
-        | sort_by(.distance, (-.area))
-        | first
-        | select(. != null)
-        | [.id, .label]
-        | @tsv
-      ' 2>/dev/null
-    )"
-    centered_id="${centered%%$'\t'*}"
-    label="${centered#*$'\t'}"
-    if [ -n "$centered" ] && [ "$centered_id" = "$id" ] && \
+    centered_id="$(stuari_centered_habit_card_id_from_tree "$tree" 2>/dev/null || true)"
+    label="$(printf '%s\n' "$tree" | jq -er --arg id "$centered_id" '
+      [(.data.elements // [])[]
+        | select(.role == "AXButton" and .id == $id)
+        | (.label // empty)] as $labels
+      | select(($labels | length) == 1)
+      | $labels[0]
+    ' 2>/dev/null || true)"
+    if [ -n "$centered_id" ] && [ "$centered_id" = "$id" ] && \
       habit_card_label_is_actionable "$label"; then
       return 0
     fi
@@ -1077,15 +1414,40 @@ habit_card_search_settle_interval() {
 }
 
 swipe_habit_cards_toward_start() {
-  run_iez "$IEZ" ui swipe \
+  fail_fast_stuari_foreground_app_identity "habit carousel swipe toward start" || return 1
+  local response
+  response="$(run_iez "$IEZ" ui swipe \
     --from "${STUARI_HABIT_CARD_SWIPE_TO_START_FROM:-320,340}" \
-    --to "${STUARI_HABIT_CARD_SWIPE_TO_START_TO:-70,340}"
+    --to "${STUARI_HABIT_CARD_SWIPE_TO_START_TO:-70,340}")"
+  [ "$(json_ok "$response")" = "true" ] || return 1
+  fail_fast_stuari_foreground_app_identity "habit carousel swipe toward start completion" || return 1
+  printf '%s\n' "$response"
 }
 
 swipe_habit_cards_toward_end() {
-  run_iez "$IEZ" ui swipe \
+  fail_fast_stuari_foreground_app_identity "habit carousel swipe toward end" || return 1
+  local response
+  response="$(run_iez "$IEZ" ui swipe \
     --from "${STUARI_HABIT_CARD_SWIPE_TO_END_FROM:-70,340}" \
-    --to "${STUARI_HABIT_CARD_SWIPE_TO_END_TO:-320,340}"
+    --to "${STUARI_HABIT_CARD_SWIPE_TO_END_TO:-320,340}")"
+  [ "$(json_ok "$response")" = "true" ] || return 1
+  fail_fast_stuari_foreground_app_identity "habit carousel swipe toward end completion" || return 1
+  printf '%s\n' "$response"
+}
+
+stuari_carousel_swipe() {
+  local from="$1" to="$2" desc="${3:-Stuari carousel swipe}" response=""
+  stuari_app_swipe "$from" "$to" "$desc"
+}
+
+stuari_app_swipe() {
+  local from="$1" to="$2" desc="${3:-Stuari swipe}" response=""
+  fail_fast_stuari_foreground_app_identity "$desc before" || return 1
+  response="$(run_iez "$IEZ" ui swipe --from "$from" --to "$to")"
+  if ! assert_ok "$response" "$desc delivered"; then
+    return 1
+  fi
+  fail_fast_stuari_foreground_app_identity "$desc after"
 }
 
 _search_habit_card_by_id_in_direction() {
@@ -1233,18 +1595,20 @@ wait_for_visible_habit_card() {
 
 pull_to_refresh_home() {
   local r
+  fail_fast_stuari_foreground_app_identity "home pull-to-refresh" || return 1
   r=$(run_iez "$IEZ" ui swipe --from "200,650" --to "200,830")
-  assert_ok "$r" "Pull to refresh selected habit"
+  if ! assert_ok "$r" "Pull to refresh selected habit"; then
+    return 1
+  fi
+  fail_fast_stuari_foreground_app_identity "home pull-to-refresh completion" || return 1
   sleep 3
 }
 
 expand_home_sheet_to_feed() {
-  local r
-  r=$(run_iez "$IEZ" ui swipe --from "200,700" --to "200,200")
-  if [ "$(json_ok "$r")" = "true" ]; then
+  if stuari_app_swipe "200,700" "200,200" "Expand home bottom sheet"; then
     pass "Expanded home bottom sheet"
   else
-    fail "Expanded home bottom sheet" "$r"
+    fail "Expanded home bottom sheet"
     return 1
   fi
   sleep 1.5
@@ -1383,7 +1747,7 @@ wait_for_auth_ui() {
 print_summary() {
   echo ""
   echo "╔══════════════════════════════════════════════════╗"
-  printf "║  Results: \033[1;32m%d passed\033[0m / \033[1;31m%d failed\033[0m / \033[1;33m%d skipped\033[0m / %d total  ║\n" "$PASS" "$FAIL" "$SKIP" "$TOTAL"
+  printf "║  Results: \033[1;32m%d passed\033[0m / \033[1;31m%d failed\033[0m / \033[1;33m%d skipped\033[0m / \033[1;36m%d n/a\033[0m / %d total  ║\n" "$PASS" "$FAIL" "$SKIP" "$NA" "$TOTAL"
   echo "╚══════════════════════════════════════════════════╝"
   echo "Screenshots: $SCREENSHOTS/"
   echo "Compact AX trees: $AX_TREES/"

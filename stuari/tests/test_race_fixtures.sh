@@ -67,7 +67,7 @@ alloc_a="$(mktemp "$TMP_DIR/stuari_race_alloc.XXXXXX" 2>/dev/null)" || \
 alloc_b="$(mktemp "$TMP_DIR/stuari_race_alloc.XXXXXX" 2>/dev/null)" || \
   fail_test "second unique temp allocation from the same template collided"
 [ "$alloc_a" != "$alloc_b" ] || fail_test "two allocations from the same template must be distinct"
-literal_left="$(find "$TMP_DIR" -maxdepth 1 -name 'stuari_race_alloc*XXXXXX*' | wc -l | tr -d ' ')"
+literal_left="$(find "$TMP_DIR" -name 'stuari_race_alloc*XXXXXX*' | wc -l | tr -d ' ')"
 [ "$literal_left" = "0" ] || fail_test "template must not leave a literal XXXXXX file behind"
 rm -f "$alloc_a" "$alloc_b"
 pass_test "unique temp allocation is collision-free and leaves no literal template file"
@@ -159,11 +159,11 @@ run_iez() {
     calls=$((calls + 1))
     printf '%s\n' "$calls" > "$AX_CALLS_FILE"
     if [ "$AX_MODE" = "stale-fixed-card-only" ]; then
-      printf '{"ok":true,"data":{"elements":[{"id":"%s","label":"Habit card: %s habit, Tap to check in","frame":{"x":150,"y":250,"width":92,"height":120},"enabled":true}]} }\n' "$HISTORICAL_FIXED_CARD_ID" "IEZ Due Now Check-In"
+      printf '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","id":"%s","label":"Habit card: %s habit, Tap to check in","frame":{"x":150,"y":250,"width":92,"height":120},"enabled":true}]} }\n' "$HISTORICAL_FIXED_CARD_ID" "IEZ Due Now Check-In"
     elif [ "$AX_MODE" = "delayed-actionable" ] && [ "$calls" -ge 3 ]; then
-      printf '{"ok":true,"data":{"elements":[{"id":"%s","label":"Habit card: %s habit, Tap to check in","frame":{"x":150,"y":250,"width":92,"height":120},"enabled":true}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
+      printf '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","id":"%s","label":"Habit card: %s habit, Tap to check in","frame":{"x":150,"y":250,"width":92,"height":120},"enabled":true}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
     else
-      printf '{"ok":true,"data":{"elements":[{"id":"%s","label":"Habit card: %s habit, On track","frame":{"x":150,"y":250,"width":92,"height":120},"enabled":true}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
+      printf '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","id":"%s","label":"Habit card: %s habit, On track","frame":{"x":150,"y":250,"width":92,"height":120},"enabled":true}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
     fi
     return 0
   fi
@@ -205,7 +205,7 @@ if printf '%s\n' "$flow20_wizard_block" | grep -Eq 'has_label "(Continue|Skip)"|
   fail_test "Flow 20 wizard must not depend on legacy-only Continue or Skip checks"
 fi
 
-enabled_action_fixture='{"ok":true,"data":{"elements":[{"label":"Continue: habit name","enabled":false,"frame":{"x":20,"y":500,"width":200,"height":56}},{"label":"Continue: habit name","enabled":true,"frame":{"x":100,"y":600,"width":160,"height":56}}]}}'
+enabled_action_fixture='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Continue: habit name","enabled":false,"frame":{"x":20,"y":500,"width":200,"height":56}},{"role":"AXButton","label":"Continue: habit name","enabled":true,"frame":{"x":100,"y":600,"width":160,"height":56}}]}}'
 enabled_action_coords="$(
   run_iez() { printf '%s\n' "$enabled_action_fixture"; }
   first_coords_matching_exact_labels "Continue" "Continue: habit name"
@@ -235,9 +235,9 @@ submitted_line="$(grep -n 'pass "Submitted edit habit form"' "$FLOW20_FILE" | cu
   [ "$save_submit_line" -lt "$submitted_line" ] || \
   fail_test "Flow 20 must report submission only after the exact save tap succeeds"
 
-save_review_legacy_fixture='{"ok":true,"data":{"elements":[{"label":"Save Changes","frame":{"x":24,"y":600,"width":354,"height":56}}]}}'
-save_review_semantic_fixture='{"ok":true,"data":{"elements":[{"label":"Save Changes: habit review","frame":{"x":24,"y":600,"width":354,"height":56}}]}}'
-save_review_collision_fixture='{"ok":true,"data":{"elements":[{"label":"Save Changes now","frame":{"x":24,"y":500,"width":354,"height":56}},{"label":"Save Changes: habit review extra","frame":{"x":24,"y":560,"width":354,"height":56}},{"label":"Not Save Changes","frame":{"x":24,"y":620,"width":354,"height":56}}]}}'
+save_review_legacy_fixture='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Save Changes","frame":{"x":24,"y":600,"width":354,"height":56}}]}}'
+save_review_semantic_fixture='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Save Changes: habit review","frame":{"x":24,"y":600,"width":354,"height":56}}]}}'
+save_review_collision_fixture='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Save Changes now","frame":{"x":24,"y":500,"width":354,"height":56}},{"role":"AXButton","label":"Save Changes: habit review extra","frame":{"x":24,"y":560,"width":354,"height":56}},{"role":"AXButton","label":"Not Save Changes","frame":{"x":24,"y":620,"width":354,"height":56}}]}}'
 
 save_review_legacy_coords="$(
   run_iez() { printf '%s\n' "$save_review_legacy_fixture"; }
@@ -321,26 +321,26 @@ run_iez() {
     printf '%s\n' "$calls" > "$CAMERA_TREE_CALLS_FILE"
     case "$CAMERA_TREE_MODE" in
       scaled-control)
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":134,"height":291.3333333333}},{"id":"camera_capture_photo_button","label":"Take photo","frame":{"x":53.6666666667,"y":242.6666666667,"width":26.6666666667,"height":26.6666666667}}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":134,"height":291.3333333333}},{"role":"AXButton","id":"camera_capture_photo_button","label":"Take photo","frame":{"x":53.6666666667,"y":242.6666666667,"width":26.6666666667,"height":26.6666666667}}]}}'
         ;;
       normal-control)
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"id":"camera_capture_photo_button","label":"Take photo","frame":{"x":161,"y":728,"width":80,"height":80}}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","id":"camera_capture_photo_button","label":"Take photo","frame":{"x":161,"y":728,"width":80,"height":80}}]}}'
         ;;
       invalid-scale-control)
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":180,"height":400}},{"id":"camera_capture_photo_button","label":"Take photo","frame":{"x":80,"y":360,"width":40,"height":40}}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":180,"height":400}},{"role":"AXButton","id":"camera_capture_photo_button","label":"Take photo","frame":{"x":80,"y":360,"width":40,"height":40}}]}}'
         ;;
       delayed-video)
         if [ "$calls" -ge 3 ]; then
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"label":"Camera mode selector. Video mode selected"},{"id":"camera_capture_video_button","label":"Start video recording"}]}}'
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Camera mode selector. Video mode selected","frame":{"x":220,"y":80,"width":150,"height":44}},{"role":"AXButton","id":"camera_capture_video_button","label":"Start video recording","frame":{"x":161,"y":728,"width":80,"height":80}}]}}'
         else
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"label":"Camera mode selector. Photo mode selected"},{"id":"camera_capture_photo_button","label":"Take photo"}]}}'
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Camera mode selector. Photo mode selected","frame":{"x":30,"y":80,"width":150,"height":44}},{"role":"AXButton","id":"camera_capture_photo_button","label":"Take photo","frame":{"x":161,"y":728,"width":80,"height":80}}]}}'
         fi
         ;;
       never-compose)
         printf '%s\n' '{"ok":true,"data":{"elements":[{"id":"camera_capture_photo_button","label":"Take photo"}]}}'
         ;;
       compose-with-stale-camera-nodes)
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Go back"},{"role":"AXButton","label":"Post"},{"role":"AXTextField","label":"Share your progress..."},{"role":"AXButton","id":"camera_capture_photo_button","label":"Take photo"}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in","frame":{"x":80,"y":24,"width":120,"height":30}},{"role":"AXButton","label":"Go back","frame":{"x":12,"y":20,"width":44,"height":44}},{"role":"AXButton","label":"Post","frame":{"x":20,"y":764,"width":362,"height":52}},{"role":"AXTextField","label":"Share your progress...","frame":{"x":20,"y":617,"width":362,"height":115}},{"role":"AXButton","id":"camera_capture_photo_button","label":"Take photo","frame":{"x":161,"y":728,"width":80,"height":80}}]}}'
         ;;
       scaled-composer-control)
         printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":134,"height":291.3333333333}},{"role":"AXButton","label":"Post","frame":{"x":6.6666666667,"y":254.6666666667,"width":120.6666666667,"height":17.3333333333}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":6.6666666667,"y":205.6666666667,"width":120.6666666667,"height":38.3333333333}}]}}'
@@ -353,45 +353,45 @@ run_iez() {
         ;;
       delayed-caption)
         if [ "$calls" -ge 3 ]; then
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXGenericElement","label":"271 characters remaining"}]}}'
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":20,"y":617,"width":362,"height":115}},{"role":"AXStaticText","label":"271 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}}]}}'
         else
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXGenericElement","label":"272 characters remaining"}]}}'
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":20,"y":617,"width":362,"height":115}},{"role":"AXStaticText","label":"272 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}}]}}'
         fi
         ;;
       wrong-caption-count)
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXTextField","label":"Share your progress...","value":""},{"role":"AXGenericElement","label":"270 characters remaining"}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":20,"y":617,"width":362,"height":115}},{"role":"AXStaticText","label":"270 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}}]}}'
         ;;
       equal-length-wrong-input)
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXGenericElement","label":"271 characters remaining"}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":20,"y":617,"width":362,"height":115}},{"role":"AXStaticText","label":"271 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}}]}}'
         ;;
       exact-post-caption)
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"},{"role":"AXStaticText","label":"Feed\nTab 1 of 3"},{"role":"AXStaticText","label":"Confirmed\nday 42 ok"},{"role":"AXButton","label":"Open post by Alice"}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"Confirmed\nday 42 ok","frame":{"x":20,"y":140,"width":362,"height":180}},{"role":"AXButton","label":"Open post by Alice","frame":{"x":20,"y":140,"width":362,"height":180}}]}}'
         ;;
       exact-optimistic-post-caption)
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"},{"role":"AXStaticText","label":"Feed\nTab 1 of 3"},{"role":"AXStaticText","label":"A\nAlice\nJust now\nRetrying...\nday 42 ok"},{"role":"AXStaticText","label":"1 check-in retrying..."}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"A\nAlice\nJust now\nRetrying...\nday 42 ok","frame":{"x":20,"y":140,"width":362,"height":180}},{"role":"AXStaticText","label":"1 check-in retrying...","frame":{"x":20,"y":330,"width":200,"height":24}}]}}'
         ;;
       unrelated-caption-static-text)
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"},{"role":"AXStaticText","label":"Feed\nTab 1 of 3"},{"role":"AXStaticText","label":"day 42 ok"},{"role":"AXStaticText","label":"Alice\nJust now\nRetrying..."},{"role":"AXButton","label":"Open post by Alice"}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"day 42 ok","frame":{"x":20,"y":100,"width":180,"height":24}},{"role":"AXStaticText","label":"Alice\nJust now\nRetrying...","frame":{"x":20,"y":140,"width":362,"height":180}},{"role":"AXButton","label":"Open post by Alice","frame":{"x":20,"y":140,"width":362,"height":180}}]}}'
         ;;
       equal-length-wrong-post-caption)
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"},{"role":"AXStaticText","label":"Feed\nTab 1 of 3"},{"role":"AXStaticText","label":"Confirmed\nday 24 ko"},{"role":"AXButton","label":"Open post by Alice"}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"Confirmed\nday 24 ko","frame":{"x":20,"y":140,"width":362,"height":180}},{"role":"AXButton","label":"Open post by Alice","frame":{"x":20,"y":140,"width":362,"height":180}}]}}'
         ;;
       home-without-post)
         printf '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"},{"id":"%s","label":"Habit card: %s habit, 0/1 confirmed"}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
         ;;
       compose-ready)
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Go back"},{"role":"AXStaticText","label":"269 characters remaining"},{"role":"AXButton","label":"Post","frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in","frame":{"x":80,"y":24,"width":120,"height":30}},{"role":"AXButton","label":"Go back","frame":{"x":12,"y":20,"width":44,"height":44}},{"role":"AXStaticText","label":"269 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}},{"role":"AXButton","label":"Post","frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
         ;;
       delayed-compose-ready-boundary)
         if [ "$calls" -ge 9 ]; then
           printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"y":0,"x":0,"width":402,"height":874}},{"role":"AXStaticText","label":"269 characters remaining","frame":{"y":238.66666666666666,"x":108.06266276041667,"width":12.60400390625,"height":5.333333333333343}},{"id":"camera_continue_to_post_button","label":"Continue to post","role":"AXButton","frame":{"y":248,"x":107.33333333333333,"width":21.33333333333333,"height":21.333333333333314}},{"role":"AXButton","label":"Go back","frame":{"y":23.333333333333332,"x":2.6666666666666665,"width":16,"height":16}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"y":0,"x":0,"width":134,"height":291.3333333333333}},{"role":"AXStaticText","label":"New Check-in","frame":{"y":24.666666666666668,"x":18.666666666666668,"width":35.367996215820312,"height":7.666666666666668}},{"role":"AXButton","label":"Post","frame":{"y":254.66666666666666,"x":6.666666666666667,"width":120.66666666666667,"height":17.333333333333343}},{"id":"camera_capture_photo_button","label":"Take photo","role":"AXButton","frame":{"y":242.66666666666666,"x":53.666666666666664,"width":26.666666666666664,"height":26.666666666666657}}]}}'
         else
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Go back"},{"role":"AXStaticText","label":"269 characters remaining"},{"role":"AXButton","label":"Post","frame":{"x":20,"y":850,"width":362,"height":52}}]}}'
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in","frame":{"x":80,"y":24,"width":120,"height":30}},{"role":"AXButton","label":"Go back","frame":{"x":12,"y":20,"width":44,"height":44}},{"role":"AXStaticText","label":"269 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}},{"role":"AXButton","label":"Post","frame":{"x":20,"y":850,"width":362,"height":52}}]}}'
         fi
         ;;
       delayed-post-home)
         if [ "$calls" -ge 3 ]; then
-          printf '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"},{"id":"%s","label":"Habit card: %s habit, Waiting for confirmation","frame":{"x":78,"y":118,"width":245,"height":382}}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
+          printf '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"id":"%s","label":"Habit card: %s habit, Waiting for confirmation","frame":{"x":78,"y":118,"width":245,"height":382}}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
         else
           printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Post"},{"role":"AXTextField","label":"Share your progress...","value":"day 42 ok"}]}}'
         fi
@@ -399,17 +399,17 @@ run_iez() {
       post-retry-success)
         tap_calls="$(cat "$POST_TAP_CALLS_FILE")"
         if [ "$tap_calls" -ge 2 ]; then
-          printf '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected"},{"id":"%s","label":"Habit card: %s habit, Waiting for confirmation","frame":{"x":78,"y":118,"width":245,"height":382}}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
+          printf '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"id":"%s","label":"Habit card: %s habit, Waiting for confirmation","frame":{"x":78,"y":118,"width":245,"height":382}}]}}\n' "$ACTIONABLE_TARGET_ID" "$ACTIONABLE_TARGET_NAME"
         else
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Go back"},{"role":"AXStaticText","label":"271 characters remaining"},{"role":"AXButton","label":"Post","enabled":true,"frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in","frame":{"x":80,"y":24,"width":120,"height":30}},{"role":"AXButton","label":"Go back","frame":{"x":12,"y":20,"width":44,"height":44}},{"role":"AXStaticText","label":"271 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}},{"role":"AXButton","label":"Post","enabled":true,"frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
         fi
         ;;
       post-inflight-no-retry)
         tap_calls="$(cat "$POST_TAP_CALLS_FILE")"
         if [ "$tap_calls" -ge 1 ]; then
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Go back"},{"role":"AXStaticText","label":"Posting..."},{"role":"AXButton","label":"Post","enabled":true,"frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in","frame":{"x":80,"y":24,"width":120,"height":30}},{"role":"AXButton","label":"Go back","frame":{"x":12,"y":20,"width":44,"height":44}},{"role":"AXStaticText","label":"Posting...","frame":{"x":20,"y":738,"width":180,"height":20}},{"role":"AXButton","label":"Post","enabled":true,"frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
         else
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Go back"},{"role":"AXStaticText","label":"271 characters remaining"},{"role":"AXButton","label":"Post","enabled":true,"frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in","frame":{"x":80,"y":24,"width":120,"height":30}},{"role":"AXButton","label":"Go back","frame":{"x":12,"y":20,"width":44,"height":44}},{"role":"AXStaticText","label":"271 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}},{"role":"AXButton","label":"Post","enabled":true,"frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
         fi
         ;;
       post-route-changed-no-retry)
@@ -417,7 +417,7 @@ run_iez() {
         if [ "$tap_calls" -ge 1 ]; then
           printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Profile tab, selected"},{"role":"AXStaticText","label":"Profile"}]}}'
         else
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in"},{"role":"AXButton","label":"Go back"},{"role":"AXStaticText","label":"271 characters remaining"},{"role":"AXButton","label":"Post","enabled":true,"frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Mock camera (simulator)","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in","frame":{"x":80,"y":24,"width":120,"height":30}},{"role":"AXButton","label":"Go back","frame":{"x":12,"y":20,"width":44,"height":44}},{"role":"AXStaticText","label":"271 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}},{"role":"AXButton","label":"Post","enabled":true,"frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
         fi
         ;;
     esac

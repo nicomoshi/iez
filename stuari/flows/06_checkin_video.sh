@@ -21,12 +21,15 @@ cleanup_video_due_now_fixture() {
   fi
   VIDEO_FIXTURE_CLEANUP_RAN=1
   if [ "${STUARI_DUE_NOW_FIXTURE_CLEANUP_REQUIRED:-0}" != "1" ]; then
+    mark_flow_cleanup_complete
     return 0
   fi
   if ! cleanup_due_now_occurrence_fixture; then
+    mark_flow_cleanup_required
     fail "Reserved due-now occurrence fixture cleanup succeeded for video flow"
     return 1
   fi
+  mark_flow_cleanup_complete
 }
 
 finish_video_flow() {
@@ -84,9 +87,15 @@ camera_shell_visible() {
   tree_contains "Take photo"
 }
 capture "06_home"
+if ! fail_fast_stuari_foreground_app_identity "video flow carousel selection before"; then
+  finish_video_flow
+fi
 if ! select_habit_card_by_id "$habit_id"; then
   fail "Reserved due-now fixture card selected exactly for video flow"
   capture "06_habit_selection_failed"
+  finish_video_flow
+fi
+if ! fail_fast_stuari_foreground_app_identity "video flow carousel selection after"; then
   finish_video_flow
 fi
 
@@ -110,18 +119,9 @@ fi
 pass "Selected exact actionable due-now fixture card"
 capture "06_habit_selected"
 
-r=$(run_iez "$IEZ" ui tap --id "$habit_id")
-if [ "$(json_ok "$r")" = "true" ]; then
-  pass "Tap: Tap habit card by id ('$habit_id')"
-else
-  info "Habit id tap did not report success; trying visible card coordinates"
-fi
-sleep 1
-if ! camera_shell_visible; then
-  habit_coords=$(coords_for_id "$habit_id")
-  if [ -n "$habit_coords" ] && [ "$habit_coords" != "null" ] && [ "$habit_coords" != "," ]; then
-    tap_element "$habit_coords" "coords" "Tap visible habit card center ('$habit_id')"
-  fi
+if ! tap_element "$habit_id" "id" "Tap exact actionable habit card ('$habit_id')" "AXButton"; then
+  capture "06_habit_tap_failed"
+  finish_video_flow
 fi
 sleep 1
 
@@ -197,7 +197,12 @@ if ! wait_for_camera_state "compose" 10 0.25; then
 fi
 pass "Video capture opened the real post composer"
 
-video_post_description="$(test_post_description) video"
+video_caption_base="$(stuari_due_now_fixture_post_caption 2>/dev/null || true)"
+if [ -z "$video_caption_base" ]; then
+  fail "Unique video post caption derived from the active due-now fixture"
+  finish_video_flow
+fi
+video_post_description="$video_caption_base video"
 if ! type_into_checkin_route_field \
     "Share your progress..." "$video_post_description"; then
   capture "06_caption_interaction_failed"

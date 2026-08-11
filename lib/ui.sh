@@ -339,7 +339,10 @@ cmd_ui_swipe() {
                 sy=$(echo "$from" | cut -d',' -f2)
                 ex=$(echo "$to" | cut -d',' -f1)
                 ey=$(echo "$to" | cut -d',' -f2)
-                axe swipe --start-x "$sx" --start-y "$sy" --end-x "$ex" --end-y "$ey" --udid "$udid" 2>/dev/null
+                axe swipe --start-x "$sx" --start-y "$sy" --end-x "$ex" --end-y "$ey" --udid "$udid" 2>/dev/null || {
+                    iez_error "ui.swipe" "SWIPE_FAILED" "Custom swipe from $from to $to failed" "$backend"
+                    return $EXIT_FAIL
+                }
             elif [[ -n "$direction" && ! "$direction" =~ ^-- ]]; then
                 # Use gesture presets for directional swipes
                 local preset="scroll-$direction"

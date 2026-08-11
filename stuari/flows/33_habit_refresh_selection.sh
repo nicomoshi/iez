@@ -34,14 +34,18 @@ pass "Visible habit before carousel move: $initial_label"
 selected_id="$initial_id"
 selected_label="$initial_label"
 for attempt in 1 2 3; do
-  r=$(run_iez "$IEZ" ui swipe --from "360,340" --to "35,340")
-  assert_ok "$r" "Attempt carousel move to another habit ($attempt)"
+  if ! stuari_carousel_swipe "360,340" "35,340" "Attempt carousel move to another habit ($attempt)"; then
+    fail "Infrastructure contamination or failed carousel move toward start"
+    capture "33_carousel_identity_mismatch"
+    print_summary
+    exit $FAIL
+  fi
   sleep 1.5
   if ! wait_for_visible_habit_card 8; then
-    info "Carousel move did not leave a visible app card; relaunching and using current selection"
-    fresh_launch; sleep 2
-    go_home
-    wait_for_visible_habit_card 15 || true
+    fail "Carousel move did not leave a visible app card"
+    capture "33_carousel_card_missing"
+    print_summary
+    exit $FAIL
   fi
   selected_id="$(current_visible_habit_card_id)"
   selected_label="$(current_visible_habit_card_label)"
@@ -52,14 +56,18 @@ done
 
 if [ "$selected_id" = "$initial_id" ]; then
   for attempt in 1 2 3; do
-    r=$(run_iez "$IEZ" ui swipe --from "35,340" --to "360,340")
-    assert_ok "$r" "Attempt carousel move opposite direction ($attempt)"
+    if ! stuari_carousel_swipe "35,340" "360,340" "Attempt carousel move opposite direction ($attempt)"; then
+      fail "Infrastructure contamination or failed carousel move toward end"
+      capture "33_carousel_identity_mismatch_opposite"
+      print_summary
+      exit $FAIL
+    fi
     sleep 1.5
     if ! wait_for_visible_habit_card 8; then
-      info "Opposite carousel move did not leave a visible app card; relaunching and using current selection"
-      fresh_launch; sleep 2
-      go_home
-      wait_for_visible_habit_card 15 || true
+      fail "Opposite carousel move did not leave a visible app card"
+      capture "33_carousel_card_missing_opposite"
+      print_summary
+      exit $FAIL
     fi
     selected_id="$(current_visible_habit_card_id)"
     selected_label="$(current_visible_habit_card_label)"

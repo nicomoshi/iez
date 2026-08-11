@@ -79,30 +79,51 @@ on_home_page() {
 stuari_auth_compact_ax_is_ready() {
   local tree="${1:-}"
   [ -n "$tree" ] || return 1
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
 
   printf '%s\n' "$tree" | jq -e '
-    (.ok == true)
-    and ((.data.elements // []) | type == "array")
-    and any((.data.elements // [])[]?;
-      ((.label // "") as $label
-        | $label == "Dev sign in"
-          or $label == "Sign in with Apple"
-          or $label == "Sign in with Google"
-          or $label == "Get Started"
-          or $label == "Skip"
-          or $label == "Your name"
-          or $label == "Home tab"
-          or $label == "Home tab, selected"
-          or $label == "Home tab, selected tab"
-          or $label == "Create new habit"
-          or $label == "Create Habit"
-          or $label == "Feed tab"
-          or ($label | contains("Tab 1 of 3"))))
+    [(.data.elements // [])[]? | select(.role == "AXApplication")] as $apps
+    | $apps[0].frame as $root
+    | any((.data.elements // [])[]?;
+        (.label // "") as $label
+        | ((.role == "AXButton" and (
+              $label == "Dev sign in"
+              or $label == "Sign in with Apple"
+              or $label == "Sign in with Google"
+              or $label == "Get Started"
+              or $label == "Skip"
+              or $label == "Home tab"
+              or $label == "Home tab, selected"
+              or $label == "Home tab, selected tab"
+              or $label == "Create new habit"
+              or $label == "Create Habit"
+              or $label == "Feed tab"
+              or ($label | contains("Tab 1 of 3"))))
+          or (.role == "AXTextField" and $label == "Your name"))
+        and .enabled != false
+        and (
+          (.frame // null) as $frame
+          | ($frame | type) == "object"
+          and (($frame.x | type) == "number")
+          and (($frame.y | type) == "number")
+          and (($frame.width | type) == "number")
+          and (($frame.height | type) == "number")
+          and $frame.width > 0
+          and $frame.height > 0
+          and $frame.x >= $root.x
+          and $frame.y >= $root.y
+          and ($frame.x + $frame.width) <= ($root.x + $root.width)
+          and ($frame.y + $frame.height) <= ($root.y + $root.height)
+        ))
   ' >/dev/null 2>&1
 }
 
 wait_for_stuari_auth_compact_ax_ready() {
   local attempts="${1:-6}" interval="${2:-1}" attempt=0 tree=""
+  [[ "$attempts" =~ ^[1-9][0-9]*$ ]] || attempts=6
+  [ "$attempts" -le 60 ] || attempts=60
+  [[ "$interval" =~ ^[0-9]+([.][0-9]+)?$ ]] || interval=1
+  awk -v value="$interval" 'BEGIN { exit !(value >= 0 && value <= 5) }' || interval=1
   while [ "$attempt" -lt "$attempts" ]; do
     tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
     if stuari_auth_compact_ax_is_ready "$tree"; then
@@ -171,10 +192,13 @@ stuari_auth_text_field_right_inset_coords() {
   [ -n "$label" ] || return 1
 
   tree="$(run_iez "$IEZ" ui tree --compact)" || return 1
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
   printf '%s\n' "$tree" \
     | jq -er --arg label "$label" '
-        [(.data.elements // [])[]
+        [(.data.elements // [])[] | select(.role == "AXApplication")][0].frame as $root
+        | [(.data.elements // [])[]
           | select(.role == "AXTextField" and .label == $label)
+          | select(.enabled != false)
           | .frame
           | select(
               type == "object" and
@@ -183,7 +207,11 @@ stuari_auth_text_field_right_inset_coords() {
               (.width | type) == "number" and
               (.height | type) == "number" and
               .width > 24 and
-              .height > 0
+              .height > 0 and
+              .x >= $root.x and
+              .y >= $root.y and
+              (.x + .width) <= ($root.x + $root.width) and
+              (.y + .height) <= ($root.y + $root.height)
             )] as $frames
         | select(($frames | length) == 1)
         | $frames[0]
@@ -549,9 +577,7 @@ sign_in_google() {
     return 1
   fi
   capture "auth_pre_google"
-  local r
-  r=$(run_iez "$IEZ" ui tap --label "$LABEL_SIGN_IN_GOOGLE")
-  assert_ok "$r" "Tap Sign in with Google"
+  tap_element "$LABEL_SIGN_IN_GOOGLE" "label" "Tap Sign in with Google" "AXButton" || return 1
   sleep 3
   capture "auth_post_google_tap"
 }
@@ -562,9 +588,7 @@ sign_in_apple() {
     return 1
   fi
   capture "auth_pre_apple"
-  local r
-  r=$(run_iez "$IEZ" ui tap --label "$LABEL_SIGN_IN_APPLE")
-  assert_ok "$r" "Tap Sign in with Apple"
+  tap_element "$LABEL_SIGN_IN_APPLE" "label" "Tap Sign in with Apple" "AXButton" || return 1
   sleep 3
   capture "auth_post_apple_tap"
 }
@@ -639,7 +663,7 @@ login_with_dev_magic() {
     sleep 0.3
     _clear_field
     r=$(run_iez "$IEZ" ui type "$email")
-    assert_ok "$r" "Type Dev email"
+    assert_ok "$r" "Type Dev email" || return 1
     sleep 0.3
     run_iez "$IEZ" ui swipe down >/dev/null 2>&1
     sleep 0.3
@@ -650,14 +674,18 @@ login_with_dev_magic() {
     sleep 0.3
     _clear_field
     r=$(run_iez "$IEZ" ui type "$password")
-    assert_ok "$r" "Type Dev password"
+    if [ "$(json_ok "$r")" = "true" ]; then
+      pass "Type Dev password"
+    else
+      fail "Type Dev password"
+      return 1
+    fi
     sleep 0.3
     run_iez "$IEZ" ui swipe down >/dev/null 2>&1
     sleep 0.3
   fi
 
-  r=$(run_iez "$IEZ" ui tap --label "$LABEL_DEV_SIGN_IN")
-  assert_ok "$r" "Tap Dev sign in"
+  tap_element "$LABEL_DEV_SIGN_IN" "label" "Tap Dev sign in" "AXButton" || return 1
 
   # Wait up to 20s for post-auth state (home or onboarding). The iOS
   # push-notification permission alert ("Would Like to Send You
@@ -667,13 +695,13 @@ login_with_dev_magic() {
   local i=0
   while [ $i -lt 20 ]; do
     if has_label "Allow" && has_label "Don't Allow"; then
-      run_iez "$IEZ" ui tap --label "Allow" >/dev/null 2>&1
+      tap_element "Allow" "label" "Allow notifications" "AXButton" || return 1
       sleep 1
     fi
     # Some iOS builds use a curly apostrophe in "Don't" (U+2019); guard
     # against the permission alert being mid-animation.
     if has_label "Allow" && tree_contains "Allow"; then
-      run_iez "$IEZ" ui tap --label "Allow" >/dev/null 2>&1
+      tap_element "Allow" "label" "Allow notifications" "AXButton" || return 1
       sleep 1
     fi
     if on_home_page || on_onboarding_page; then
@@ -697,13 +725,11 @@ login_with_dev_magic() {
     fi
     sleep "$retry_backoff"
 
-    r=$(run_iez "$IEZ" ui tap --label "Try again")
-    if [ "$(json_ok "$r")" != "true" ]; then
+    if ! tap_element "Try again" "label" "Try again after transient dev login failure" "AXButton"; then
       fail "Actionable dev login recovery could not tap Try again"
       capture "auth_dev_magic_retry_tap_failed"
       return 1
     fi
-    pass "Tap: Try again after transient dev login failure"
 
     i=0
     while [ "$i" -lt 8 ]; do
@@ -867,7 +893,7 @@ complete_onboarding() {
     # Both TextFields lack stable AX labels once populated; tap by coords.
     # On iPhone 17 the Display Name field frame.y≈455, Username y≈563.
     # Tap middle, clear, type.
-    run_iez "$IEZ" ui tap --coords "200,485" >/dev/null 2>&1
+    tap_element "200,485" "coords" "Focus onboarding display name" "AXTextField" || return 1
     sleep 0.3
     for _ in $(seq 1 30); do run_iez "$IEZ" ui key 42 >/dev/null 2>&1; done
     run_iez "$IEZ" ui type "${STUARI_TEST_NAME:-Stu Ari}" >/dev/null 2>&1
@@ -875,7 +901,7 @@ complete_onboarding() {
     run_iez "$IEZ" ui swipe down >/dev/null 2>&1
     sleep 0.3
     # Username field
-    run_iez "$IEZ" ui tap --coords "200,595" >/dev/null 2>&1
+    tap_element "200,595" "coords" "Focus onboarding username" "AXTextField" || return 1
     sleep 0.3
     for _ in $(seq 1 30); do run_iez "$IEZ" ui key 42 >/dev/null 2>&1; done
     # Username must be ≤ 20 chars. Use short prefix + 6-digit tail.
@@ -960,15 +986,8 @@ sign_out() {
 
   # Confirm dialog shows "Sign Out" twice: once as the title text, once as
   # the red confirm button. Read the tree and pick the button (highest y).
-  local confirm_coords
-  confirm_coords=$(run_iez "$IEZ" ui tree \
-    | jq -r '[.data.tree[].children[]? | select(.role == "AXButton" and (.AXLabel == "Sign Out" or .AXLabel == "Sign out" or .AXLabel == "Confirm"))] | sort_by(.frame.y) | last | "\(.frame.x + (.frame.width / 2) | floor),\(.frame.y + (.frame.height / 2) | floor)"' 2>/dev/null)
-  if [ -n "$confirm_coords" ] && [ "$confirm_coords" != "null" ] && [ "$confirm_coords" != "," ]; then
-    local r
-    r=$(run_iez "$IEZ" ui tap --coords "$confirm_coords")
-    assert_ok "$r" "Confirm sign out ($confirm_coords)"
-  elif has_label "Confirm"; then
-    tap_element "Confirm" "label" "Confirm sign out"
+  if ! tap_first_matching_exact_labels "Sign Out" "Sign out" "Confirm sign out"; then
+    tap_element "Confirm" "label" "Confirm sign out" "AXButton" || return 1
   fi
 
   # Give auth state time to clear. The auth page re-renders the dev

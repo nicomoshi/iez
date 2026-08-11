@@ -106,13 +106,14 @@ persisted_session_is_verified_alice() {
 reseed_due_now_occurrence_fixture || fail_test "dynamic fixture reseed should succeed"
 assert_uuid "$DUE_NOW_HABIT_GROUP_ID"
 [ "$DUE_NOW_HABIT_CARD_ID" = "habit_card_$DUE_NOW_HABIT_GROUP_ID" ] ||   fail_test "reseed exports the exact dynamic card id"
-[[ "$DUE_NOW_HABIT_NAME" =~ ^IEZ\ Due\ Now\ [0-9a-f]{8}$ ]] ||   fail_test "reseed exports a validated bounded name"
+[[ "$DUE_NOW_HABIT_NAME" =~ ^IEZ\ Due\ [0-9a-f]{32}$ ]] ||   fail_test "reseed exports a validated bounded name"
 [ "$STUARI_DUE_NOW_OCCURRENCE_ID" = "$FIXTURE_OCCURRENCE_ID" ] ||   fail_test "reseed exports the exact authoritative occurrence id"
 [ "${STUARI_DUE_NOW_FIXTURE_CLEANUP_REQUIRED:-0}" = "1" ] ||   fail_test "reseed marks cleanup responsibility"
 
 assert_file_contains "$DUE_NOW_HABIT_GROUP_ID" "$CAPTURE_FILE" "setup SQL uses the exported dynamic group"
 assert_file_contains "$DUE_NOW_HABIT_NAME" "$CAPTURE_FILE" "setup SQL uses the exported dynamic name"
 assert_file_contains "iez_due_now_fixture_dynamic_id_collision" "$CAPTURE_FILE" "setup rejects dynamic identity collisions"
+assert_file_contains "iez_due_now_fixture_dynamic_name_collision" "$CAPTURE_FILE" "setup rejects dynamic name collisions"
 assert_file_contains "__occurrence_publish_schedule_v2" "$CAPTURE_FILE" "setup uses the supported schedule materializer"
 assert_file_contains "list_my_occurrence_snapshots_v2" "$CAPTURE_FILE" "setup validates the authenticated snapshot RPC"
 assert_file_contains "auth.users" "$CAPTURE_FILE" "setup validates the authenticated account"
@@ -302,11 +303,12 @@ printf '%s\n' "$helper_block" | grep -Eq 'ui tap|ui swipe|fresh_launch|pull_to_r
 pass_test "immediate AX wait is read-only"
 
 capture_block="$(sed -n '/^capture() {/,/^first_coords_matching_label_regex()/p' "$common_file")"
-printf '%s\n' "$capture_block" | grep -Fq 'ui screenshot --out "$screenshot_path"' ||   fail_test "capture requests a screenshot"
+printf '%s\n' "$capture_block" | grep -Fq 'ui screenshot --out "$diagnostic_screenshot"' ||   fail_test "capture requests a diagnostic screenshot before validation"
 printf '%s\n' "$capture_block" | grep -Fq 'ui tree --compact' ||   fail_test "capture requests a compact AX tree"
-printf '%s\n' "$capture_block" | grep -Fq '[ ! -s "$screenshot_path" ]' ||   fail_test "capture rejects an empty screenshot"
-printf '%s\n' "$capture_block" | grep -Fq '[ ! -s "$ax_path" ]' ||   fail_test "capture rejects an empty AX artifact"
-printf '%s\n' "$capture_block" | grep -Fq '.ok == true and (.data.elements | type == "array")' ||   fail_test "capture requires a successful AX envelope"
+printf '%s\n' "$capture_block" | grep -Fq '[ ! -s "$diagnostic_screenshot" ]' ||   fail_test "capture rejects an empty screenshot"
+printf '%s\n' "$capture_block" | grep -Fq '[ ! -s "$staging_ax" ]' ||   fail_test "capture rejects an empty staged AX artifact"
+printf '%s\n' "$capture_block" | grep -Fq 'stuari_ax_tree_has_expected_app_root' ||   fail_test "capture requires the expected Stuari root"
+printf '%s\n' "$capture_block" | grep -Fq '[ "$after_signature" != "$before_signature" ]' ||   fail_test "capture requires matching before/after signatures"
 pass_test "capture artifact contract remains strict"
 
 CAPTURE_SCREENSHOTS="$TMP_DIR/capture_screenshots"
@@ -323,7 +325,7 @@ run_iez() {
   shift
   if [ "${1:-}" = "ui" ] && [ "${2:-}" = "tree" ] && [ "${3:-}" = "--compact" ]; then
     if [ "$CAPTURE_FAKE_AX_MODE" = "ok" ]; then
-      printf '%s\n' '{"ok":true,"data":{"elements":[{"id":"habit_card_test","label":"Habit card: Test habit","frame":{"x":150,"y":250,"width":92,"height":120}}]}}'
+      printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","id":"habit_card_test","label":"Habit card: Test habit","frame":{"x":150,"y":250,"width":92,"height":120}}]}}'
     else
       printf '%s\n' '{"ok":false,"error":{"code":"TREE_EMPTY","message":"fake tree failure"}}'
     fi

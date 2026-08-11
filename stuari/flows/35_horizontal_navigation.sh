@@ -39,11 +39,20 @@ assert_selected_tab() {
 
 assert_body_swipe_stays() {
   local from="$1" to="$2" expected="$3" desc="$4"
-  local r
-  r=$(run_iez "$IEZ" ui swipe --from "$from" --to "$to")
-  assert_ok "$r" "Horizontal body swipe delivered: $desc"
+  if ! stuari_carousel_swipe "$from" "$to" "Horizontal body swipe: $desc"; then
+    return 1
+  fi
   sleep 1.3
   assert_selected_tab "$expected" "$desc remains selected"
+}
+
+flow35_flutter_threshold_evidence_is_valid() {
+  local evidence="${STUARI_FLOW35_FLUTTER_EVIDENCE_FILE:-}"
+  [ -n "$evidence" ] && [ -f "$evidence" ] && [ -s "$evidence" ] || return 1
+  grep -Fq 'Given a 47 px horizontal drag starts over the habit carousel' "$evidence" || return 1
+  grep -Fq 'Given a 48 px intentional horizontal drag starts over the habit carousel' "$evidence" || return 1
+  grep -Fq 'All tests passed!' "$evidence" || return 1
+  ! grep -Eq 'Some tests failed|[1-9][0-9]* tests? failed' "$evidence"
 }
 
 carousel_neighbor_direction() {
@@ -109,8 +118,12 @@ if wait_for_visible_habit_card 5; then
   fi
 
   if [ -n "$drag_from" ]; then
-    r=$(run_iez "$IEZ" ui swipe --from "$drag_from" --to "$drag_47_to")
-    assert_ok "$r" "47 pt habit-carousel drag delivered"
+    if ! stuari_carousel_swipe "$drag_from" "$drag_47_to" "47 pt habit-carousel drag"; then
+      fail "Infrastructure contamination or failed 47 pt carousel drag"
+      capture "35_carousel_identity_mismatch_47pt"
+      print_summary
+      exit $FAIL
+    fi
     sleep 1
     capture "35_carousel_47pt_stays"
     after_47="$(current_visible_habit_card_id)"
@@ -121,10 +134,19 @@ if wait_for_visible_habit_card 5; then
     fi
     assert_selected_tab "$TAB_HOME" "Home after 47 pt carousel drag"
 
-    skip "Exact 48 pt simulator boundary" "Axe quantizes sub-50 pt swipes; exact 48 is covered by Flutter widget tests"
+    if flow35_flutter_threshold_evidence_is_valid; then
+      not_applicable "Exact 48 pt simulator boundary" \
+        "Axe quantizes sub-50 pt swipes; focused 47/48 px Flutter widget evidence passed"
+    else
+      fail "Exact 48 pt simulator boundary requires passing focused Flutter widget evidence"
+    fi
 
-    r=$(run_iez "$IEZ" ui swipe --from "$drag_from" --to "$drag_50_to")
-    assert_ok "$r" "50 pt fallback carousel drag delivered"
+    if ! stuari_carousel_swipe "$drag_from" "$drag_50_to" "50 pt fallback carousel drag"; then
+      fail "Infrastructure contamination or failed 50 pt carousel drag"
+      capture "35_carousel_identity_mismatch_50pt"
+      print_summary
+      exit $FAIL
+    fi
     sleep 1
     capture "35_carousel_50pt_fallback_moves"
     after_50="$(current_visible_habit_card_id)"

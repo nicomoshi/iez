@@ -51,14 +51,17 @@ source "$ROOT_DIR/stuari/lib/auth.sh"
 source "$ROOT_DIR/stuari/lib/fixtures.sh"
 eval "$(declare -f reset_simulator_auth_tokens_to_auth_page | sed '1s/reset_simulator_auth_tokens_to_auth_page/stuari_real_reset_simulator_auth_tokens_to_auth_page/')"
 
-root_only_ax='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev"}]}}'
+root_only_ax='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}}]}}'
+auth_ready_ax='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Dev sign in","frame":{"x":20,"y":500,"width":200,"height":56}}]}}'
+onboarding_ready_ax='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Get Started","frame":{"x":20,"y":500,"width":200,"height":56}}]}}'
+home_ready_ax='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}}]}}'
 if stuari_auth_compact_ax_is_ready "$root_only_ax"; then
   fail_test "Root-only compact AX must not be treated as actionable"
 fi
 for ready_ax in \
-  '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Dev sign in"}]}}' \
-  '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Get Started"}]}}' \
-  '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"}]}}'; do
+  "$auth_ready_ax" \
+  "$onboarding_ready_ax" \
+  "$home_ready_ax"; do
   stuari_auth_compact_ax_is_ready "$ready_ax" || \
     fail_test "Actionable auth, onboarding, and home semantics must be ready"
 done
@@ -223,7 +226,7 @@ LOGIN_CONTRACT_OUTPUT="$TMP_DIR/login_contract.output"
       fi
 
       if [ "${1:-}" = "ui" ] && [ "${2:-}" = "tree" ] && [ "${3:-}" = "--compact" ]; then
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":300,"height":50}},{"role":"AXTextField","label":"Dev password","frame":{"x":20,"y":200,"width":300,"height":50}}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":300,"height":50}},{"role":"AXTextField","label":"Dev password","frame":{"x":20,"y":200,"width":300,"height":50}},{"role":"AXButton","label":"Dev sign in","frame":{"x":20,"y":300,"width":300,"height":50}}]}}'
         return 0
       fi
 
@@ -323,17 +326,17 @@ run_actionable_login_recovery_case() {
       if [ "${1:-}" = "ui" ] && [ "${2:-}" = "tree" ]; then
         case "$(cat "$state_file")" in
           auth)
-            printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":300,"height":50}},{"role":"AXTextField","label":"Dev password","frame":{"x":20,"y":200,"width":300,"height":50}},{"role":"AXButton","label":"Dev sign in"}]}}'
+            printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":300,"height":50}},{"role":"AXTextField","label":"Dev password","frame":{"x":20,"y":200,"width":300,"height":50}},{"role":"AXButton","label":"Dev sign in","frame":{"x":20,"y":300,"width":300,"height":50}}]}}'
             ;;
           error)
             if [ "$outcome" = "invalid" ]; then
-              printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXStaticText","label":"Something went wrong when attempting to login."},{"role":"AXStaticText","label":"invalid_credentials"},{"role":"AXButton","label":"Try again","enabled":true}]}}'
+              printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Something went wrong when attempting to login.","frame":{"x":20,"y":200,"width":360,"height":40}},{"role":"AXStaticText","label":"invalid_credentials","frame":{"x":20,"y":250,"width":360,"height":40}},{"role":"AXButton","label":"Try again","enabled":true,"frame":{"x":20,"y":320,"width":360,"height":50}}]}}'
             else
-              printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXStaticText","label":"Something went wrong when attempting to login."},{"role":"AXButton","label":"Try again","enabled":true}]}}'
+              printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"Something went wrong when attempting to login.","frame":{"x":20,"y":200,"width":360,"height":40}},{"role":"AXButton","label":"Try again","enabled":true,"frame":{"x":20,"y":320,"width":360,"height":50}}]}}'
             fi
             ;;
           home)
-            printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"}]}}'
+            printf '%s\n' "$home_ready_ax"
             ;;
         esac
         return 0
@@ -414,7 +417,7 @@ pass_test "Given invalid_credentials detail When login fails Then Try again is n
 
 if (
   run_iez() {
-    printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":300,"height":50}},{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":300,"height":50}}]}}'
+    printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":300,"height":50}},{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":300,"height":50}}]}}'
   }
   stuari_auth_text_field_right_inset_coords "$LABEL_DEV_EMAIL" >/dev/null
 ); then
@@ -422,7 +425,7 @@ if (
 fi
 if (
   run_iez() {
-    printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":0,"height":50}}]}}'
+    printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":0,"height":50}}]}}'
   }
   stuari_auth_text_field_right_inset_coords "$LABEL_DEV_EMAIL" >/dev/null
 ); then
@@ -447,9 +450,9 @@ capture() { :; }
 terminate_app() { return 0; }
 run_iez() {
   case "${FAKE_PAGE:-auth}" in
-    auth) printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Dev sign in"}]}}' ;;
-    onboarding) printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Get Started"}]}}' ;;
-    home) printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"}]}}' ;;
+    auth) printf '%s\n' "$auth_ready_ax" ;;
+    onboarding) printf '%s\n' "$onboarding_ready_ax" ;;
+    home) printf '%s\n' "$home_ready_ax" ;;
     *) printf '%s\n' "$root_only_ax" ;;
   esac
 }
@@ -655,7 +658,7 @@ fi
 READY_ORDER="$TMP_DIR/ready_order.calls"
 : >"$READY_ORDER"
 (
-  run_iez() { printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"}]}}'; }
+  run_iez() { printf '%s\n' "$home_ready_ax"; }
   persisted_session_is_verified_alice() { printf 'TOKEN\n' >>"$READY_ORDER"; return 0; }
   persisted_session_is_remotely_verified_alice() { printf 'REMOTE\n' >>"$READY_ORDER"; return 0; }
   on_home_page() { return 0; }
@@ -903,9 +906,9 @@ assert_file_contains 'HABIT_NAME="${STUARI_FLOW04_HABIT_NAME:-$(test_habit_name)
 assert_file_contains 'type_into "e.g. Morning Run" "$HABIT_NAME"' "$flow04_file" \
   "Flow 04 types the generated habit name into the create form"
 
-wizard_semantic_fixture='{"ok":true,"data":{"elements":[{"label":"Continue: habit name","frame":{"x":0,"y":0,"width":0,"height":0}},{"label":"Continue to post","frame":{"x":20,"y":500,"width":200,"height":56}},{"label":"Continue: habit name extra","frame":{"x":20,"y":560,"width":240,"height":56}},{"label":"Continue: habit name","frame":{"x":100,"y":600,"width":160,"height":56}}]}}'
-wizard_legacy_fixture='{"ok":true,"data":{"elements":[{"label":"Continue: habit milestone","frame":{"x":24,"y":540,"width":354,"height":56}},{"label":"Continue","frame":{"x":24,"y":600,"width":354,"height":56}}]}}'
-wizard_review_fixture='{"ok":true,"data":{"elements":[{"label":"Create Habit. Tap to start a new journey.","frame":{"x":16,"y":200,"width":370,"height":100}},{"label":"Create Habit: habit review","frame":{"x":16,"y":694,"width":370,"height":56}}]}}'
+wizard_semantic_fixture='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Continue: habit name","frame":{"x":0,"y":0,"width":0,"height":0}},{"role":"AXButton","label":"Continue to post","frame":{"x":20,"y":500,"width":200,"height":56}},{"role":"AXButton","label":"Continue: habit name extra","frame":{"x":20,"y":560,"width":240,"height":56}},{"role":"AXButton","label":"Continue: habit name","frame":{"x":100,"y":600,"width":160,"height":56}}]}}'
+wizard_legacy_fixture='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Continue: habit milestone","frame":{"x":24,"y":540,"width":354,"height":56}},{"role":"AXButton","label":"Continue","frame":{"x":24,"y":600,"width":354,"height":56}}]}}'
+wizard_review_fixture='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Create Habit. Tap to start a new journey.","frame":{"x":16,"y":200,"width":370,"height":100}},{"role":"AXButton","label":"Create Habit: habit review","frame":{"x":16,"y":694,"width":370,"height":56}}]}}'
 wizard_tap_log="$TMP_DIR/wizard_action.tap"
 
 semantic_continue_coords="$(
@@ -1113,7 +1116,7 @@ render_fake_card_tree() {
   local card_id
   card_id="$(fake_carousel_card_id_at_index "$(fake_carousel_get_state index)")"
   cat <<JSON
-{"ok":true,"data":{"elements":[{"id":"$card_id","label":"Habit card: $card_id habit, Tap to check in","frame":{"x":150,"y":250,"width":92,"height":120},"enabled":true}]}}
+{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","id":"$card_id","label":"Habit card: $card_id habit, Tap to check in","frame":{"x":150,"y":250,"width":92,"height":120},"enabled":true}]}}
 JSON
 }
 
