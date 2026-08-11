@@ -77,6 +77,31 @@ has_dev_magic_login() {
   has_label "$LABEL_DEV_SIGN_IN"
 }
 
+dev_magic_actionable_error_visible() {
+  local tree=""
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  printf '%s\n' "$tree" | jq -e '
+    any(.data.elements[]?;
+      .role == "AXStaticText"
+      and .label == "Something went wrong when attempting to login.")
+    and any(.data.elements[]?;
+      .role == "AXButton"
+      and .label == "Try again"
+      and .enabled != false)
+  ' >/dev/null 2>&1
+}
+
+dev_magic_invalid_credentials_visible() {
+  local tree=""
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  printf '%s\n' "$tree" | jq -e '
+    any(.data.elements[]?;
+      ((.label // "") | ascii_downcase) as $label
+      | ($label | contains("invalid_credentials"))
+        or ($label | contains("invalid login credentials")))
+  ' >/dev/null 2>&1
+}
+
 stuari_auth_text_field_right_inset_coords() {
   local label="${1:-}" tree
   [ -n "$label" ] || return 1
@@ -142,8 +167,8 @@ stuari_auth_write_preferences_json_atomically() {
     return 1
   fi
 
-  tmp_json="$(mktemp "${TMPDIR:-/tmp}/stuari_auth_preferences.XXXXXX.json")" || return 1
-  tmp_plist="$(mktemp "${TMPDIR:-/tmp}/stuari_auth_preferences.XXXXXX.plist")" || {
+  tmp_json="$(mktemp "${TMPDIR:-/tmp}/stuari_auth_preferences_json.XXXXXX")" || return 1
+  tmp_plist="$(mktemp "${TMPDIR:-/tmp}/stuari_auth_preferences_plist.XXXXXX")" || {
     rm -f "$tmp_json"
     return 1
   }
@@ -237,6 +262,22 @@ persisted_session_is_verified_alice() {
       --arg expected_email "$STUARI_AUTH_ALICE_EMAIL" '
         .id == $expected_id and .email == $expected_email
       ' >/dev/null 2>&1
+}
+
+wait_for_verified_alice_persisted_session() {
+  local timeout="${1:-8}" interval="${2:-0.25}"
+  local attempts=0 max_attempts
+  max_attempts=$((timeout * 4))
+
+  while [ "$attempts" -lt "$max_attempts" ]; do
+    if persisted_session_is_verified_alice; then
+      return 0
+    fi
+    sleep "$interval"
+    attempts=$((attempts + 1))
+  done
+
+  return 1
 }
 
 persisted_session_is_bob() {
@@ -375,6 +416,9 @@ login_with_dev_magic() {
   local force_password_type=0
   local need_email_type=1
   local need_password_type=1
+  local recovery_attempted="${STUARI_AUTH_RECOVERY_ATTEMPTED:-0}"
+  local retry_backoff="${STUARI_AUTH_RETRY_BACKOFF_SECONDS:-5}"
+  local use_prefilled_defaults=0
 
   if [ "$#" -ge 1 ]; then
     email="$1"
@@ -387,6 +431,10 @@ login_with_dev_magic() {
     force_password_type=1
   else
     password="${STUARI_TEST_PASSWORD:-$default_password}"
+  fi
+  if [ "$force_email_type" = "0" ] && [ "$force_password_type" = "0" ] &&
+    [ "$email" = "$default_email" ] && [ "$password" = "$default_password" ]; then
+    use_prefilled_defaults=1
   fi
 
   info "Dev magic login"
@@ -470,15 +518,57 @@ login_with_dev_magic() {
       capture "auth_post_dev_magic"
       return 0
     fi
+    if dev_magic_actionable_error_visible; then
+      break
+    fi
     sleep 1; i=$((i + 1))
   done
+
+  if dev_magic_actionable_error_visible &&
+    ! dev_magic_invalid_credentials_visible &&
+    [ "$recovery_attempted" != "1" ]; then
+    info "Dev magic login reached actionable error; retrying once after backoff"
+    capture "auth_dev_magic_retryable_error"
+    if ! printf '%s\n' "$retry_backoff" | grep -Eq '^[0-9]+([.][0-9]+)?$'; then
+      retry_backoff=5
+    fi
+    sleep "$retry_backoff"
+
+    r=$(run_iez "$IEZ" ui tap --label "Try again")
+    if [ "$(json_ok "$r")" != "true" ]; then
+      fail "Actionable dev login recovery could not tap Try again"
+      capture "auth_dev_magic_retry_tap_failed"
+      return 1
+    fi
+    pass "Tap: Try again after transient dev login failure"
+
+    i=0
+    while [ "$i" -lt 8 ]; do
+      if on_auth_page; then
+        if [ "$use_prefilled_defaults" = "1" ]; then
+          STUARI_AUTH_RECOVERY_ATTEMPTED=1 login_with_dev_magic
+        else
+          STUARI_AUTH_RECOVERY_ATTEMPTED=1 \
+            login_with_dev_magic "$email" "$password"
+        fi
+        return $?
+      fi
+      sleep 1
+      i=$((i + 1))
+    done
+
+    fail "Actionable dev login recovery did not restore the credential form"
+    capture "auth_dev_magic_retry_form_missing"
+    return 1
+  fi
+
   fail "Dev magic login did not reach Home/Onboarding within 20s"
   capture "auth_dev_magic_timeout"
   return 1
 }
 
 ensure_verified_alice_session() {
-  local wait_i=0
+  local wait_i=0 alice_password="${STUARI_TEST_PASSWORD:-iez-test-password-2026}"
 
   fresh_launch
   sleep 2
@@ -509,13 +599,17 @@ ensure_verified_alice_session() {
     return 1
   fi
 
-  login_with_dev_magic "$STUARI_AUTH_ALICE_EMAIL" "${STUARI_TEST_PASSWORD:-iez-test-password-2026}" || return 1
+  if [ "$alice_password" = "iez-test-password-2026" ]; then
+    login_with_dev_magic || return 1
+  else
+    login_with_dev_magic "$STUARI_AUTH_ALICE_EMAIL" "$alice_password" || return 1
+  fi
   if on_onboarding_page; then
     complete_onboarding || return 1
     sleep 1
   fi
 
-  if ! persisted_session_is_verified_alice; then
+  if ! wait_for_verified_alice_persisted_session 8 0.25; then
     if persisted_session_is_bob; then
       fail "Persisted principal remained Bob after Alice sign-in"
     else

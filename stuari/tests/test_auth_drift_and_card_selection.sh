@@ -48,7 +48,6 @@ export DEVICE_ID="test-device"
 source "$ROOT_DIR/stuari/lib/common.sh"
 source "$ROOT_DIR/stuari/lib/auth.sh"
 source "$ROOT_DIR/stuari/lib/fixtures.sh"
-eval "$(declare -f login_with_dev_magic | sed '1s/login_with_dev_magic/stuari_real_login_with_dev_magic/')"
 eval "$(declare -f reset_simulator_auth_tokens_to_auth_page | sed '1s/reset_simulator_auth_tokens_to_auth_page/stuari_real_reset_simulator_auth_tokens_to_auth_page/')"
 
 _stuari_real_write_decl="$(declare -f stuari_auth_write_preferences_json_atomically)"
@@ -149,17 +148,19 @@ EOF
 }
 
 LOGIN_CONTRACT_CALLS="$TMP_DIR/login_contract.calls"
-login_contract_output="$(
-  (
-    FAKE_AUTH_PAGE="auth"
-
+LOGIN_CONTRACT_STATE="$TMP_DIR/login_contract.state"
+EXPLICIT_LOGIN_EMAIL="non-default@example.test"
+EXPLICIT_LOGIN_PASSWORD="non-default-password"
+printf 'auth\n' > "$LOGIN_CONTRACT_STATE"
+LOGIN_CONTRACT_OUTPUT="$TMP_DIR/login_contract.output"
+(
     capture() { :; }
     has_label() {
       case "$1" in
         "$LABEL_DEV_EMAIL"|"$LABEL_DEV_PASSWORD"|"$LABEL_DEV_SIGN_IN")
           return 0
           ;;
-        "Allow"|"Don't Allow")
+        "Allow"|Don*t\ Allow)
           return 1
           ;;
         *)
@@ -168,8 +169,8 @@ login_contract_output="$(
       esac
     }
     tree_contains() { return 1; }
-    on_home_page() { [ "${FAKE_AUTH_PAGE:-auth}" = "home" ]; }
-    on_onboarding_page() { [ "${FAKE_AUTH_PAGE:-auth}" = "onboarding" ]; }
+    on_home_page() { [ "$(cat "$LOGIN_CONTRACT_STATE")" = "home" ]; }
+    on_onboarding_page() { return 1; }
     run_iez() {
       if [ "${1:-}" = "$IEZ" ]; then
         shift
@@ -196,15 +197,15 @@ login_contract_output="$(
         case "${4:-}" in
           "$LABEL_DEV_SIGN_IN")
             printf 'SUBMIT\n' >> "$LOGIN_CONTRACT_CALLS"
-            FAKE_AUTH_PAGE="home"
+            printf 'home\n' > "$LOGIN_CONTRACT_STATE"
             ;;
         esac
       elif [ "${1:-}" = "ui" ] && [ "${2:-}" = "type" ]; then
         case "${3:-}" in
-          "$STUARI_AUTH_ALICE_EMAIL")
+          "$EXPLICIT_LOGIN_EMAIL")
             printf 'TYPE_EMAIL\n' >> "$LOGIN_CONTRACT_CALLS"
             ;;
-          "${STUARI_TEST_PASSWORD:-iez-test-password-2026}")
+          "$EXPLICIT_LOGIN_PASSWORD")
             printf 'TYPE_PASSWORD\n' >> "$LOGIN_CONTRACT_CALLS"
             ;;
           *)
@@ -221,9 +222,9 @@ login_contract_output="$(
       return 0
     }
 
-    stuari_real_login_with_dev_magic "$STUARI_AUTH_ALICE_EMAIL" "${STUARI_TEST_PASSWORD:-iez-test-password-2026}"
-  ) 2>&1
-)"
+  login_with_dev_magic "$EXPLICIT_LOGIN_EMAIL" "$EXPLICIT_LOGIN_PASSWORD"
+) > "$LOGIN_CONTRACT_OUTPUT" 2>&1
+login_contract_output="$(cat "$LOGIN_CONTRACT_OUTPUT")"
 
 [ "$(grep -c '^TYPE_EMAIL$' "$LOGIN_CONTRACT_CALLS")" = "1" ] || \
   fail_test "Explicit Alice dev login types the email field exactly once"
@@ -235,11 +236,135 @@ login_contract_output="$(
   fail_test "Given a unique Dev password frame When overwriting explicitly Then it taps the right inset once"
 [ "$(grep -c '^FOCUS_OTHER$' "$LOGIN_CONTRACT_CALLS" || true)" = "0" ] || \
   fail_test "Explicit Alice dev login must not tap an unresolved coordinate"
-printf '%s' "$login_contract_output" | grep -Fq "$STUARI_AUTH_ALICE_EMAIL" && \
+printf '%s' "$login_contract_output" | grep -Fq "$EXPLICIT_LOGIN_EMAIL" && \
   fail_test "Explicit Alice dev login must not print the email credential"
-printf '%s' "$login_contract_output" | grep -Fq "${STUARI_TEST_PASSWORD:-iez-test-password-2026}" && \
+printf '%s' "$login_contract_output" | grep -Fq "$EXPLICIT_LOGIN_PASSWORD" && \
   fail_test "Explicit Alice dev login must not print the password credential"
-pass_test "Given unique Dev field frames When explicitly logging in Then it taps right insets and prints no credentials"
+pass_test "Given non-default credentials When explicitly logging in Then it types fields and prints no credentials"
+
+run_actionable_login_recovery_case() {
+  local outcome="$1"
+  local calls_file="$TMP_DIR/auth_recovery_${outcome}.calls"
+  local state_file="$TMP_DIR/auth_recovery_${outcome}.state"
+  local submits_file="$TMP_DIR/auth_recovery_${outcome}.submits"
+  : > "$calls_file"
+  printf 'auth\n' > "$state_file"
+  printf '0\n' > "$submits_file"
+
+  if (
+    capture() { :; }
+    sleep() { :; }
+    on_home_page() { [ "$(cat "$state_file")" = "home" ]; }
+    on_onboarding_page() { return 1; }
+    on_auth_page() { [ "$(cat "$state_file")" = "auth" ]; }
+    has_label() {
+      case "$1" in
+        "$LABEL_DEV_EMAIL"|"$LABEL_DEV_PASSWORD"|"$LABEL_DEV_SIGN_IN")
+          [ "$(cat "$state_file")" = "auth" ]
+          ;;
+        "Try again")
+          [ "$(cat "$state_file")" = "error" ]
+          ;;
+        *) return 1 ;;
+      esac
+    }
+    tree_contains() {
+      [ "$(cat "$state_file")" = "error" ] && \
+        [ "$1" = "Something went wrong when attempting to login." ]
+    }
+    run_iez() {
+      [ "${1:-}" = "$IEZ" ] && shift
+      if [ "${1:-}" = "ui" ] && [ "${2:-}" = "tree" ]; then
+        case "$(cat "$state_file")" in
+          auth)
+            printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXTextField","label":"Dev email","frame":{"x":20,"y":100,"width":300,"height":50}},{"role":"AXTextField","label":"Dev password","frame":{"x":20,"y":200,"width":300,"height":50}},{"role":"AXButton","label":"Dev sign in"}]}}'
+            ;;
+          error)
+            if [ "$outcome" = "invalid" ]; then
+              printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXStaticText","label":"Something went wrong when attempting to login."},{"role":"AXStaticText","label":"invalid_credentials"},{"role":"AXButton","label":"Try again","enabled":true}]}}'
+            else
+              printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXStaticText","label":"Something went wrong when attempting to login."},{"role":"AXButton","label":"Try again","enabled":true}]}}'
+            fi
+            ;;
+          home)
+            printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXButton","label":"Home tab, selected"}]}}'
+            ;;
+        esac
+        return 0
+      fi
+      if [ "${1:-}" = "ui" ] && [ "${2:-}" = "tap" ] && [ "${3:-}" = "--label" ]; then
+        case "${4:-}" in
+          "$LABEL_DEV_SIGN_IN")
+            submit_calls="$(cat "$submits_file")"
+            submit_calls=$((submit_calls + 1))
+            printf '%s\n' "$submit_calls" > "$submits_file"
+            printf 'SUBMIT\n' >> "$calls_file"
+            if [ "$submit_calls" -eq 1 ]; then
+              printf 'error\n' > "$state_file"
+            elif [ "$outcome" = "success" ]; then
+              printf 'home\n' > "$state_file"
+              write_preferences_plist alice
+            else
+              printf 'error\n' > "$state_file"
+            fi
+            ;;
+          "Try again")
+            printf 'TRY_AGAIN\n' >> "$calls_file"
+            printf 'auth\n' > "$state_file"
+            ;;
+        esac
+      elif [ "${1:-}" = "ui" ] && [ "${2:-}" = "type" ]; then
+        case "${3:-}" in
+          "$STUARI_AUTH_ALICE_EMAIL") printf 'TYPE_EMAIL\n' >> "$calls_file" ;;
+          "${STUARI_TEST_PASSWORD:-iez-test-password-2026}") printf 'TYPE_PASSWORD\n' >> "$calls_file" ;;
+        esac
+      fi
+      printf '%s\n' '{"ok":true,"data":{}}'
+    }
+
+    login_with_dev_magic
+  ); then
+    [ "$outcome" = "success" ] || \
+      fail_test "Persistent actionable auth error must fail closed after one retry"
+  else
+    [ "$outcome" = "persistent" ] || [ "$outcome" = "invalid" ] || \
+      fail_test "One actionable auth error must recover on the single retry"
+  fi
+
+  local expected_submits=2 expected_retries=1
+  if [ "$outcome" = "invalid" ]; then
+    expected_submits=1
+    expected_retries=0
+  fi
+  assert_eq "$expected_submits" "$(grep -c '^SUBMIT$' "$calls_file" || true)" \
+    "Actionable auth recovery submits at most twice"
+  assert_eq "$expected_retries" "$(grep -c '^TRY_AGAIN$' "$calls_file" || true)" \
+    "Actionable auth recovery taps Try again exactly once"
+  assert_eq "0" "$(grep -c '^TYPE_EMAIL$' "$calls_file" || true)" \
+    "Canonical Alice recovery preserves the prefilled email"
+  assert_eq "0" "$(grep -c '^TYPE_PASSWORD$' "$calls_file" || true)" \
+    "Canonical Alice recovery preserves the prefilled password"
+}
+
+write_preferences_plist none
+run_actionable_login_recovery_case success
+persisted_session_is_verified_alice || \
+  fail_test "Recovered dev login must persist the exact Alice principal"
+pass_test "Given one actionable login error When Try again succeeds Then it retries once and verifies Alice"
+
+write_preferences_plist none
+run_actionable_login_recovery_case persistent
+if persisted_session_is_verified_alice; then
+  fail_test "Persistent actionable login failure must not fabricate an Alice session"
+fi
+pass_test "Given repeated actionable login errors When recovery is exhausted Then it fails closed without looping"
+
+write_preferences_plist none
+run_actionable_login_recovery_case invalid
+if persisted_session_is_verified_alice; then
+  fail_test "Invalid credentials must not fabricate an Alice session"
+fi
+pass_test "Given invalid_credentials detail When login fails Then Try again is not attempted"
 
 if (
   run_iez() {
@@ -341,6 +466,23 @@ assert_eq \
   "$principal_json" \
   "Dotted Supabase plist key parses via full-plist JSON indexing"
 pass_test "Given exact Alice persisted When verifying principal Then it succeeds"
+
+PERSISTED_ALICE_WAIT_CALLS="$TMP_DIR/persisted_alice_wait.calls"
+printf '0\n' > "$PERSISTED_ALICE_WAIT_CALLS"
+(
+  sleep() { :; }
+  persisted_session_is_verified_alice() {
+    local calls
+    calls="$(cat "$PERSISTED_ALICE_WAIT_CALLS")"
+    calls=$((calls + 1))
+    printf '%s\n' "$calls" > "$PERSISTED_ALICE_WAIT_CALLS"
+    [ "$calls" -ge 3 ]
+  }
+  wait_for_verified_alice_persisted_session 5 0
+) || fail_test "Given delayed Alice plist persistence When waiting Then the exact principal is eventually accepted"
+assert_eq "3" "$(cat "$PERSISTED_ALICE_WAIT_CALLS")" \
+  "Exact Alice persistence wait does not accept before the principal is readable"
+pass_test "Given delayed Alice plist persistence When waiting Then it remains bounded and exact"
 
 write_preferences_plist malformed
 if read_persisted_session_principal_json >/dev/null 2>&1; then
@@ -539,6 +681,8 @@ SQL
 now_ms="$(date +%s000)"
 open_ms="$((now_ms - 1000))"
 close_ms="$((now_ms + 60000))"
+STUARI_DUE_NOW_OCCURRENCE_ID="11111111-2222-4333-8444-555555555555"
+export STUARI_DUE_NOW_OCCURRENCE_ID
 
 sqlite3 "$FAKE_DB_PATH" <<SQL
 insert into groups (id, created_by, name, deleted_at)
@@ -546,7 +690,7 @@ values ('$DUE_NOW_HABIT_GROUP_ID', '$STUARI_AUTH_ALICE_USER_ID', '$DUE_NOW_HABIT
 insert into occurrence_snapshots (
   occurrence_id, habit_id, group_id, user_id, status, post_id, opens_at, submission_closes_at
 ) values (
-  'occ-1', '$DUE_NOW_HABIT_GROUP_ID', '$DUE_NOW_HABIT_GROUP_ID', '$STUARI_AUTH_ALICE_USER_ID', 'open', null, $open_ms, $close_ms
+  '$STUARI_DUE_NOW_OCCURRENCE_ID', '$DUE_NOW_HABIT_GROUP_ID', '$DUE_NOW_HABIT_GROUP_ID', '$STUARI_AUTH_ALICE_USER_ID', 'open', null, $open_ms, $close_ms
 );
 SQL
 

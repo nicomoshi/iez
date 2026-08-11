@@ -155,11 +155,22 @@ wait_for_tree_text() {
 }
 
 wait_for_habit_name() {
-  local name="$1" timeout="${2:-8}" elapsed=0
+  local name="$1" timeout="${2:-8}" elapsed=0 tree="" label=""
   while [ "$elapsed" -lt "$timeout" ]; do
-    if tree_contains "$name"; then
-      return 0
-    fi
+    tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+    while IFS= read -r label; do
+      if habit_card_label_matches_name "$label" "$name"; then
+        return 0
+      fi
+    done < <(
+      printf '%s\n' "$tree" | jq -r '
+        .data.elements[]?
+        | select((.id // "") | startswith("habit_card_"))
+        | select(((.id // "") | startswith("habit_card_menu_")) | not)
+        | select(.frame != null and .frame.width > 40 and .frame.height > 40)
+        | .label // empty
+      ' 2>/dev/null
+    )
     sleep 1
     elapsed=$((elapsed + 1))
   done
@@ -433,6 +444,7 @@ first_coords_matching_exact_labels() {
     | jq -r --arg legacy "$legacy_label" --arg semantic "$semantic_label" '
       .data.elements[]
       | select(.label == $legacy or .label == $semantic)
+      | select(.enabled != false)
       | select(.frame != null and .frame.width > 0 and .frame.height > 0)
       | .frame
       | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
@@ -461,6 +473,324 @@ coords_for_id() {
       | .frame
       | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"' \
     | head -1
+}
+
+# Camera and the composer pushed from it can expose either normal AX frames or
+# frames divided by the simulator scale. Infer the scale from the same snapshot
+# as the target so a route transition cannot race coordinate resolution.
+checkin_route_scale_from_tree() {
+  local tree="$1"
+  local override="${STUARI_CHECKIN_AX_COORD_SCALE:-${STUARI_CAMERA_AX_COORD_SCALE:-}}"
+  local widths=""
+
+  if [ -n "$override" ]; then
+    awk -v ratio="$override" 'BEGIN {
+      if (ratio !~ /^[0-9]+([.][0-9]+)?$/) exit 1
+      rounded = int(ratio + 0.5)
+      delta = ratio - rounded
+      if (delta < 0) delta = -delta
+      if (rounded < 1 || rounded > 3 || delta > 0.05) exit 1
+      print rounded
+    }'
+    return $?
+  fi
+
+  widths="$(
+    printf '%s\n' "$tree" | jq -er '
+      [(.data.elements // [])[]
+        | select(.role == "AXApplication")
+        | .frame.width
+        | select(type == "number" and . > 0)] as $app
+      | [(.data.elements // [])[]
+        | select(.role == "AXStaticText" and .label == "Mock camera (simulator)")
+        | .frame.width
+        | select(type == "number" and . > 0)] as $mock
+      | select(($app | length) == 1 and ($mock | length) == 1)
+      | [$app[0], $mock[0]]
+      | @tsv
+    ' 2>/dev/null
+  )" || return 1
+
+  awk -F '\t' 'NF == 2 {
+    ratio = $1 / $2
+    rounded = int(ratio + 0.5)
+    delta = ratio - rounded
+    if (delta < 0) delta = -delta
+    if (rounded < 1 || rounded > 3 || delta > 0.05) exit 1
+    print rounded
+  }' <<< "$widths"
+}
+
+checkin_route_coords_for_id() {
+  local id="$1" tree="" scale="" frame=""
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null)" || return 1
+  scale="$(checkin_route_scale_from_tree "$tree")" || return 1
+
+  frame="$(
+    printf '%s\n' "$tree" | jq -r --arg id "$id" '
+          .data.elements[]?
+          | select(.id == $id)
+          | select(.frame != null and .frame.width > 0 and .frame.height > 0)
+          | [.frame.x, .frame.y, .frame.width, .frame.height]
+          | @tsv
+        ' 2>/dev/null \
+      | head -1
+  )"
+  if [ -z "$frame" ]; then
+    return 1
+  fi
+
+  awk -F '\t' -v scale="$scale" '
+    NF == 4 {
+      printf "%d,%d\n", (($1 + ($3 / 2)) * scale), (($2 + ($4 / 2)) * scale)
+    }
+  ' <<< "$frame"
+}
+
+checkin_route_coords_for_label() {
+  local label="$1" role="${2:-}" tree="" scale="" frame=""
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null)" || return 1
+  scale="$(checkin_route_scale_from_tree "$tree")" || return 1
+
+  frame="$(
+    printf '%s\n' "$tree" | jq -r --arg label "$label" --arg role "$role" '
+          .data.elements[]?
+          | select(.label == $label)
+          | select($role == "" or .role == $role)
+          | select(.frame != null and .frame.width > 0 and .frame.height > 0)
+          | [.frame.x, .frame.y, .frame.width, .frame.height]
+          | @tsv
+        ' 2>/dev/null \
+      | head -1
+  )"
+  if [ -z "$frame" ]; then
+    return 1
+  fi
+
+  awk -F '\t' -v scale="$scale" '
+    NF == 4 {
+      printf "%d,%d\n", (($1 + ($3 / 2)) * scale), (($2 + ($4 / 2)) * scale)
+    }
+  ' <<< "$frame"
+}
+
+camera_coords_for_id() {
+  checkin_route_coords_for_id "$1"
+}
+
+tap_camera_control_by_id() {
+  local id="$1" desc="${2:-$1}" coords="" response=""
+  coords="$(camera_coords_for_id "$id")"
+  if [ -z "$coords" ] || [ "$coords" = "," ]; then
+    fail "Camera control coordinates unavailable: $desc"
+    return 1
+  fi
+
+  response="$(run_iez "$IEZ" ui tap --coords "$coords")"
+  if [ "$(json_ok "$response")" = "true" ]; then
+    pass "Tap: $desc"
+    return 0
+  fi
+
+  fail "Tap: $desc" "$response"
+  return 1
+}
+
+tap_checkin_route_control_by_label() {
+  local label="$1" role="${2:-}" desc="${3:-$1}" coords="" response=""
+  coords="$(checkin_route_coords_for_label "$label" "$role")"
+  if [ -z "$coords" ] || [ "$coords" = "," ]; then
+    fail "Check-in route control coordinates unavailable: $desc"
+    return 1
+  fi
+
+  response="$(run_iez "$IEZ" ui tap --coords "$coords")"
+  if [ "$(json_ok "$response")" = "true" ]; then
+    pass "Tap: $desc"
+    return 0
+  fi
+
+  fail "Tap: $desc" "$response"
+  return 1
+}
+
+type_into_checkin_route_field() {
+  local label="$1" text="$2" coords="" response=""
+  coords="$(checkin_route_coords_for_label "$label" "AXTextField")"
+  if [ -z "$coords" ] || [ "$coords" = "," ]; then
+    fail "Check-in field coordinates unavailable: $label"
+    return 1
+  fi
+
+  response="$(run_iez "$IEZ" ui tap --coords "$coords")"
+  if [ "$(json_ok "$response")" != "true" ]; then
+    fail "Focus field: $label" "$response"
+    return 1
+  fi
+  pass "Focus field: $label"
+  sleep 0.4
+
+  response="$(run_iez "$IEZ" ui type "$text")"
+  if [ "$(json_ok "$response")" != "true" ]; then
+    fail "Type into $label: '$text'" "$response"
+    return 1
+  fi
+  pass "Type into $label: '$text'"
+  sleep 0.3
+}
+
+wait_for_checkin_caption() {
+  local caption="$1" timeout="${2:-8}" interval="${3:-0.25}"
+  local attempts=0 max_attempts tree="" remaining_count="" remaining_label=""
+  max_attempts=$((timeout * 4))
+  remaining_count=$((280 - ${#caption}))
+  if [ "$remaining_count" -eq 1 ]; then
+    remaining_label="1 character remaining"
+  else
+    remaining_label="$remaining_count characters remaining"
+  fi
+
+  while [ "$attempts" -lt "$max_attempts" ]; do
+    tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+    if printf '%s\n' "$tree" | jq -e --arg caption "$caption" --arg remaining "$remaining_label" '
+      any(.data.elements[]?;
+        .role == "AXTextField"
+        and .label == "Share your progress..."
+        and (.value // "") == $caption)
+      or any(.data.elements[]?; .label == $remaining)
+    ' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$interval"
+    attempts=$((attempts + 1))
+  done
+
+  return 1
+}
+
+dismiss_checkin_route_keyboard() {
+  local response=""
+  response="$(run_iez "$IEZ" ui swipe down)"
+  if [ "$(json_ok "$response")" != "true" ]; then
+    fail "Dismiss check-in composer keyboard" "$response"
+    return 1
+  fi
+
+  if ! wait_for_camera_state "compose-ready" 15 0.25; then
+    fail "Check-in composer controls returned after keyboard dismissal"
+    return 1
+  fi
+  pass "Dismissed check-in composer keyboard"
+  return 0
+}
+
+camera_tree_matches_state() {
+  local expected="$1" tree="$2"
+
+  case "$expected" in
+    video)
+      printf '%s\n' "$tree" | jq -e '
+        any(.data.elements[]?; .label == "Camera mode selector. Video mode selected")
+        and any(.data.elements[]?; .id == "camera_capture_video_button")
+      ' >/dev/null 2>&1
+      ;;
+    recording)
+      printf '%s\n' "$tree" | jq -e '
+        any(.data.elements[]?;
+          .id == "camera_stop_recording_button" or .label == "Stop recording")
+      ' >/dev/null 2>&1
+      ;;
+    captured)
+      printf '%s\n' "$tree" | jq -e '
+        any(.data.elements[]?;
+          .id == "camera_continue_to_post_button" or .label == "Continue to post")
+      ' >/dev/null 2>&1
+      ;;
+    compose)
+      printf '%s\n' "$tree" | jq -e '
+        any(.data.elements[]?;
+          .role == "AXStaticText" and .label == "New Check-in")
+        and any(.data.elements[]?;
+          .role == "AXButton" and .label == "Go back")
+        and any(.data.elements[]?;
+          .role == "AXButton" and .label == "Post")
+        and any(.data.elements[]?;
+          .role == "AXTextField"
+          and ((.label // "") | startswith("Share your progress")))
+      ' >/dev/null 2>&1
+      ;;
+    compose-ready)
+      printf '%s\n' "$tree" | jq -e '
+        [(.data.elements // [])[]
+          | select(.role == "AXApplication")
+          | .frame
+          | select(.height > 0)] as $app
+        | ($app | length) == 1
+        and any(.data.elements[]?;
+          .role == "AXStaticText" and .label == "New Check-in")
+        and any(.data.elements[]?;
+          .role == "AXButton" and .label == "Go back")
+        and any(.data.elements[]?;
+          ((.label // "") | test("^[0-9]+ characters? remaining$")))
+        and any(.data.elements[]?;
+          .role == "AXButton"
+          and .label == "Post"
+          and .frame != null
+          and .frame.width > 0
+          and .frame.height > 0
+          and (.frame.y + .frame.height) <= $app[0].height)
+      ' >/dev/null 2>&1
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+wait_for_checkin_post_completion() {
+  local timeout="${1:-12}" interval="${2:-0.25}"
+  local attempts=0 max_attempts tree=""
+  max_attempts=$((timeout * 4))
+
+  while [ "$attempts" -lt "$max_attempts" ]; do
+    tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+    if printf '%s\n' "$tree" | jq -e '
+      any(.data.elements[]?;
+        .role == "AXButton" and .label == "Home tab, selected")
+      and any(.data.elements[]?;
+        ((.id // "") | startswith("habit_card_"))
+        and (((.id // "") | startswith("habit_card_menu_")) | not))
+      and (any(.data.elements[]?;
+        .role == "AXStaticText" and .label == "New Check-in") | not)
+      and (any(.data.elements[]?;
+        .role == "AXTextField" and .label == "Share your progress...") | not)
+    ' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$interval"
+    attempts=$((attempts + 1))
+  done
+
+  return 1
+}
+
+wait_for_camera_state() {
+  local expected="$1" timeout="${2:-8}" interval="${3:-0.25}"
+  local attempts=0 max_attempts tree=""
+  max_attempts=$((timeout * 4))
+
+  while [ "$attempts" -lt "$max_attempts" ]; do
+    tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+    camera_tree_matches_state "$expected" "$tree" && return 0
+
+    sleep "$interval"
+    attempts=$((attempts + 1))
+  done
+
+  # Axe can publish the destination tree exactly as the final sleep expires.
+  # Probe once at that boundary with the identical positive state predicate.
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  camera_tree_matches_state "$expected" "$tree"
 }
 
 current_visible_habit_card_id() {
@@ -514,6 +844,49 @@ habit_card_label_is_actionable() {
   local label="${1:-}"
   printf '%s\n' "$label" \
     | grep -Eq '^Habit card: .+ habit, (Tap to check in|Streak at risk)(, .+)?$'
+}
+
+wait_for_habit_card_actionable() {
+  local id="$1" timeout="${2:-8}" interval="${3:-0.25}"
+  local attempts=0 max_attempts tree="" centered="" centered_id="" label=""
+  max_attempts=$((timeout * 4))
+
+  while [ "$attempts" -lt "$max_attempts" ]; do
+    tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+    centered="$(
+      printf '%s\n' "$tree" | jq -r '
+        def abs: if . < 0 then -1 * . else . end;
+        [
+          .data.elements[]?
+          | select((.id // "") | startswith("habit_card_"))
+          | select(((.id // "") | startswith("habit_card_menu_")) | not)
+          | select(.frame != null and .frame.width > 40 and .frame.height > 40)
+          | {
+              distance: (((.frame.x + (.frame.width / 2)) - 196) | abs),
+              area: (.frame.width * .frame.height),
+              id: .id,
+              label: (.label // "")
+            }
+        ]
+        | sort_by(.distance, (-.area))
+        | first
+        | select(. != null)
+        | [.id, .label]
+        | @tsv
+      ' 2>/dev/null
+    )"
+    centered_id="${centered%%$'\t'*}"
+    label="${centered#*$'\t'}"
+    if [ -n "$centered" ] && [ "$centered_id" = "$id" ] && \
+      habit_card_label_is_actionable "$label"; then
+      return 0
+    fi
+
+    sleep "$interval"
+    attempts=$((attempts + 1))
+  done
+
+  return 1
 }
 
 # habit_card_label_matches_name LABEL NAME -- strict case-insensitive exact

@@ -10,6 +10,7 @@ TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/stuari_fixture_test.XXXXXX")"
 CAPTURE_FILE="$TMP_DIR/fixture.sql"
 CLEANUP_CAPTURE_FILE="$TMP_DIR/cleanup.sql"
 SUPABASE_CALLS_FILE="$TMP_DIR/supabase.calls"
+FIXTURE_OCCURRENCE_ID="11111111-2222-4333-8444-555555555555"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -50,8 +51,12 @@ supabase() {
   done
   [ -s "$sql_file" ] || return 1
   cp "$sql_file" "$STUARI_FIXTURE_CAPTURE"
+  if grep -Fq "as occurrence_id" "$sql_file"; then
+    printf '[{"occurrence_id":"%s"}]\n' "$FIXTURE_OCCURRENCE_ID"
+  fi
 }
 export -f supabase
+export FIXTURE_OCCURRENCE_ID
 export STUARI_FIXTURE_CAPTURE="$CAPTURE_FILE"
 export STUARI_FIXTURE_SUPABASE_CALLS="$SUPABASE_CALLS_FILE"
 export STUARI_APP_REPO_DIR="$TMP_DIR"
@@ -79,6 +84,8 @@ persisted_session_is_verified_alice() {
 }
 
 reseed_due_now_occurrence_fixture || fail_test "fixture helper should succeed with the Supabase recorder"
+[ "$STUARI_DUE_NOW_OCCURRENCE_ID" = "$FIXTURE_OCCURRENCE_ID" ] || \
+  fail_test "fixture helper must export the exact occurrence id returned by Supabase"
 
 assert_file_contains "begin;" "$CAPTURE_FILE" "fixture setup is transactional"
 assert_file_contains "commit;" "$CAPTURE_FILE" "fixture setup commits only after validation"
@@ -103,6 +110,7 @@ assert_file_contains "list_my_occurrence_snapshots_v2" "$CAPTURE_FILE" "fixture 
 assert_file_contains "request.jwt.claim.sub" "$CAPTURE_FILE" "fixture runs the snapshot RPC as the seed account"
 assert_file_contains "submission_closes_at >= clock_timestamp()" "$CAPTURE_FILE" "fixture requires an open-now submission window"
 assert_file_contains "ms.post_id is null" "$CAPTURE_FILE" "fixture requires an unsubmitted capture occurrence"
+assert_file_contains "as occurrence_id" "$CAPTURE_FILE" "fixture returns the exact authoritative occurrence id"
 assert_file_not_contains "stuari_offline.sqlite" "$CAPTURE_FILE" "fixture does not seed local SQLite"
 assert_file_not_contains "gen_random_uuid()" "$CAPTURE_FILE" "fixture reseed does not invent new due-now group ids"
 pass_test "due-now fixture SQL contract"
@@ -207,6 +215,7 @@ assert_file_contains "where id = '$DUE_NOW_HABIT_GROUP_ID'" "$DRIFT_QUERY_CAPTUR
 assert_file_contains "and created_by = '$STUARI_AUTH_ALICE_USER_ID'" "$DRIFT_QUERY_CAPTURE" "Drift group authority requires exact Alice ownership"
 assert_file_contains "where group_id = '$DUE_NOW_HABIT_GROUP_ID'" "$DRIFT_QUERY_CAPTURE" "Drift occurrence authority requires the exact reserved group"
 assert_file_contains "and user_id = '$STUARI_AUTH_ALICE_USER_ID'" "$DRIFT_QUERY_CAPTURE" "Drift occurrence authority requires exact Alice ownership"
+assert_file_contains "and occurrence_id = '$FIXTURE_OCCURRENCE_ID'" "$DRIFT_QUERY_CAPTURE" "Drift occurrence authority requires the exact fresh remote occurrence id"
 assert_file_contains "and status = 'open'" "$DRIFT_QUERY_CAPTURE" "Drift occurrence authority requires an open occurrence"
 pass_test "Given transient Drift probes When exact group and occurrence authority arrives Then polling succeeds without a users-table dependency"
 

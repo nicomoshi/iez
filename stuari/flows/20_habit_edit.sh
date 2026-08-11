@@ -104,11 +104,24 @@ for step in $(seq 1 10); do
   # Name page gate: nameController must not be empty. On edit, existing
   # name is loaded. On stuck first-iteration, we still type.
 
-  if has_label "Continue"; then
-    tap_element "Continue" "label" "Edit wizard step $step Continue"
+  if tap_first_matching_exact_labels \
+      "Continue" "Continue: habit name" \
+      "Edit wizard step $step Continue habit name" || \
+    tap_first_matching_exact_labels \
+      "Continue" "Continue: habit image" \
+      "Edit wizard step $step Continue habit image" || \
+    tap_first_matching_exact_labels \
+      "Continue" "Continue: habit frequency" \
+      "Edit wizard step $step Continue habit frequency" || \
+    tap_first_matching_exact_labels \
+      "Continue" "Continue: check-in times" \
+      "Edit wizard step $step Continue check-in times" || \
+    tap_first_matching_exact_labels \
+      "Continue" "Continue: habit milestone" \
+      "Edit wizard step $step Continue habit milestone"; then
     sleep 1
-  elif has_label "Skip"; then
-    tap_element "Skip" "label" "Skip step $step"
+  elif tap_first_matching_exact_labels \
+      "Skip" "Skip: habit image" "Skip step $step"; then
     sleep 1
   else
     info "No Continue/Skip on step $step"

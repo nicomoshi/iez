@@ -92,12 +92,17 @@ if ! select_habit_card_by_id "$habit_id"; then
 fi
 
 selected_habit_id="$(current_visible_habit_card_id)"
-selected_habit_label="$(current_visible_habit_card_label)"
 if [ "$selected_habit_id" != "$habit_id" ]; then
   fail "Centered habit card matched the reserved due-now fixture id"
   capture "06_wrong_centered_habit"
   finish_video_flow
 fi
+if ! wait_for_habit_card_actionable "$habit_id" 8 0.25; then
+  fail "Reserved due-now fixture card became actionable before video camera entry"
+  capture "06_non_actionable_selected_habit"
+  finish_video_flow
+fi
+selected_habit_label="$(current_visible_habit_card_label)"
 if ! habit_card_label_is_actionable "$selected_habit_label"; then
   fail "Reserved due-now fixture card is actionable before video camera entry"
   capture "06_non_actionable_selected_habit"
@@ -131,84 +136,97 @@ pass "Camera shell opened for the selected occurrence"
 capture "06_camera_opened"
 
 # Switch to Video mode
-if has_id "camera_mode_video_button"; then
-  tap_element "camera_mode_video_button" "id" "Select Video mode"
-  sleep 0.5
-  capture "06_video_mode"
-elif has_label "Video mode"; then
-  tap_element "Video mode" "label" "Select Video mode"
-  sleep 0.5
-  capture "06_video_mode"
-else
+if ! has_id "camera_mode_video_button"; then
   fail "Video mode toggle not exposed"
+  capture "06_video_mode_toggle_missing"
+  finish_video_flow
 fi
+if ! tap_camera_control_by_id "camera_mode_video_button" "Select Video mode"; then
+  capture "06_video_mode_tap_failed"
+  finish_video_flow
+fi
+if ! wait_for_camera_state "video" 8 0.25; then
+  fail "Camera entered video-selected state"
+  capture "06_video_mode_state_missing"
+  finish_video_flow
+fi
+pass "Camera entered video-selected state"
+capture "06_video_mode"
 
 # Start recording
-rec_label=""
-recording_started=0
-if has_id "camera_capture_video_button"; then
-  tap_element "camera_capture_video_button" "id" "Start video recording"
-  sleep 3
-  capture "06_recording"
-  recording_started=1
-  if has_id "camera_stop_recording_button"; then
-    tap_element "camera_stop_recording_button" "id" "Stop recording"
-    sleep 2
-    capture "06_stopped"
-  elif has_label "Stop recording"; then
-    tap_element "Stop recording" "label" "Stop recording"
-    sleep 2
-    capture "06_stopped"
-  else
-    fail "Stop recording button not found mid-recording"
-  fi
-elif has_label "Start video recording"; then
-  rec_label="Start video recording"
-else
-  rec_label=$(run_iez "$IEZ" ui tree --compact \
-    | jq -r '.data.elements[] | select(.label != null) | select(.label | startswith("Start video recording")) | .label' | head -1)
-fi
-if [ "$recording_started" -eq 1 ]; then
-  :
-elif [ -n "$rec_label" ]; then
-  tap_element "$rec_label" "label" "Start video recording ($rec_label)"
-  # Record ~3 seconds
-  sleep 3
-  capture "06_recording"
-  # Stop
-  if has_label "Stop recording"; then
-    tap_element "Stop recording" "label" "Stop recording"
-    sleep 2
-    capture "06_stopped"
-  else
-    fail "Stop recording button not found mid-recording"
-  fi
-else
+if ! has_id "camera_capture_video_button"; then
   fail "Start video recording button not found"
+  capture "06_video_capture_button_missing"
+  finish_video_flow
 fi
+if ! tap_camera_control_by_id \
+    "camera_capture_video_button" "Start video recording"; then
+  capture "06_start_recording_tap_failed"
+  finish_video_flow
+fi
+if ! wait_for_camera_state "recording" 8 0.25; then
+  fail "Camera entered recording state"
+  capture "06_recording_state_missing"
+  finish_video_flow
+fi
+pass "Camera entered recording state"
+sleep 3
+capture "06_recording"
+if ! tap_camera_control_by_id \
+    "camera_stop_recording_button" "Stop recording"; then
+  capture "06_stop_recording_tap_failed"
+  finish_video_flow
+fi
+if ! wait_for_camera_state "captured" 15 0.25; then
+  fail "Video recording reached captured-media state"
+  capture "06_video_capture_state_missing"
+  finish_video_flow
+fi
+pass "Video recording reached captured-media state"
+capture "06_stopped"
 
 # Continue to post composition + submit
-if has_id "camera_continue_to_post_button"; then
-  tap_element "camera_continue_to_post_button" "id" "Continue to compose"
-  sleep 1.5
-elif has_label "Continue to post"; then
-  tap_element "Continue to post" "label" "Continue to compose"
-  sleep 1.5
+if ! tap_camera_control_by_id \
+    "camera_continue_to_post_button" "Continue to compose"; then
+  capture "06_continue_to_post_tap_failed"
+  finish_video_flow
 fi
+if ! wait_for_camera_state "compose" 10 0.25; then
+  fail "Video capture opened the real post composer"
+  capture "06_compose_state_missing"
+  finish_video_flow
+fi
+pass "Video capture opened the real post composer"
 
-if tree_contains "Share your progress"; then
-  type_into "Share your progress..." "$(test_post_description) video"
+video_post_description="$(test_post_description) video"
+if ! type_into_checkin_route_field \
+    "Share your progress..." "$video_post_description"; then
+  capture "06_caption_interaction_failed"
+  finish_video_flow
+fi
+if ! wait_for_checkin_caption "$video_post_description" 8 0.25; then
+  fail "Video caption propagated after scaled composer interaction"
+  capture "06_caption_not_propagated"
+  finish_video_flow
+fi
+pass "Video caption propagated into the composer"
+if ! dismiss_checkin_route_keyboard; then
+  capture "06_keyboard_dismissal_failed"
+  finish_video_flow
 fi
 
 capture "06_compose"
 
-if has_label "Post"; then
-  tap_element "Post" "label" "Submit video post"
-  sleep 5  # Video uploads take longer
-  capture "06_posted"
-  pass "Video check-in submitted"
-else
-  fail "Post button not visible after video capture"
+if ! tap_checkin_route_control_by_label "Post" "AXButton" "Submit video post"; then
+  capture "06_post_interaction_failed"
+  finish_video_flow
 fi
+if ! wait_for_checkin_post_completion 20 0.25; then
+  fail "Video post left the composer and returned to Home"
+  capture "06_post_completion_missing"
+  finish_video_flow
+fi
+pass "Video check-in submitted and returned to Home"
+capture "06_posted"
 
 finish_video_flow

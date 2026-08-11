@@ -70,6 +70,20 @@ run_stuari_linked_sql_file() {
   return 0
 }
 
+run_stuari_linked_sql_file_json() {
+  local sql_file="$1" failure_message="$2" output=""
+  output="$(
+    cd "$STUARI_APP_REPO_DIR" &&
+      supabase db query --linked --agent=no -o json -f "$sql_file" 2>/dev/null
+  )"
+  local rc=$?
+  if [ $rc -ne 0 ]; then
+    info "$failure_message"
+    return $rc
+  fi
+  printf '%s\n' "$output"
+}
+
 # ── Core helpers ────────────────────────────────────────────────────
 
 # now_epoch — seconds since the epoch.
@@ -175,8 +189,8 @@ reseed_due_now_occurrence_fixture() {
     return 1
   fi
 
-  local sql_file
-  sql_file=$(mktemp "${TMPDIR:-/tmp}/stuari_due_now_occurrence.XXXXXX.sql") || {
+  local sql_file query_json occurrence_id
+  sql_file=$(mktemp "${TMPDIR:-/tmp}/stuari_due_now_occurrence.XXXXXX") || {
     info "Could not allocate temporary due-now occurrence fixture SQL"
     return 1
   }
@@ -354,16 +368,41 @@ end
 $fixture$;
 
 commit;
+
+select o.id::text as occurrence_id
+  from stuari_dev.habit_occurrences o
+  join stuari_dev.habit_occurrence_member_states ms
+    on ms.occurrence_id = o.id
+ where o.habit_id = 'bbbb0000-0000-0000-0000-000000000010'::uuid
+   and ms.member_id = 'aaaa0000-0000-0000-0000-000000000001'::uuid
+   and o.opens_at <= clock_timestamp()
+   and o.submission_closes_at >= clock_timestamp()
+   and ms.status in ('open', 'overdue')
+   and ms.post_id is null
+ order by o.opens_at desc
+ limit 1;
 SQL
 
-  run_stuari_linked_sql_file "$sql_file" "Due-now occurrence fixture reseed failed"
-  local rc=$?
-  rm -f "$sql_file"
-  if [ $rc -ne 0 ]; then
-    return $rc
+  if ! query_json="$(run_stuari_linked_sql_file_json \
+    "$sql_file" "Due-now occurrence fixture reseed failed")"; then
+    rm -f "$sql_file"
+    return 1
   fi
+  rm -f "$sql_file"
 
-  info "Reseeded authenticated Alice due-now occurrence fixture ($DUE_NOW_HABIT_GROUP_ID)"
+  occurrence_id="$(
+    printf '%s\n' "$query_json" | jq -er '
+      .[]? | .occurrence_id | select(type == "string")
+    ' 2>/dev/null | head -1
+  )"
+  if [[ ! "$occurrence_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+    info "Due-now occurrence fixture did not return one authoritative occurrence id"
+    return 1
+  fi
+  STUARI_DUE_NOW_OCCURRENCE_ID="$occurrence_id"
+  export STUARI_DUE_NOW_OCCURRENCE_ID
+
+  info "Reseeded authenticated Alice due-now occurrence fixture ($DUE_NOW_HABIT_GROUP_ID, occurrence=$STUARI_DUE_NOW_OCCURRENCE_ID)"
   return 0
 }
 
@@ -379,7 +418,7 @@ cleanup_due_now_occurrence_fixture() {
   fi
 
   local sql_file
-  sql_file=$(mktemp "${TMPDIR:-/tmp}/stuari_due_now_occurrence_cleanup.XXXXXX.sql") || {
+  sql_file=$(mktemp "${TMPDIR:-/tmp}/stuari_due_now_occurrence_cleanup.XXXXXX") || {
     info "Could not allocate temporary due-now occurrence cleanup SQL"
     return 1
   }
@@ -439,6 +478,12 @@ SQL
 wait_for_due_now_occurrence_drift_authority() {
   local timeout="${1:-20}" interval="${2:-1}" attempt=0
   local db_path drift_probe now_ms group_count=0 occurrence_count=0
+  local expected_occurrence_id="${STUARI_DUE_NOW_OCCURRENCE_ID:-}"
+
+  if [[ ! "$expected_occurrence_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+    info "Exact remote due-now occurrence id is missing or invalid"
+    return 1
+  fi
 
   db_path="$(stuari_fixture_drift_db_path)" || {
     info "Could not resolve local Drift database path for due-now occurrence fixture"
@@ -468,7 +513,7 @@ wait_for_due_now_occurrence_drift_authority() {
           where group_id = '$DUE_NOW_HABIT_GROUP_ID'
             and habit_id = '$DUE_NOW_HABIT_GROUP_ID'
             and user_id = '$STUARI_AUTH_ALICE_USER_ID'
-            and coalesce(occurrence_id, '') <> ''
+            and occurrence_id = '$expected_occurrence_id'
             and status = 'open'
             and post_id is null
             and cast(opens_at as integer) <= $now_ms
@@ -506,7 +551,13 @@ reseed_confirmation_fixtures() {
     return 1
   fi
 
-  cat >/tmp/stuari_confirmation_fixtures.sql <<'EOF'
+  local sql_file
+  sql_file=$(mktemp "${TMPDIR:-/tmp}/stuari_confirmation_fixtures.XXXXXX") || {
+    info "Could not allocate temporary confirmation fixture SQL"
+    return 1
+  }
+
+  cat >"$sql_file" <<'EOF'
 begin;
 
 delete from stuari_dev.post_confirmations
@@ -605,13 +656,10 @@ cross join peers;
 commit;
 EOF
 
-  (
-    cd "$STUARI_APP_REPO_DIR" &&
-      supabase db query --linked -f /tmp/stuari_confirmation_fixtures.sql >/dev/null 2>&1
-  )
+  run_stuari_linked_sql_file "$sql_file" "Confirmation fixture reseed failed"
   local rc=$?
+  rm -f "$sql_file"
   if [ $rc -ne 0 ]; then
-    info "Confirmation fixture reseed failed"
     return $rc
   fi
 
@@ -625,7 +673,13 @@ reseed_feed_fixtures() {
     return 1
   fi
 
-  cat >/tmp/stuari_feed_fixtures.sql <<'EOF'
+  local sql_file
+  sql_file=$(mktemp "${TMPDIR:-/tmp}/stuari_feed_fixtures.XXXXXX") || {
+    info "Could not allocate temporary feed fixture SQL"
+    return 1
+  }
+
+  cat >"$sql_file" <<'EOF'
 begin;
 
 delete from stuari_dev.comments
@@ -754,13 +808,10 @@ where p.id = c.post_id;
 commit;
 EOF
 
-  (
-    cd "$STUARI_APP_REPO_DIR" &&
-      supabase db query --linked -f /tmp/stuari_feed_fixtures.sql >/dev/null 2>&1
-  )
+  run_stuari_linked_sql_file "$sql_file" "Feed fixture reseed failed"
   local rc=$?
+  rm -f "$sql_file"
   if [ $rc -ne 0 ]; then
-    info "Feed fixture reseed failed"
     return $rc
   fi
 
@@ -774,19 +825,22 @@ cleanup_generated_chat_messages() {
     return 1
   fi
 
-  cat >/tmp/stuari_chat_cleanup.sql <<'EOF'
+  local sql_file
+  sql_file=$(mktemp "${TMPDIR:-/tmp}/stuari_chat_cleanup.XXXXXX") || {
+    info "Could not allocate temporary generated-chat cleanup SQL"
+    return 1
+  }
+
+  cat >"$sql_file" <<'EOF'
 delete from stuari_dev.messages
 where group_id = 'bbbb0000-0000-0000-0000-000000000001'
   and content like 'stu test %';
 EOF
 
-  (
-    cd "$STUARI_APP_REPO_DIR" &&
-      supabase db query --linked -f /tmp/stuari_chat_cleanup.sql >/dev/null 2>&1
-  )
+  run_stuari_linked_sql_file "$sql_file" "Generated chat cleanup failed"
   local rc=$?
+  rm -f "$sql_file"
   if [ $rc -ne 0 ]; then
-    info "Generated chat cleanup failed"
     return $rc
   fi
 
