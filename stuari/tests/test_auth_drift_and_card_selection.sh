@@ -861,6 +861,54 @@ if habit_card_label_is_actionable "Habit card: Alpha habit, Completed"; then
 fi
 pass_test "Actionable habit label matching stays strict but suffix-tolerant"
 
+# Shared strict case-insensitive exact habit-name matcher (Flow 04 false-negative fix)
+if ! habit_card_label_matches_name \
+  "Habit card: release resume 0110 habit, On track" \
+  "Release Resume 0110"; then
+  fail_test "Given a mixed-case typed habit name When the AX card label is lowercased Then the bounded name matches case-insensitively"
+fi
+pass_test "Given a mixed-case typed habit name When the AX card label is lowercased Then the bounded name matches case-insensitively"
+
+if habit_card_label_matches_name \
+  "Habit card: release resume 0110x habit, On track" \
+  "Release Resume 0110"; then
+  fail_test "Given a card name that extends the habit name with a trailing suffix When matching the bounded name Then it rejects the collision"
+fi
+pass_test "Given a card name that extends the habit name with a trailing suffix When matching the bounded name Then it rejects the collision"
+
+if habit_card_label_matches_name \
+  "Habit card: xx release resume 0110 habit, On track" \
+  "Release Resume 0110"; then
+  fail_test "Given a card name that prepends a leading prefix to the habit name When matching the bounded name Then it rejects the collision"
+fi
+pass_test "Given a card name that prepends a leading prefix to the habit name When matching the bounded name Then it rejects the collision"
+
+if ! habit_card_label_matches_name \
+  "Habit card: Release Resume 0110 habit, Tap to check in, selected" \
+  "release resume 0110"; then
+  fail_test "Given a habit card label with a suffixed status When matching the bounded name Then status text after the bound is ignored"
+fi
+pass_test "Given a habit card label with a suffixed status When matching the bounded name Then status text after the bound is ignored"
+
+if habit_card_label_matches_name "Habit card: morning run habit, On track" "Release Resume 0110"; then
+  fail_test "Given an unrelated centered habit card When matching the bounded name Then it rejects"
+fi
+pass_test "Given an unrelated centered habit card When matching the bounded name Then it rejects"
+
+if habit_card_label_matches_name \
+  "release resume 0110 habit, On track" \
+  "Release Resume 0110"; then
+  fail_test "Given a card label missing the exact prefix When matching the habit name Then it rejects the malformed label"
+fi
+pass_test "Given a card label missing the exact prefix When matching the habit name Then it rejects the malformed label"
+
+if habit_card_label_matches_name \
+  "Habit card: release resume 0110" \
+  "Release Resume 0110"; then
+  fail_test "Given a card label missing the exact habit delimiter When matching the habit name Then it rejects the malformed label"
+fi
+pass_test "Given a card label missing the exact habit delimiter When matching the habit name Then it rejects the malformed label"
+
 write_fake_carousel_cards "habit_card_alpha" "habit_card_bravo" "habit_card_charlie"
 reset_fake_carousel_state linear 0
 select_habit_card_by_id "habit_card_bravo" 4 0 || \

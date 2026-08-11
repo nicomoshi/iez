@@ -224,19 +224,16 @@ if [ "$CREATE_SUBMITTED" = "1" ]; then
   if on_home_page && \
     wait_for_visible_habit_card_name "$HABIT_NAME" 8; then
     immediate_label="$(current_visible_habit_card_label 2>/dev/null || true)"
-    case "$immediate_label" in
-      *"$HABIT_NAME"*)
-        if capture "04_created_habit_centered_immediate"; then
-          pass "Immediate centered-card boundary: created habit is the visible centered Home card: $HABIT_NAME"
-        else
-          info "Immediate centered-card boundary did not produce complete screenshot + compact AX evidence"
-        fi
-        ;;
-      *)
-        capture "04_created_habit_centered_immediate_failure"
-        fail "Immediate centered-card boundary failed: centered Home card label was '$immediate_label', expected '$HABIT_NAME'"
-        ;;
-    esac
+    if habit_card_label_matches_name "$immediate_label" "$HABIT_NAME"; then
+      if capture "04_created_habit_centered_immediate"; then
+        pass "Immediate centered-card boundary: created habit is the visible centered Home card: $HABIT_NAME"
+      else
+        info "Immediate centered-card boundary did not produce complete screenshot + compact AX evidence"
+      fi
+    else
+      capture "04_created_habit_centered_immediate_failure"
+      fail "Immediate centered-card boundary failed: centered Home card label was '$immediate_label', expected '$HABIT_NAME'"
+    fi
   else
     capture "04_created_habit_centered_immediate_failure"
     fail "Immediate centered-card boundary failed: created habit is not the visible centered Home card: $HABIT_NAME"
@@ -249,19 +246,16 @@ if [ "$CREATE_SUBMITTED" = "1" ]; then
   if on_home_page && \
     wait_for_visible_habit_card_name "$HABIT_NAME" 8; then
     stability_label="$(current_visible_habit_card_label 2>/dev/null || true)"
-    case "$stability_label" in
-      *"$HABIT_NAME"*)
-        if capture "04_created_habit_centered_after_10s_no_interaction"; then
-          pass "10-second no-interaction stability boundary: created habit remains the centered Home card: $HABIT_NAME"
-        else
-          info "10-second no-interaction stability boundary did not produce complete screenshot + compact AX evidence"
-        fi
-        ;;
-      *)
-        capture "04_created_habit_centered_after_10s_no_interaction_failure"
-        fail "10-second no-interaction stability boundary failed: centered Home card label was '$stability_label', expected '$HABIT_NAME'"
-        ;;
-    esac
+    if habit_card_label_matches_name "$stability_label" "$HABIT_NAME"; then
+      if capture "04_created_habit_centered_after_10s_no_interaction"; then
+        pass "10-second no-interaction stability boundary: created habit remains the centered Home card: $HABIT_NAME"
+      else
+        info "10-second no-interaction stability boundary did not produce complete screenshot + compact AX evidence"
+      fi
+    else
+      capture "04_created_habit_centered_after_10s_no_interaction_failure"
+      fail "10-second no-interaction stability boundary failed: centered Home card label was '$stability_label', expected '$HABIT_NAME'"
+    fi
   else
     capture "04_created_habit_centered_after_10s_no_interaction_failure"
     fail "10-second no-interaction stability boundary failed: created habit is no longer the centered Home card: $HABIT_NAME"
@@ -277,19 +271,16 @@ if [ "$CREATE_SUBMITTED" = "1" ]; then
   if [ "$selected_home_retapped" = "1" ] && \
     wait_for_visible_habit_card_name "$HABIT_NAME" 8; then
     selected_home_label_after_tap="$(current_visible_habit_card_label 2>/dev/null || true)"
-    case "$selected_home_label_after_tap" in
-      *"$HABIT_NAME"*)
-        if capture "04_created_habit_centered_after_selected_home_retap"; then
-          pass "Selected Home re-tap boundary: created habit remains the centered Home card: $HABIT_NAME"
-        else
-          info "Selected Home re-tap boundary did not produce complete screenshot + compact AX evidence"
-        fi
-        ;;
-      *)
-        capture "04_created_habit_centered_after_selected_home_retap_failure"
-        fail "Selected Home re-tap boundary failed: centered Home card label was '$selected_home_label_after_tap', expected '$HABIT_NAME'"
-        ;;
-    esac
+    if habit_card_label_matches_name "$selected_home_label_after_tap" "$HABIT_NAME"; then
+      if capture "04_created_habit_centered_after_selected_home_retap"; then
+        pass "Selected Home re-tap boundary: created habit remains the centered Home card: $HABIT_NAME"
+      else
+        info "Selected Home re-tap boundary did not produce complete screenshot + compact AX evidence"
+      fi
+    else
+      capture "04_created_habit_centered_after_selected_home_retap_failure"
+      fail "Selected Home re-tap boundary failed: centered Home card label was '$selected_home_label_after_tap', expected '$HABIT_NAME'"
+    fi
   else
     capture "04_created_habit_centered_after_selected_home_retap_failure"
     if [ -z "$selected_home_label" ]; then
@@ -307,19 +298,16 @@ if [ "$CREATE_SUBMITTED" = "1" ]; then
     wait_for_visible_habit_card_name "$HABIT_NAME" 10; then
     relaunch_label="$(current_visible_habit_card_label 2>/dev/null || true)"
     capture "04_home_after_relaunch"
-    case "$relaunch_label" in
-      *"$HABIT_NAME"*)
-        if capture "04_created_habit_centered_after_relaunch"; then
-          pass "Fresh relaunch/auth restore boundary: created habit remains the centered Home card: $HABIT_NAME"
-        else
-          info "Fresh relaunch/auth restore boundary did not produce complete screenshot + compact AX evidence"
-        fi
-        ;;
-      *)
-        capture "04_created_habit_centered_after_relaunch_failure"
-        fail "Fresh relaunch/auth restore boundary failed: centered Home card label was '$relaunch_label', expected '$HABIT_NAME'"
-        ;;
-    esac
+    if habit_card_label_matches_name "$relaunch_label" "$HABIT_NAME"; then
+      if capture "04_created_habit_centered_after_relaunch"; then
+        pass "Fresh relaunch/auth restore boundary: created habit remains the centered Home card: $HABIT_NAME"
+      else
+        info "Fresh relaunch/auth restore boundary did not produce complete screenshot + compact AX evidence"
+      fi
+    else
+      capture "04_created_habit_centered_after_relaunch_failure"
+      fail "Fresh relaunch/auth restore boundary failed: centered Home card label was '$relaunch_label', expected '$HABIT_NAME'"
+    fi
   else
     capture "04_created_habit_centered_after_relaunch_failure"
     fail "Fresh relaunch/auth restore boundary failed: created habit is not the centered Home card after returning Home: $HABIT_NAME"

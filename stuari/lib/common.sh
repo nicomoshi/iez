@@ -170,7 +170,7 @@ wait_for_visible_habit_card_name() {
   local name="$1" timeout="${2:-8}" elapsed=0 label=""
   while [ "$elapsed" -lt "$timeout" ]; do
     label="$(current_visible_habit_card_label 2>/dev/null || true)"
-    if printf '%s\n' "$label" | grep -qF "$name"; then
+    if habit_card_label_matches_name "$label" "$name"; then
       return 0
     fi
     sleep 1
@@ -514,6 +514,31 @@ habit_card_label_is_actionable() {
   local label="${1:-}"
   printf '%s\n' "$label" \
     | grep -Eq '^Habit card: .+ habit, (Tap to check in|Streak at risk)(, .+)?$'
+}
+
+# habit_card_label_matches_name LABEL NAME -- strict case-insensitive exact
+# match of a habit name inside a centered-card semantic label.
+#
+# The semantic label form is "Habit card: <name> habit, <status>". The name is
+# bounded by the fixed "Habit card: " prefix and the " habit, " delimiter that
+# precedes the status. This strips those bounds with fixed literal patterns
+# (user input is never used as a regex), folds A-Z via jq's ascii_downcase
+# (jq 1.7 folds ASCII A-Z only and equality is strict), then requires the whole
+# bounded name to equal the requested name — rejecting raw substring matches
+# and both prefix and suffix name collisions.
+habit_card_label_matches_name() {
+  local label="$1" name="$2"
+  if [ -z "$label" ] || [ -z "$name" ]; then
+    return 1
+  fi
+  jq -e -n --arg label "$label" --arg name "$name" '
+      ($label | startswith("Habit card: "))
+      and ($label | contains(" habit, "))
+      and (
+        (($label | capture("^Habit card: (?<name>.+) habit, .+$") | .name | ascii_downcase)
+          == ($name | ascii_downcase))
+      )
+    ' >/dev/null 2>&1
 }
 
 habit_card_search_settle_interval() {
