@@ -159,6 +159,12 @@ assert_file_contains 'capture "auth_ax_not_ready_final" diagnostic' "$ROOT_DIR/s
   "Auth readiness final failure uses diagnostic capture"
 assert_file_contains 'diagnostic_mode=0' "$ROOT_DIR/stuari/lib/common.sh" \
   "Common capture helper has an explicit diagnostic mode"
+if awk '/capture "auth_[A-Za-z0-9_]+"/ && $0 !~ / diagnostic([[:space:]]|$)/ { found=1 } END { exit found ? 0 : 1 }' \
+  "$ROOT_DIR/stuari/lib/auth.sh"; then
+  fail_test "Every reusable auth helper capture must be diagnostic"
+else
+  pass_test "Every reusable auth helper capture is excluded from published release states"
+fi
 
 # Given readiness recovery captures a stable but non-publishable AX snapshot
 # When capture runs in diagnostic mode Then it leaves only explicitly invalid
@@ -196,6 +202,75 @@ if (
   pass_test "Given diagnostic readiness capture runs Then invalid artifacts stay out of the published event ledger"
 else
   fail_test "Diagnostic readiness capture must not publish valid release evidence"
+fi
+
+# Given a release flow publishes its own declared auth states When the reusable
+# dev-login helper is invoked repeatedly Then helper transitions remain unique
+# diagnostics and cannot collide in the current-run event ledger.
+AUTH_TRANSITION_EVENTS="$TMP_DIR/auth-transition.events"
+AUTH_TRANSITION_SCREENSHOTS="$TMP_DIR/auth-transition-screenshots"
+AUTH_TRANSITION_AX="$TMP_DIR/auth-transition-ax"
+if (
+  SCREENSHOTS="$AUTH_TRANSITION_SCREENSHOTS"
+  AX_TREES="$AUTH_TRANSITION_AX"
+  STUARI_EVIDENCE_RUN_ID="22222222-3333-4444-8555-666666666666"
+  STUARI_EVIDENCE_EVENT_FILE="$AUTH_TRANSITION_EVENTS"
+  CAPTURE_SEQUENCE=0
+  PASS=0
+  FAIL=0
+  SKIP=0
+  NA=0
+  TOTAL=0
+  mkdir -p "$SCREENSHOTS" "$AX_TREES"
+  : >"$STUARI_EVIDENCE_EVENT_FILE"
+  INPUT_TREE="{\"ok\":true,\"data\":{\"elements\":[$root,{\"role\":\"AXButton\",\"label\":\"Dev sign in\",\"enabled\":true,\"frame\":{\"x\":20,\"y\":680,\"width\":362,\"height\":52}}]}}"
+  run_iez() {
+    local _binary="$1"
+    shift
+    if [ "${1:-}" = "ui" ] && [ "${2:-}" = "tree" ]; then
+      printf '%s\n' "$INPUT_TREE"
+      return 0
+    fi
+    if [ "${1:-}" = "ui" ] && [ "${2:-}" = "screenshot" ]; then
+      printf 'png\n' >"${4:-}"
+      printf '%s\n' '{"ok":true,"data":{}}'
+      return 0
+    fi
+    return 1
+  }
+  tap_element() { return 0; }
+  has_label() { return 1; }
+  tree_contains() { return 1; }
+  on_home_page() { return 0; }
+  on_onboarding_page() { return 1; }
+
+  capture "03_auth_page" || exit 1
+  login_with_dev_magic || exit 1
+  login_with_dev_magic || exit 1
+  capture "03_signed_in_home" || exit 1
+
+  [ "$FAIL" -eq 0 ] || exit 1
+  [ "$(jq -s 'length' "$STUARI_EVIDENCE_EVENT_FILE")" -eq 2 ] || exit 1
+  jq -s -e '
+    map(.state_id) == ["03_auth_page", "03_signed_in_home"]
+    and ([.[].state_id] | length == (unique | length))
+    and all(.[]; .run_id == "22222222-3333-4444-8555-666666666666")
+  ' "$STUARI_EVIDENCE_EVENT_FILE" >/dev/null || exit 1
+  [ "$(find "$SCREENSHOTS" -type f -name 'auth_*.invalid.png' | wc -l | tr -d ' ')" -eq 4 ] || exit 1
+  [ "$(find "$AX_TREES" -type f -name 'auth_*.invalid.json' | wc -l | tr -d ' ')" -eq 4 ] || exit 1
+  [ -z "$(find "$SCREENSHOTS" "$AX_TREES" -type f -name 'auth_*' ! -name '*.invalid.*' -print -quit)" ] || exit 1
+  STUARI_VISUAL_MANIFEST_OUTPUT="$TMP_DIR/auth-transition-manifest.json" \
+    bash "$ROOT_DIR/stuari/generate_visual_state_manifest.sh" || exit 1
+  jq -s -e --slurpfile manifest "$TMP_DIR/auth-transition-manifest.json" '
+    ($manifest[0].flows[] | select(.number == "03") | .states) as $declared
+    | all(.[]; (.state_id as $state | $declared | index($state)) != null)
+    and ($declared | index("auth_pre_dev_magic") == null)
+    and ($declared | index("auth_post_dev_magic") == null)
+  ' "$STUARI_EVIDENCE_EVENT_FILE" >/dev/null || exit 1
+); then
+  pass_test "Given repeated dev login under a release ledger Then only declared flow states publish and auth transitions remain unique diagnostics"
+else
+  fail_test "Repeated dev login must not publish or invalidate helper-level auth states"
 fi
 
 # Given a hanging exact-ownership SQL command When cleanup is bounded Then it

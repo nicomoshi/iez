@@ -576,10 +576,10 @@ sign_in_google() {
     info "Google OAuth button not visible"
     return 1
   fi
-  capture "auth_pre_google"
+  capture "auth_pre_google" diagnostic
   tap_element "$LABEL_SIGN_IN_GOOGLE" "label" "Tap Sign in with Google" "AXButton" || return 1
   sleep 3
-  capture "auth_post_google_tap"
+  capture "auth_post_google_tap" diagnostic
 }
 
 sign_in_apple() {
@@ -587,10 +587,10 @@ sign_in_apple() {
     info "Apple OAuth button not visible"
     return 1
   fi
-  capture "auth_pre_apple"
+  capture "auth_pre_apple" diagnostic
   tap_element "$LABEL_SIGN_IN_APPLE" "label" "Tap Sign in with Apple" "AXButton" || return 1
   sleep 3
-  capture "auth_post_apple_tap"
+  capture "auth_post_apple_tap" diagnostic
 }
 
 # login_with_dev_magic — drive the dev-flavor email+password form.
@@ -625,7 +625,10 @@ login_with_dev_magic() {
   fi
 
   info "Dev magic login"
-  capture "auth_pre_dev_magic"
+  # Auth helpers are reusable inside a flow and may run more than once during
+  # recovery. Flow scripts own declared release states; helper transitions are
+  # collision-proof diagnostics and never enter the current-run event ledger.
+  capture "auth_pre_dev_magic" diagnostic
 
   # The form ships with pre-filled default values. Preserve the no-argument
   # fast path for those defaults, but treat explicit arguments as a command to
@@ -706,7 +709,7 @@ login_with_dev_magic() {
     fi
     if on_home_page || on_onboarding_page; then
       pass "Dev magic login reached Home or Onboarding (t=${i}s)"
-      capture "auth_post_dev_magic"
+      capture "auth_post_dev_magic" diagnostic
       return 0
     fi
     if dev_magic_actionable_error_visible; then
@@ -719,7 +722,7 @@ login_with_dev_magic() {
     ! dev_magic_invalid_credentials_visible &&
     [ "$recovery_attempted" != "1" ]; then
     info "Dev magic login reached actionable error; retrying once after backoff"
-    capture "auth_dev_magic_retryable_error"
+    capture "auth_dev_magic_retryable_error" diagnostic
     if ! printf '%s\n' "$retry_backoff" | grep -Eq '^[0-9]+([.][0-9]+)?$'; then
       retry_backoff=5
     fi
@@ -727,7 +730,7 @@ login_with_dev_magic() {
 
     if ! tap_element "Try again" "label" "Try again after transient dev login failure" "AXButton"; then
       fail "Actionable dev login recovery could not tap Try again"
-      capture "auth_dev_magic_retry_tap_failed"
+      capture "auth_dev_magic_retry_tap_failed" diagnostic
       return 1
     fi
 
@@ -747,12 +750,12 @@ login_with_dev_magic() {
     done
 
     fail "Actionable dev login recovery did not restore the credential form"
-    capture "auth_dev_magic_retry_form_missing"
+    capture "auth_dev_magic_retry_form_missing" diagnostic
     return 1
   fi
 
   fail "Dev magic login did not reach Home/Onboarding within 20s"
-  capture "auth_dev_magic_timeout"
+  capture "auth_dev_magic_timeout" diagnostic
   return 1
 }
 
