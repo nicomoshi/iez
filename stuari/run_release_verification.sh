@@ -13,61 +13,78 @@ RESULTS_FILE="$EVIDENCE_ROOT/flow_results.tsv"
 FLOW_TIMEOUT="${FLOW_TIMEOUT:-300}"
 FLOW_TIMEOUT_GRACE="${FLOW_TIMEOUT_GRACE:-20}"
 RELEASE_LOCK_DIR="${RELEASE_LOCK_DIR:-$SCRIPT_DIR/artifacts/.release-verification.lock}"
-RELEASE_LOCK_OWNED=0
-RELEASE_LOCK_TOKEN=""
+RELEASE_MODE="${RELEASE_MODE:-safe}"
 
-default_flows=(05 06 15 18 32 33 34 35 36)
+# shellcheck source=lib/release_lifecycle.sh
+source "$SCRIPT_DIR/lib/release_lifecycle.sh"
+# shellcheck source=lib/evidence_validator.sh
+source "$SCRIPT_DIR/lib/evidence_validator.sh"
 
-acquire_release_lock() {
-  local token=""
-  mkdir -p "$(dirname "$RELEASE_LOCK_DIR")" || return 1
-  token="$(uuidgen 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
-  [[ "$token" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || return 1
-  if ! mkdir "$RELEASE_LOCK_DIR" 2>/dev/null; then
-    return 1
-  fi
-  if ! printf '%s\n' "$token" >"$RELEASE_LOCK_DIR/owner"; then
-    rmdir "$RELEASE_LOCK_DIR" 2>/dev/null || true
-    return 1
-  fi
-  RELEASE_LOCK_TOKEN="$token"
-  RELEASE_LOCK_OWNED=1
-}
+safe_flows=(05 06 32 33 34 35 36)
+protected_flows=(04 15 18 20)
 
-release_release_lock() {
-  local owner=""
-  [ "$RELEASE_LOCK_OWNED" = "1" ] || return 0
-  owner="$(cat "$RELEASE_LOCK_DIR/owner" 2>/dev/null)"
-  if [ -z "$RELEASE_LOCK_TOKEN" ] || [ "$owner" != "$RELEASE_LOCK_TOKEN" ]; then
-    return 1
-  fi
-  rm -f "$RELEASE_LOCK_DIR/owner" || return 1
-  rmdir "$RELEASE_LOCK_DIR" || return 1
-  RELEASE_LOCK_OWNED=0
-  RELEASE_LOCK_TOKEN=""
+release_flow_is_protected() {
+  case "$1" in 04|15|18|20) return 0 ;; *) return 1 ;; esac
 }
 
 release_flow_numbers() {
-  local raw="${RELEASE_FLOWS:-}"
+  local raw="${RELEASE_FLOWS:-}" number="" seen=" "
+  case "$RELEASE_MODE" in safe|protected|full) ;; *)
+    printf 'Invalid RELEASE_MODE: %s (expected safe, protected, or full).\n' "$RELEASE_MODE" >&2
+    return 1
+  esac
   if [ -z "$raw" ]; then
-    printf '%s\n' "${default_flows[@]}"
+    case "$RELEASE_MODE" in
+      safe) printf '%s\n' "${safe_flows[@]}" ;;
+      protected) printf '%s\n' "${protected_flows[@]}" ;;
+      full)
+        number=1
+        while [ "$number" -le 36 ]; do printf '%02d\n' "$number"; number=$((number + 1)); done
+        ;;
+    esac
     return 0
   fi
-  printf '%s\n' "$raw" | tr ',' ' ' | tr ' ' '\n' | sed '/^$/d'
+  for number in $(printf '%s\n' "$raw" | tr ',' ' '); do
+    [[ "$number" =~ ^[0-9][0-9]$ ]] || return 1
+    case "$seen" in *" $number "*) return 1 ;; esac
+    seen="$seen$number "
+    case "$RELEASE_MODE" in
+      safe) release_flow_is_protected "$number" && return 1 ;;
+      protected) release_flow_is_protected "$number" || return 1 ;;
+    esac
+    printf '%s\n' "$number"
+  done
 }
 
 flow_requires_cleanup() {
   case "$1" in
-    04|05|06|15|18|19|20|34|36) return 0 ;;
+    02|04|05|06|15|18|19|20|34|36) return 0 ;;
     *) return 1 ;;
   esac
 }
 
-flow_is_blocked_unsafe_mutation() {
-  case "$1" in
-    04|15|18|20) return 0 ;;
-    *) return 1 ;;
-  esac
+release_simulator_inventory_json() {
+  if [ -n "${STUARI_SIMULATOR_INVENTORY_FILE:-}" ]; then
+    cat "$STUARI_SIMULATOR_INVENTORY_FILE"
+  elif [ -n "${STUARI_SIMULATOR_INVENTORY_COMMAND:-}" ]; then
+    /bin/bash -c "$STUARI_SIMULATOR_INVENTORY_COMMAND"
+  else
+    xcrun simctl list devices available -j
+  fi
+}
+
+validate_release_device() {
+  local inventory=""
+  if [ -z "${IEZ_DEVICE_UDID:-}" ]; then
+    printf 'IEZ_DEVICE_UDID is required for release verification.\n' >&2
+    return 1
+  fi
+  inventory="$(release_simulator_inventory_json 2>/dev/null)" || return 1
+  printf '%s\n' "$inventory" | jq -e --arg udid "$IEZ_DEVICE_UDID" '
+    [.devices[][]?
+      | select(.udid == $udid and .name == "iPhone 17" and .isAvailable == true)
+    ] | length == 1
+  ' >/dev/null 2>&1
 }
 
 discover_disabled_is_explicit_na() {
@@ -113,6 +130,8 @@ run_flow_with_timeout() {
     IEZ_DEVICE_UDID="${IEZ_DEVICE_UDID:-}" \
     STUARI_BUNDLE_ID="${STUARI_BUNDLE_ID:-com.stuari.stuari.dev}" \
     STUARI_CLEANUP_STATUS_FILE="$cleanup_status" \
+    STUARI_RELEASE_LIFECYCLE_TOKEN="${STUARI_RELEASE_LIFECYCLE_TOKEN:-}" \
+    STUARI_RELEASE_LIFECYCLE_LOCK_DIR="${STUARI_RELEASE_LIFECYCLE_LOCK_DIR:-}" \
     STUARI_FLOW35_FLUTTER_EVIDENCE_FILE="${STUARI_FLOW35_FLUTTER_EVIDENCE_FILE:-}" \
     SCREENSHOTS="$SCREENSHOTS" \
     AX_TREES="$AX_TREES" \
@@ -223,12 +242,6 @@ run_flow() {
   name="$(basename "$flow" .sh)"
   log="$LOG_DIR/$name.log"
   cleanup_status="$LOG_DIR/$name.cleanup"
-  if flow_is_blocked_unsafe_mutation "$number"; then
-    printf '%s\tBLOCKED_UNSAFE_MUTATION\t126\t0\t1\t0\t0\t1\t0\tNOT_RUN\n' \
-      "$name" >>"$RESULTS_FILE"
-    printf '%-36s %-28s %4ss\n' "$name" "BLOCKED_UNSAFE_MUTATION" "0"
-    return 0
-  fi
 
   start="$(date +%s)"
   run_flow_with_timeout "$flow" "$log" "$cleanup_status"
@@ -249,42 +262,106 @@ run_flow() {
   printf '%-36s %-28s %4ss\n' "$name" "$result" "$duration"
 }
 
+resolve_selected_flow_names() {
+  local numbers="$1" names="$2" number="" candidate="" count=0 flow=""
+  : >"$names"
+  while IFS= read -r number; do
+    count=0
+    flow=""
+    for candidate in "$SCRIPT_DIR"/flows/"${number}_"*.sh; do
+      [ -f "$candidate" ] || continue
+      flow="$candidate"
+      count=$((count + 1))
+    done
+    [ "$count" -eq 1 ] || return 1
+    basename "$flow" .sh >>"$names"
+  done <"$numbers"
+  [ -s "$names" ]
+}
+
+selected_flows_require_fixture_lifecycle() {
+  local numbers="$1" number=""
+  while IFS= read -r number; do
+    release_flow_is_protected "$number" && return 0
+  done <"$numbers"
+  return 1
+}
+
+release_runner_exit_cleanup() {
+  local status=$?
+  trap - EXIT INT TERM
+  if ! release_lifecycle_restore_fixtures; then status=1; fi
+  if ! release_release_lock; then status=1; fi
+  exit "$status"
+}
+
 main() {
-  local number not_green main_status=0
+  local number not_green main_status=0 selected_numbers selected_names expected_label
   [[ "$FLOW_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || FLOW_TIMEOUT=300
   [[ "$FLOW_TIMEOUT_GRACE" =~ ^[1-9][0-9]*$ ]] || FLOW_TIMEOUT_GRACE=20
 
+  if ! validate_release_device; then
+    printf 'Release verification requires one available simulator named exactly iPhone 17 for IEZ_DEVICE_UDID.\n' >&2
+    return 1
+  fi
   if ! acquire_release_lock; then
     printf 'Release verification blocked: another run owns %s or lock ownership is unavailable.\n' \
       "$RELEASE_LOCK_DIR" >&2
     return 1
   fi
-  trap release_release_lock EXIT
+  trap release_runner_exit_cleanup EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
 
   mkdir -p "$SCREENSHOTS" "$AX_TREES" "$LOG_DIR"
+  selected_numbers="$EVIDENCE_ROOT/selected_flows.txt"
+  selected_names="$EVIDENCE_ROOT/selected_flow_names.txt"
+  if ! release_flow_numbers >"$selected_numbers" || [ ! -s "$selected_numbers" ]; then
+    printf 'Release flow selection is invalid for RELEASE_MODE=%s.\n' "$RELEASE_MODE" >&2
+    return 1
+  fi
+  if ! resolve_selected_flow_names "$selected_numbers" "$selected_names"; then
+    printf 'Release flow selection contains a missing or ambiguous flow.\n' >&2
+    return 1
+  fi
   printf 'flow\tresult\texit\tpass\tfail\tskip\tna\ttotal\tduration_seconds\tcleanup\n' >"$RESULTS_FILE"
+
+  if selected_flows_require_fixture_lifecycle "$selected_numbers"; then
+    if ! release_lifecycle_setup_fixtures; then
+      printf 'Protected release fixture setup failed; no protected flow was started.\n' >&2
+      return 1
+    fi
+  fi
 
   printf 'Stuari release verification\n'
   printf 'Evidence: %s\n' "$EVIDENCE_ROOT"
-  printf 'Device: %s\n' "${IEZ_DEVICE_UDID:-auto}"
+  printf 'Mode: %s\n' "$RELEASE_MODE"
+  printf 'Device: %s (iPhone 17)\n' "$IEZ_DEVICE_UDID"
 
   while IFS= read -r number; do
     run_flow "$number"
-  done < <(release_flow_numbers)
+  done <"$selected_numbers"
 
   printf '\nResults: %s\n' "$RESULTS_FILE"
   not_green="$(awk -F'\t' 'NR > 1 && $2 != "PASS" && $2 != "PASS_WITH_NA" && $2 != "N/A"' \
     "$RESULTS_FILE" | wc -l | tr -d ' ')"
   [ "$not_green" -eq 0 ] || main_status=1
 
-  trap - EXIT INT TERM
+  expected_label="${STUARI_EXPECTED_AX_APPLICATION_LABEL:-${STUARI_AX_APPLICATION_LABEL:-stuari-dev}}"
+  if ! validate_release_evidence "$expected_label" "$selected_names"; then
+    printf 'Release evidence validation or contact-sheet generation failed.\n' >&2
+    main_status=1
+  fi
+  if ! release_lifecycle_restore_fixtures; then
+    printf 'Release fixture cleanup or restoration proof failed.\n' >&2
+    main_status=1
+  fi
   if ! release_release_lock; then
     printf 'Release verification failed to release its exact owned lock: %s\n' \
       "$RELEASE_LOCK_DIR" >&2
-    return 1
+    main_status=1
   fi
+  trap - EXIT INT TERM
   return "$main_status"
 }
 

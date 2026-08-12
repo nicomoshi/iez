@@ -154,12 +154,24 @@ assert_eq "TIMEOUT_CLEANED" \
 assert_eq "TIMEOUT_CLEANUP_REQUIRED" \
   "$(classify_flow_result 36 124 0 0 0 "$classification_log" "$cleanup_status")" \
   "Timed-out mutating flow reports cleanup required when unproven"
-assert_true "Unrestored standalone create/edit flows are blocked before execution" \
-  flow_is_blocked_unsafe_mutation 04
-assert_true "Flow 15 is blocked until its Drift fixture proves the expected principal" \
-  flow_is_blocked_unsafe_mutation 15
-assert_true "Flow 18 is blocked until forced-offline restoration is fail-closed" \
-  flow_is_blocked_unsafe_mutation 18
+RELEASE_MODE=safe
+unset RELEASE_FLOWS
+safe_selection="$(release_flow_numbers)"
+assert_false "Default safe mode cannot self-select protected flow 04" \
+  grep -Fxq 04 <<<"$safe_selection"
+assert_false "Default safe mode cannot self-select protected flow 15" \
+  grep -Fxq 15 <<<"$safe_selection"
+assert_false "Default safe mode cannot self-select protected flow 18" \
+  grep -Fxq 18 <<<"$safe_selection"
+assert_false "Default safe mode cannot self-select protected flow 20" \
+  grep -Fxq 20 <<<"$safe_selection"
+RELEASE_FLOWS=04
+assert_false "Safe mode rejects an explicitly requested protected mutation" release_flow_numbers
+RELEASE_MODE=protected
+unset RELEASE_FLOWS
+assert_eq $'04\n15\n18\n20' "$(release_flow_numbers)" \
+  "Explicit protected mode selects the complete protected partition"
+RELEASE_MODE=safe
 
 RELEASE_LOCK_DIR="$TMP_DIR/release.lock"
 RELEASE_LOCK_OWNED=0

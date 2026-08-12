@@ -26,11 +26,15 @@ if ! [[ "$HABIT_DELETE_FIXTURE_TOKEN" =~ ^[0-9a-f]{32}$ ]]; then
 fi
 HABIT_NAME="Del Me $HABIT_DELETE_FIXTURE_TOKEN"
 export STUARI_FLOW04_HABIT_NAME="$HABIT_NAME"
+export STUARI_FLOW04_HABIT_TOKEN="$HABIT_DELETE_FIXTURE_TOKEN"
 HABIT_DELETE_FIXTURE_CREATED=0
 HABIT_DELETE_FIXTURE_DELETED=0
 HABIT_DELETE_CLEANUP_RAN=0
 HABIT_DELETE_DURABILITY_PROVEN=1
 TARGET_CARD_ID=""
+HANDOFF_TARGET_CARD_ID=""
+HABIT_DELETE_HANDOFF_FILE="$(mktemp "${TMPDIR:-/tmp}/stuari-flow34-handoff.XXXXXX")" || exit 1
+chmod 600 "$HABIT_DELETE_HANDOFF_FILE" || exit 1
 
 # Return the only normalized exact-name habit card when it is fully contained
 # by the Stuari root and is the unique mounted card nearest the app center.
@@ -232,10 +236,12 @@ cleanup_habit_delete_fixture() {
   HABIT_DELETE_CLEANUP_RAN=1
 
   if [ "${HABIT_DELETE_FIXTURE_CREATED:-0}" != "1" ]; then
+    rm -f "$HABIT_DELETE_HANDOFF_FILE" 2>/dev/null || true
     mark_flow_cleanup_complete
     return 0
   fi
   if [ "${HABIT_DELETE_FIXTURE_DELETED:-0}" = "1" ]; then
+    rm -f "$HABIT_DELETE_HANDOFF_FILE" 2>/dev/null || true
     mark_flow_cleanup_complete
     return 0
   fi
@@ -304,8 +310,19 @@ info "Creating disposable habit: $HABIT_NAME"
 # UUID-named habit may exist before entering the child so every exit path either
 # deletes that exact card or reports cleanup required without touching others.
 HABIT_DELETE_FIXTURE_CREATED=1
-SCREENSHOTS="$SCREENSHOTS" bash "$SCRIPT_DIR/04_habit_group.sh"
+mark_flow_cleanup_required
+STUARI_FLOW04_OWNERSHIP_HANDOFF_FILE="$HABIT_DELETE_HANDOFF_FILE" \
+  SCREENSHOTS="$SCREENSHOTS" bash "$SCRIPT_DIR/04_habit_group.sh"
 create_rc=$?
+if [ -s "$HABIT_DELETE_HANDOFF_FILE" ]; then
+  HANDOFF_TARGET_CARD_ID="$(jq -r \
+    --arg lifecycle "${STUARI_RELEASE_LIFECYCLE_TOKEN:-}" \
+    --arg token "$HABIT_DELETE_FIXTURE_TOKEN" \
+    'select(.lifecycle_token == $lifecycle and .fixture_token == $token) | .card_id // empty' \
+    "$HABIT_DELETE_HANDOFF_FILE" 2>/dev/null || true)"
+  TARGET_CARD_ID="$HANDOFF_TARGET_CARD_ID"
+fi
+rm -f "$HABIT_DELETE_HANDOFF_FILE"
 if [ "$create_rc" -ne 0 ]; then
   fail "Disposable habit created before delete flow"
   print_summary
@@ -335,11 +352,12 @@ else
 fi
 
 target_tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
-TARGET_CARD_ID="$(habit_delete_centered_card_id_from_tree "$target_tree" "$HABIT_NAME" 2>/dev/null || true)"
-if [ -n "$TARGET_CARD_ID" ]; then
+observed_target_card_id="$(habit_delete_centered_card_id_from_tree "$target_tree" "$HABIT_NAME" 2>/dev/null || true)"
+if [ -n "$HANDOFF_TARGET_CARD_ID" ] && [ "$observed_target_card_id" = "$HANDOFF_TARGET_CARD_ID" ]; then
+  TARGET_CARD_ID="$HANDOFF_TARGET_CARD_ID"
   pass "Disposable habit is the single centered positive-width card: $TARGET_CARD_ID"
 else
-  fail "Disposable habit is not the single centered positive-width card"
+  fail "Disposable habit does not match the exact child ownership handoff"
   capture "34_target_card_precondition_failed"
   print_summary
   exit $FAIL

@@ -6,6 +6,8 @@
 
 set +e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../lib/release_lifecycle.sh"
+require_release_lifecycle || exit 1
 source "$SCRIPT_DIR/../lib/common.sh"
 source "$SCRIPT_DIR/../lib/auth.sh"
 source "$SCRIPT_DIR/../lib/navigation.sh"
@@ -14,18 +16,67 @@ source "$SCRIPT_DIR/../lib/fixtures.sh"
 section "Flow 18: Offline Degradation"
 
 FORCED_OFFLINE_ENABLED="false"
+FORCED_ONLINE_RESTORATION_PROVEN="false"
+
+prove_forced_online_restoration() {
+  local tree=""
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
+  printf '%s\n' "$tree" | jq -e '
+    any(.data.elements[]?;
+      .role == "AXButton"
+      and ((.label // "") == "Home tab, selected"
+        or (.label // "") == "Home tab, selected tab"))
+    and ([.data.elements[]?
+      | (.label // "")
+      | ascii_downcase
+      | select(. == "you are offline" or contains("no internet connection"))
+    ] | length) == 0
+  ' >/dev/null 2>&1
+}
+
 restore_forced_online() {
   [ "$FORCED_OFFLINE_ENABLED" = "true" ] || return 0
-  fresh_launch
+  fresh_launch || return 1
   sleep 1
-  go_settings >/dev/null 2>&1 || true
+  go_home >/dev/null 2>&1 || true
   sleep 1
-  if has_label "Force offline mode" || tree_contains "Force offline"; then
-    run_iez "$IEZ" ui tap --label "Force offline mode" >/dev/null 2>&1 || true
-    sleep 1
+  if prove_forced_online_restoration; then
+    FORCED_OFFLINE_ENABLED="false"
+    FORCED_ONLINE_RESTORATION_PROVEN="true"
+    mark_flow_cleanup_complete
+    return 0
   fi
+  go_settings >/dev/null 2>&1 || return 1
+  sleep 1
+  for _ in 1 2 3; do
+    if has_label "Force offline mode" || tree_contains "Force offline"; then break; fi
+    run_iez "$IEZ" ui swipe up >/dev/null 2>&1 || return 1
+    sleep 0.5
+  done
+  has_label "Force offline mode" || tree_contains "Force offline" || return 1
+  tap_element "Force offline mode" "label" "Restore forced online mode" || return 1
+  sleep 1.5
+  go_home || return 1
+  sleep 1
+  prove_forced_online_restoration || return 1
+  FORCED_OFFLINE_ENABLED="false"
+  FORCED_ONLINE_RESTORATION_PROVEN="true"
+  mark_flow_cleanup_complete
 }
-trap restore_forced_online EXIT INT TERM
+
+offline_exit_cleanup() {
+  local original_status=$?
+  trap - EXIT INT TERM
+  if ! restore_forced_online; then
+    mark_flow_cleanup_required
+    exit 1
+  fi
+  exit "$original_status"
+}
+trap offline_exit_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 fresh_launch; sleep 2
 if on_auth_page; then login_with_test_user; fi
@@ -41,8 +92,9 @@ for _ in 1 2 3; do
 done
 
 if has_label "Force offline mode" || tree_contains "Force offline"; then
-  tap_element "Force offline mode" "label" "Enable forced offline mode"
   FORCED_OFFLINE_ENABLED="true"
+  mark_flow_cleanup_required
+  tap_element "Force offline mode" "label" "Enable forced offline mode"
   sleep 1.5
 else
   fail "Dev forced-offline control is missing from the dev build"
@@ -106,23 +158,11 @@ else
   fi
 fi
 
-# Restore connectivity through the same dev toggle
-go_settings
-sleep 1
-for _ in 1 2 3; do
-  if has_label "Force offline mode" || tree_contains "Force offline"; then break; fi
-  run_iez "$IEZ" ui swipe up >/dev/null 2>&1 || true
-  sleep 0.5
-done
-if has_label "Force offline mode" || tree_contains "Force offline"; then
-  tap_element "Force offline mode" "label" "Disable forced offline mode"
-  FORCED_OFFLINE_ENABLED="false"
-  sleep 1.5
-else
-  fail "Forced-offline control was not reachable for connectivity recovery"
+# Restore connectivity and clear the guard only after fresh AX proof.
+if ! restore_forced_online; then
+  fail "Forced-offline restoration proof failed"
 fi
-go_home
-sleep 2
+sleep 1
 capture "18_online_restored"
 
 if tree_contains "You are offline" || tree_contains "No internet connection"; then
@@ -131,6 +171,10 @@ elif wait_for_main_ui 5; then
   pass "Online home content recovered and remained interactive"
 else
   fail "Home did not recover after forced offline mode was disabled"
+fi
+
+if [ "$FORCED_ONLINE_RESTORATION_PROVEN" != "true" ]; then
+  fail "Forced-online restoration was not proven before clearing state"
 fi
 
 print_summary

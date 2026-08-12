@@ -6,11 +6,17 @@
 
 set +e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../lib/release_lifecycle.sh"
+require_release_lifecycle || exit 1
 source "$SCRIPT_DIR/../lib/common.sh"
 source "$SCRIPT_DIR/../lib/auth.sh"
 source "$SCRIPT_DIR/../lib/navigation.sh"
 
 section "Flow 15: Notifications"
+STUARI_FLOW15_SAFE_CLASSIFICATION="local-only notification fixture with fail-closed restoration proof"
+NOTIFICATION_MUTATION_STARTED=0
+NOTIFICATION_RESTORATION_REQUIRED=0
+NOTIFICATION_CLEANUP_COMPLETE=0
 
 fresh_launch; sleep 2
 if on_auth_page; then login_with_test_user; fi
@@ -22,27 +28,53 @@ NOTIFICATION_FIXTURE_ID="iez-notification-navigation"
 NOTIFICATION_BACKUP_TABLE="notifications_iez_error_backup"
 
 restore_notification_table() {
-  [ -f "$DB_PATH" ] || return 0
+  [ -f "$DB_PATH" ] || return 1
   xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
   if [ "$(sqlite3 "$DB_PATH" "select count(*) from sqlite_master where type='table' and name='$NOTIFICATION_BACKUP_TABLE';")" = "1" ]; then
     if [ "$(sqlite3 "$DB_PATH" "select count(*) from sqlite_master where type='table' and name='notifications';")" = "1" ]; then
-      sqlite3 "$DB_PATH" "insert or replace into notifications select * from $NOTIFICATION_BACKUP_TABLE; drop table $NOTIFICATION_BACKUP_TABLE;"
+      sqlite3 "$DB_PATH" "insert or replace into notifications select * from $NOTIFICATION_BACKUP_TABLE; drop table $NOTIFICATION_BACKUP_TABLE;" || return 1
     else
-      sqlite3 "$DB_PATH" "alter table $NOTIFICATION_BACKUP_TABLE rename to notifications;"
+      sqlite3 "$DB_PATH" "alter table $NOTIFICATION_BACKUP_TABLE rename to notifications;" || return 1
     fi
   fi
+  [ "$(sqlite3 "$DB_PATH" "select count(*) from sqlite_master where type='table' and name='notifications';" 2>/dev/null)" = "1" ] || return 1
+  [ "$(sqlite3 "$DB_PATH" "select count(*) from sqlite_master where type='table' and name='$NOTIFICATION_BACKUP_TABLE';" 2>/dev/null)" = "0" ] || return 1
+  NOTIFICATION_RESTORATION_REQUIRED=0
 }
 
 cleanup_notification_fixture() {
-  [ -f "$DB_PATH" ] || return 0
-  sqlite3 "$DB_PATH" "delete from notifications where id = '$NOTIFICATION_FIXTURE_ID';" >/dev/null 2>&1 || true
+  [ -f "$DB_PATH" ] || return 1
+  sqlite3 "$DB_PATH" "delete from notifications where id = '$NOTIFICATION_FIXTURE_ID';" >/dev/null 2>&1 || return 1
+  [ "$(sqlite3 "$DB_PATH" "select count(*) from notifications where id = '$NOTIFICATION_FIXTURE_ID';" 2>/dev/null)" = "0" ]
 }
 
 cleanup_notifications_flow() {
-  restore_notification_table
-  cleanup_notification_fixture
+  local status=0
+  [ "$NOTIFICATION_CLEANUP_COMPLETE" = "0" ] || return 0
+  if [ "$NOTIFICATION_RESTORATION_REQUIRED" = "1" ]; then
+    restore_notification_table || status=1
+  fi
+  if [ "$NOTIFICATION_MUTATION_STARTED" = "1" ]; then
+    cleanup_notification_fixture || status=1
+  fi
+  if [ "$status" -eq 0 ]; then
+    NOTIFICATION_CLEANUP_COMPLETE=1
+    mark_flow_cleanup_complete
+  else
+    mark_flow_cleanup_required
+  fi
+  return "$status"
 }
-trap cleanup_notifications_flow EXIT INT TERM
+
+notifications_exit_cleanup() {
+  local original_status=$?
+  trap - EXIT INT TERM
+  if ! cleanup_notifications_flow; then exit 1; fi
+  exit "$original_status"
+}
+trap notifications_exit_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if [ -z "$APP_CONTAINER" ] || [ ! -f "$DB_PATH" ]; then
   fail "Local notification cache exists for deterministic E2E"
@@ -75,6 +107,8 @@ pass "Notification fixture targets visible Home card $TARGET_CARD_ID"
 # Seed only the simulator's Drift cache. Restarting lets Drift observe this
 # external write without any admin mutation to the remote backend.
 xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+NOTIFICATION_MUTATION_STARTED=1
+mark_flow_cleanup_required
 sqlite3 "$DB_PATH" <<SQL
 insert or replace into notifications (
   id, user_id, type, title, body, data, is_read, created_at, sync_version
@@ -199,6 +233,7 @@ capture "15_notifications_scrolled"
 # Drift then emits its real stream error, exercising the production error page.
 xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
 cleanup_notification_fixture
+NOTIFICATION_RESTORATION_REQUIRED=1
 sqlite3 "$DB_PATH" "pragma wal_checkpoint(full); alter table notifications rename to $NOTIFICATION_BACKUP_TABLE;" \
   >/dev/null
 fresh_launch
@@ -233,5 +268,8 @@ else
 fi
 
 go_home
+if ! cleanup_notifications_flow; then
+  fail "Notification fixture cleanup or table restoration proof failed"
+fi
 print_summary
 exit $FAIL

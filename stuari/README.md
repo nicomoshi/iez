@@ -8,7 +8,7 @@ AXe + Peekaboo + Maestro behind a single JSON-outputting interface.
 ## Prerequisites
 
 1. **iEZ installed:** `~/Developer/i_ez/bin/iez` on your PATH
-2. **Booted simulator:** `iez sim boot --device "iPhone 17 Pro"`
+2. **Booted simulator:** `iez sim boot --device "iPhone 17"`
 3. **Stuari installed:** build + install the dev flavor
    ```bash
    cd ~/Developer/sestuary
@@ -39,6 +39,40 @@ AXe + Peekaboo + Maestro behind a single JSON-outputting interface.
    Override with `STUARI_BUNDLE_ID=com.stuari.stuari` for prod.
 
 ## Running
+
+### Fail-closed release verification
+
+The release runner requires an explicitly pinned, available simulator named
+exactly `iPhone 17`. The current local UDID is an example only; the runner has
+no implicit default:
+
+```bash
+export IEZ_DEVICE_UDID=A3745DB4-A886-488B-8ED7-A04DA19861B5
+bash ~/Developer/i_ez/stuari/run_release_verification.sh
+```
+
+The default `RELEASE_MODE=safe` runs the non-protected release subset. Use
+`RELEASE_MODE=protected` for flows 04, 15, 18, and 20, or
+`RELEASE_MODE=full` for the documented 36-flow partition. Protected and full
+runs also require explicit shared-fixture reseed/cleanup proof and personal
+fixture snapshot/restore proof commands:
+
+```bash
+RELEASE_MODE=protected \
+STUARI_RELEASE_SHARED_RESEED_COMMAND='<reseed command>' \
+STUARI_RELEASE_SHARED_RESEED_VERIFY_COMMAND='<reseed proof command>' \
+STUARI_RELEASE_SHARED_CLEANUP_COMMAND='<cleanup command>' \
+STUARI_RELEASE_SHARED_VERIFY_COMMAND='<cleanup proof command>' \
+STUARI_RELEASE_PERSONAL_SNAPSHOT_COMMAND='<snapshot command>' \
+STUARI_RELEASE_PERSONAL_SNAPSHOT_VERIFY_COMMAND='<snapshot proof command>' \
+STUARI_RELEASE_PERSONAL_RESTORE_COMMAND='<restore command>' \
+STUARI_RELEASE_PERSONAL_VERIFY_COMMAND='<restore proof command>' \
+bash ~/Developer/i_ez/stuari/run_release_verification.sh
+```
+
+Flow 02 additionally requires an explicitly provisioned disposable onboarding
+principal and provision/freshness/completion/cleanup proof hooks. Seed Alice is
+never accepted as onboarding coverage.
 
 ### Smoke test (≈ 3 minutes)
 

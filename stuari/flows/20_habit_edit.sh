@@ -11,19 +11,76 @@
 
 set +e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../lib/release_lifecycle.sh"
+require_release_lifecycle || exit 1
 source "$SCRIPT_DIR/../lib/common.sh"
 source "$SCRIPT_DIR/../lib/auth.sh"
 source "$SCRIPT_DIR/../lib/navigation.sh"
 source "$SCRIPT_DIR/../lib/fixtures.sh"
+source "$SCRIPT_DIR/../lib/disposable_habit.sh"
 
 section "Flow 20: Edit habit rules"
-ORIGINAL_NAME="${STUARI_FLOW20_ORIGINAL_NAME:-Edit Me $(rand_tail)}"
-UPDATED_NAME="${STUARI_FLOW20_UPDATED_NAME:-Edited $(rand_tail)}"
+HABIT_TOKEN="${STUARI_FLOW20_HABIT_TOKEN:-$(disposable_habit_uuid)}"
+ORIGINAL_NAME="${STUARI_FLOW20_ORIGINAL_NAME:-IEZ Edit $HABIT_TOKEN}"
+UPDATED_NAME="${STUARI_FLOW20_UPDATED_NAME:-IEZ Edited $HABIT_TOKEN}"
+if ! disposable_habit_name_is_owned "$ORIGINAL_NAME" "$HABIT_TOKEN" \
+  || ! disposable_habit_name_is_owned "$UPDATED_NAME" "$HABIT_TOKEN"; then
+  fail "Flow 20 requires UUID-owned original and updated disposable names"
+  print_summary
+  exit $FAIL
+fi
+
+DISPOSABLE_HABIT_TOKEN="$HABIT_TOKEN"
+FLOW20_TARGET_CARD_ID=""
+FLOW20_CURRENT_NAME="$ORIGINAL_NAME"
+FLOW20_OWNERSHIP_CLAIMED=0
+FLOW20_CLEANUP_COMPLETE=0
+FLOW20_HANDOFF_FILE="$(mktemp "${TMPDIR:-/tmp}/stuari-flow20-handoff.XXXXXX")" || exit 1
+chmod 600 "$FLOW20_HANDOFF_FILE" || exit 1
+
+cleanup_flow20_disposable_fixture() {
+  [ "$FLOW20_CLEANUP_COMPLETE" = "0" ] || return 0
+  rm -f "$FLOW20_HANDOFF_FILE" 2>/dev/null || true
+  if [ "$FLOW20_OWNERSHIP_CLAIMED" != "1" ]; then
+    mark_flow_cleanup_required
+    return 1
+  fi
+  if disposable_habit_delete_and_prove_cleanup "$FLOW20_CURRENT_NAME" "$FLOW20_TARGET_CARD_ID" \
+    || { [ "$FLOW20_CURRENT_NAME" != "$ORIGINAL_NAME" ] \
+      && disposable_habit_delete_and_prove_cleanup "$ORIGINAL_NAME" "$FLOW20_TARGET_CARD_ID"; }; then
+    FLOW20_CLEANUP_COMPLETE=1
+    mark_flow_cleanup_complete
+    info "Flow 20 proved edited disposable habit cleanup after refresh and relaunch"
+    return 0
+  fi
+  mark_flow_cleanup_required
+  return 1
+}
+
+flow20_exit_cleanup() {
+  local original_status=$?
+  trap - EXIT INT TERM
+  if ! cleanup_flow20_disposable_fixture; then exit 1; fi
+  exit "$original_status"
+}
+trap flow20_exit_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 section "Flow 20 setup: create owned habit"
-if STUARI_FLOW04_HABIT_NAME="$ORIGINAL_NAME" \
+mark_flow_cleanup_required
+STUARI_FLOW04_HABIT_NAME="$ORIGINAL_NAME" \
+  STUARI_FLOW04_HABIT_TOKEN="$HABIT_TOKEN" \
+  STUARI_FLOW04_OWNERSHIP_HANDOFF_FILE="$FLOW20_HANDOFF_FILE" \
   SCREENSHOTS="$SCREENSHOTS" \
-  bash "$SCRIPT_DIR/04_habit_group.sh"; then
+  bash "$SCRIPT_DIR/04_habit_group.sh"
+create_rc=$?
+if disposable_habit_read_handoff "$FLOW20_HANDOFF_FILE" "$HABIT_TOKEN"; then
+  FLOW20_TARGET_CARD_ID="$(jq -r '.card_id' "$FLOW20_HANDOFF_FILE")"
+  FLOW20_OWNERSHIP_CLAIMED=1
+  rm -f "$FLOW20_HANDOFF_FILE"
+fi
+if [ "$create_rc" -eq 0 ] && [ "$FLOW20_OWNERSHIP_CLAIMED" = "1" ]; then
   pass "Created owned habit for edit flow: $ORIGINAL_NAME"
 else
   fail "Could not create owned habit for edit flow: $ORIGINAL_NAME"
@@ -131,6 +188,7 @@ for step in $(seq 1 10); do
 done
 
 # Final save
+FLOW20_CURRENT_NAME="$UPDATED_NAME"
 if tap_first_matching_exact_labels \
     "Save Changes" "Save Changes: habit review" \
     "Save Changes"; then
@@ -170,5 +228,8 @@ else
   fail "Edited habit missing after relaunch: $UPDATED_NAME"
 fi
 
+if ! cleanup_flow20_disposable_fixture; then
+  fail "Flow 20 could not prove cleanup of its exact disposable habit"
+fi
 print_summary
 exit $FAIL

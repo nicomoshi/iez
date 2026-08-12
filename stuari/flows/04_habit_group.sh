@@ -17,13 +17,74 @@
 
 set +e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../lib/release_lifecycle.sh"
+require_release_lifecycle || exit 1
 source "$SCRIPT_DIR/../lib/common.sh"
 source "$SCRIPT_DIR/../lib/auth.sh"
 source "$SCRIPT_DIR/../lib/navigation.sh"
 source "$SCRIPT_DIR/../lib/fixtures.sh"
+source "$SCRIPT_DIR/../lib/disposable_habit.sh"
 
 section "Flow 04: Habit Group Create + Invite + Members"
-HABIT_NAME="${STUARI_FLOW04_HABIT_NAME:-$(test_habit_name)}"
+HABIT_TOKEN="${STUARI_FLOW04_HABIT_TOKEN:-$(disposable_habit_uuid)}"
+HABIT_NAME="${STUARI_FLOW04_HABIT_NAME:-IEZ Habit $HABIT_TOKEN}"
+if ! disposable_habit_name_is_owned "$HABIT_NAME" "$HABIT_TOKEN"; then
+  fail "Flow 04 requires a full UUID-owned disposable habit name"
+  print_summary
+  exit $FAIL
+fi
+
+DISPOSABLE_HABIT_TOKEN="$HABIT_TOKEN"
+FLOW04_HABIT_MAY_EXIST=0
+FLOW04_TARGET_CARD_ID=""
+FLOW04_FIXTURE_FINISHED=0
+
+finish_flow04_disposable_fixture() {
+  [ "$FLOW04_FIXTURE_FINISHED" = "0" ] || return 0
+  if [ "$FLOW04_HABIT_MAY_EXIST" != "1" ]; then
+    FLOW04_FIXTURE_FINISHED=1
+    mark_flow_cleanup_complete
+    return 0
+  fi
+  if [ -z "$FLOW04_TARGET_CARD_ID" ]; then
+    mark_flow_cleanup_required
+    return 1
+  fi
+  if [ -n "${STUARI_FLOW04_OWNERSHIP_HANDOFF_FILE:-}" ]; then
+    if disposable_habit_write_handoff \
+      "$STUARI_FLOW04_OWNERSHIP_HANDOFF_FILE" "$HABIT_NAME" \
+      "$FLOW04_TARGET_CARD_ID" "$HABIT_TOKEN"; then
+      FLOW04_FIXTURE_FINISHED=1
+      # The parent now owns cleanup; keep the shared timeout status dirty until
+      # that parent proves deletion after refresh and relaunch.
+      mark_flow_cleanup_required
+      info "Handed exact disposable habit ownership to parent flow"
+      return 0
+    fi
+    mark_flow_cleanup_required
+    return 1
+  fi
+  if disposable_habit_delete_and_prove_cleanup "$HABIT_NAME" "$FLOW04_TARGET_CARD_ID"; then
+    FLOW04_FIXTURE_FINISHED=1
+    mark_flow_cleanup_complete
+    info "Flow 04 proved disposable habit cleanup after refresh and relaunch"
+    return 0
+  fi
+  mark_flow_cleanup_required
+  return 1
+}
+
+flow04_exit_cleanup() {
+  local original_status=$?
+  trap - EXIT INT TERM
+  if ! finish_flow04_disposable_fixture; then
+    exit 1
+  fi
+  exit "$original_status"
+}
+trap flow04_exit_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 wait_for_natural_home() {
   local timeout="${1:-10}" elapsed=0
@@ -196,6 +257,10 @@ done
 
 # Review page — final Create Habit button
 capture "04_review_page"
+# The server may accept the mutation before the UI response arrives. From this
+# boundary onward every exit must either prove cleanup or fail closed.
+FLOW04_HABIT_MAY_EXIST=1
+mark_flow_cleanup_required
 if tap_first_matching_exact_labels \
   "Create Habit" "Create Habit: habit review" \
   "Review → Create Habit (submit)"; then
@@ -225,6 +290,10 @@ if [ "$CREATE_SUBMITTED" = "1" ]; then
     wait_for_visible_habit_card_name "$HABIT_NAME" 8; then
     immediate_label="$(current_visible_habit_card_label 2>/dev/null || true)"
     if habit_card_label_matches_name "$immediate_label" "$HABIT_NAME"; then
+      FLOW04_TARGET_CARD_ID="$(current_visible_habit_card_id 2>/dev/null || true)"
+      if [ -z "$FLOW04_TARGET_CARD_ID" ]; then
+        fail "Created disposable habit has no exact centered card identity"
+      fi
       if capture "04_created_habit_centered_immediate"; then
         pass "Immediate centered-card boundary: created habit is the visible centered Home card: $HABIT_NAME"
       else
@@ -353,5 +422,8 @@ else
 fi
 
 dismiss_all
+if ! finish_flow04_disposable_fixture; then
+  fail "Flow 04 could not prove cleanup of its exact disposable habit"
+fi
 print_summary
 exit $FAIL

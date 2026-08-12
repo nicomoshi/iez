@@ -901,8 +901,12 @@ pass_test "Given mismatched Drift habit_id When waiting for due-now occurrence T
 flow04_file="$ROOT_DIR/stuari/flows/04_habit_group.sh"
 flow04_created_checks=$(sed -n '/if \[ "$CREATE_SUBMITTED" = "1" \]; then/,/^# Invite flow:/p' "$flow04_file")
 flow04_wizard_actions=$(sed -n '/^# Step 1: Name/,/^# Create Habit should return/p' "$flow04_file")
-assert_file_contains 'HABIT_NAME="${STUARI_FLOW04_HABIT_NAME:-$(test_habit_name)}"' "$flow04_file" \
-  "Flow 04 generates a unique habit name unless an enclosing flow supplies one"
+assert_file_contains 'HABIT_TOKEN="${STUARI_FLOW04_HABIT_TOKEN:-$(disposable_habit_uuid)}"' "$flow04_file" \
+  "Flow 04 generates a full UUID ownership token unless an enclosing flow supplies one"
+assert_file_contains 'HABIT_NAME="${STUARI_FLOW04_HABIT_NAME:-IEZ Habit $HABIT_TOKEN}"' "$flow04_file" \
+  "Flow 04 preserves an enclosing flow name while defaulting to its UUID-owned disposable name"
+assert_file_contains 'disposable_habit_name_is_owned "$HABIT_NAME" "$HABIT_TOKEN"' "$flow04_file" \
+  "Flow 04 rejects a supplied name that is not bound to the full ownership token"
 assert_file_contains 'type_into "e.g. Morning Run" "$HABIT_NAME"' "$flow04_file" \
   "Flow 04 types the generated habit name into the create form"
 
