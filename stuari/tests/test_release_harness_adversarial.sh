@@ -131,6 +131,24 @@ unset -f mv
 published_failure_count="$(find "$SCREENSHOTS" -name 'publish_failure_*.png' ! -name '*.invalid.png' | wc -l | tr -d ' ')"
 assert_eq "0" "$published_failure_count" "Failed evidence publication leaves no valid screenshot pair"
 
+# Given release event-ledger validation is enabled
+# When auth readiness captures a non-ready state
+# Then the capture is explicitly diagnostic, retained with an invalid suffix,
+# and never published as a result-bearing event.
+DIAGNOSTIC_EVENTS="$TMP_DIR/diagnostic.events"
+: >"$DIAGNOSTIC_EVENTS"
+STUARI_EVIDENCE_RUN_ID="11111111-2222-4333-8444-555555555555"
+STUARI_EVIDENCE_EVENT_FILE="$DIAGNOSTIC_EVENTS"
+assert_true "Auth readiness diagnostic capture succeeds" \
+  capture auth_ax_not_ready_initial diagnostic
+assert_eq "0" "$(wc -l <"$DIAGNOSTIC_EVENTS" | tr -d ' ')" \
+  "Diagnostic auth capture does not poison the release event ledger"
+assert_eq "1" "$(find "$SCREENSHOTS" -name 'auth_ax_not_ready_initial_*.invalid.png' | wc -l | tr -d ' ')" \
+  "Diagnostic auth screenshot is retained outside valid evidence stems"
+assert_eq "1" "$(find "$AX_TREES" -name 'auth_ax_not_ready_initial_*.invalid.json' | wc -l | tr -d ' ')" \
+  "Diagnostic auth AX tree is retained outside valid evidence stems"
+unset STUARI_EVIDENCE_RUN_ID STUARI_EVIDENCE_EVENT_FILE
+
 source "$ROOT_DIR/stuari/run_release_verification.sh"
 classification_log="$TMP_DIR/classification.log"
 cleanup_status="$TMP_DIR/classification.cleanup"
@@ -276,6 +294,23 @@ assert_false "Flow 36 has no broad upload-state ID cleanup" \
 export STUARI_APP_REPO_DIR="$TMP_DIR/fake-app"
 mkdir -p "$STUARI_APP_REPO_DIR"
 source "$ROOT_DIR/stuari/lib/fixtures.sh"
+
+# Given the exact cleanup SQL command blocks indefinitely
+# When bounded cleanup runs
+# Then it returns the timeout contract quickly and leaves ownership unknown
+# for the caller to report as CLEANUP_REQUIRED.
+HANGING_SQL="$TMP_DIR/hanging-cleanup.sql"
+printf 'select 1;\n' >"$HANGING_SQL"
+supabase() { sleep 5; }
+STUARI_DUE_NOW_CLEANUP_TIMEOUT_SECONDS=1
+SECONDS=0
+bounded_cleanup_rc=0
+run_stuari_linked_sql_file_bounded "$HANGING_SQL" "Hanging cleanup fixture" 1 || bounded_cleanup_rc=$?
+assert_eq "124" "$bounded_cleanup_rc" \
+  "Bounded cleanup returns timeout when the remote command hangs"
+assert_true "Bounded cleanup returns before the release flow timeout" test "$SECONDS" -lt 4
+unset STUARI_DUE_NOW_CLEANUP_TIMEOUT_SECONDS
+
 supabase() { return 0; }
 confirmation_sql="$TMP_DIR/confirmation.sql"
 feed_sql="$TMP_DIR/feed.sql"
@@ -337,6 +372,30 @@ assert_true "Flow 19 installs EXIT cleanup for interrupted auth mutation" \
   grep -Fq 'trap auth_cycle_exit_cleanup EXIT' "$flow19_source"
 assert_true "Flow 19 proves Alice again after signing back in" \
   grep -Fq 'if persisted_session_is_verified_alice; then' "$flow19_source"
+
+for flow_file in "$ROOT_DIR/stuari/flows/05_checkin_photo.sh" \
+                 "$ROOT_DIR/stuari/flows/06_checkin_video.sh"; do
+  required_line="$(grep -n '^  mark_flow_cleanup_required$' "$flow_file" | head -1 | cut -d: -f1)"
+  cleanup_line="$(grep -n '^  if ! cleanup_due_now_occurrence_fixture;' "$flow_file" | head -1 | cut -d: -f1)"
+  if [[ "$required_line" =~ ^[0-9]+$ ]] && [[ "$cleanup_line" =~ ^[0-9]+$ ]] \
+    && [ "$required_line" -lt "$cleanup_line" ]; then
+    pass_test "$(basename "$flow_file") publishes cleanup-required before remote cleanup"
+  else
+    fail_test "$(basename "$flow_file") can be interrupted before cleanup-required is recorded"
+  fi
+done
+
+flow32_source="$ROOT_DIR/stuari/flows/32_habit_detail.sh"
+assert_true "Flow 32 selects the durable seeded card at its reconciliation boundary" \
+  grep -Fq 'select_habit_card_by_id "$SEEDED_GROUP_CARD_ID"' "$flow32_source"
+seeded_line="$(grep -n 'select_habit_card_by_id "\$SEEDED_GROUP_CARD_ID"' "$flow32_source" | head -1 | cut -d: -f1)"
+menu_line="$(grep -n '^if tap_visible_habit_menu' "$flow32_source" | head -1 | cut -d: -f1)"
+if [[ "$seeded_line" =~ ^[0-9]+$ ]] && [[ "$menu_line" =~ ^[0-9]+$ ]] \
+  && [ "$seeded_line" -lt "$menu_line" ]; then
+  pass_test "Flow 32 reconciles to the durable card before opening its menu"
+else
+  fail_test "Flow 32 can open a transient centered card before durable selection"
+fi
 
 printf 'Adversarial release checks: %d passed, %d failed.\n' "$passes" "$failures"
 [ "$failures" -eq 0 ]

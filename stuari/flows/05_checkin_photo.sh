@@ -33,9 +33,13 @@ cleanup_photo_due_now_fixture() {
     mark_flow_cleanup_complete
     return 0
   fi
+  # Publish the fail-closed state before the remote command starts. If the
+  # flow receives TERM while cleanup is running, EXIT recovery cannot mistake
+  # an interrupted command for proven cleanup.
+  mark_flow_cleanup_required
   if ! cleanup_due_now_occurrence_fixture; then
     mark_flow_cleanup_required
-    fail "Reserved due-now occurrence fixture cleanup succeeded for photo flow"
+    fail "Reserved due-now occurrence fixture cleanup failed for photo flow"
     return 1
   fi
   mark_flow_cleanup_complete

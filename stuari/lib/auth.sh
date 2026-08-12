@@ -145,7 +145,7 @@ gate_stuari_auth_ax_readiness() {
     return 0
   fi
 
-  capture "auth_ax_not_ready_initial"
+  capture "auth_ax_not_ready_initial" diagnostic
   terminate_app
   fresh_launch
 
@@ -153,7 +153,7 @@ gate_stuari_auth_ax_readiness() {
     return 0
   fi
 
-  capture "auth_ax_not_ready_final"
+  capture "auth_ax_not_ready_final" diagnostic
   fail "Stuari auth setup could not reach an actionable AX state"
   return 1
 }
@@ -938,16 +938,69 @@ complete_onboarding() {
   capture "onboarding_done"
 }
 
+# Resolve the confirmation AXButton after opening the sign-out dialog.
+#
+# The dialog can expose its title and confirm action with the same label, and
+# some builds use "Confirm" instead. Only consider enabled, in-bounds AXButton
+# candidates and require dialog evidence before resolving the lower action.
+# A tie at the lower edge remains ambiguous and fails closed.
+first_coords_matching_sign_out_confirmation() {
+  local tree=""
+  tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
+  printf '%s\n' "$tree" | jq -er '
+    [(.data.elements // [])[]?] as $elements
+    | [ $elements[] | select(.role == "AXApplication") ] as $apps
+    | select(($apps | length) == 1)
+    | $apps[0].frame as $root
+    | [ $elements[]
+        | select(.role == "AXButton" and .enabled != false)
+        | select((.label // "") == "Sign Out"
+          or (.label // "") == "Sign out"
+          or (.label // "") == "Confirm"
+          or (.label // "") == "Confirm sign out")
+        | .frame as $frame
+        | select(($frame | type) == "object")
+        | select(($frame.x | type) == "number" and ($frame.y | type) == "number")
+        | select(($frame.width | type) == "number" and ($frame.height | type) == "number")
+        | select($frame.width > 0 and $frame.height > 0)
+        | select($frame.x >= $root.x and $frame.y >= $root.y)
+        | select(($frame.x + $frame.width) <= ($root.x + $root.width))
+        | select(($frame.y + $frame.height) <= ($root.y + $root.height))
+      ] as $candidates
+    | [ $elements[]
+        | select(
+            (.role == "AXButton" and .enabled != false
+              and ((.label // "") == "Cancel" or (.label // "") == "Cancel sign out"))
+            or (.role != "AXButton"
+              and ((.label // "") == "Sign Out" or (.label // "") == "Sign out"))
+          )
+      ] as $dialog_markers
+    | select(($candidates | length) > 0)
+    | select(($candidates | length) > 1 or ($dialog_markers | length) > 0)
+    | ($candidates | map(.frame.y) | max) as $lowest_y
+    | [ $candidates[] | select(.frame.y == $lowest_y) ] as $lowest
+    | select(($lowest | length) == 1)
+    | $lowest[0].frame
+    | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"
+  ' 2>/dev/null
+}
+
 # sign_out — navigate Settings → Sign out. Best-effort.
 #
 # Implementation notes:
 #  • The top nav "Settings tab" label is not exposed on the home tab (see
 #    navigation.sh). Use the `go_settings` helper, which has a coordinate
 #    fallback baked in.
-#  • The Sign-Out confirm dialog produces TWO "Sign Out" labels (the
-#    dialog title + the confirm button). We disambiguate by tapping the
-#    last one — the button is laid out lower on the screen.
+#  • An optional two-digit flow prefix scopes evidence state IDs for release
+#    runs whose current-run event ledger validates each capture namespace.
 sign_out() {
+  local capture_prefix="${1:-}"
+  if [ -n "$capture_prefix" ] && [[ ! "$capture_prefix" =~ ^[0-9][0-9]_$ ]]; then
+    fail "Invalid sign-out evidence prefix: $capture_prefix"
+    return 1
+  fi
+
   # Load navigation helper lazily (don't force at sourcing time).
   if ! declare -F go_settings >/dev/null 2>&1; then
     # shellcheck source=navigation.sh
@@ -959,7 +1012,7 @@ sign_out() {
     return 1
   }
   sleep 1.2
-  capture "settings_page"
+  capture "${capture_prefix}settings_page"
 
   # Scroll to find Sign Out (settings pages are long)
   local tries=0
@@ -984,11 +1037,16 @@ sign_out() {
   fi
   sleep 1.5
 
-  # Confirm dialog shows "Sign Out" twice: once as the title text, once as
-  # the red confirm button. Read the tree and pick the button (highest y).
-  if ! tap_first_matching_exact_labels "Sign Out" "Sign out" "Confirm sign out"; then
-    tap_element "Confirm" "label" "Confirm sign out" "AXButton" || return 1
+  # The dialog may expose duplicate Sign Out labels or a Confirm label. Resolve
+  # the actual lower AXButton from one validated tree, then revalidate the
+  # coordinate through the normal unique-actionable-target guard before tap.
+  local confirm_coords
+  confirm_coords="$(first_coords_matching_sign_out_confirmation 2>/dev/null || true)"
+  if [ -z "$confirm_coords" ] || [ "$confirm_coords" = "," ]; then
+    fail "Refusing ambiguous or unsafe tap target: Confirm sign out"
+    return 1
   fi
+  tap_element "$confirm_coords" "coords" "Confirm sign out" "AXButton" || return 1
 
   # Give auth state time to clear. The auth page re-renders the dev
   # magic login form + the privacy footer — on a signed-out simulator
@@ -997,12 +1055,12 @@ sign_out() {
   while [ $wait_i -lt 10 ]; do
     if on_auth_page; then
       pass "Signed out (auth page visible)"
-      capture "post_sign_out"
+      capture "${capture_prefix}post_sign_out"
       return 0
     fi
     sleep 1; wait_i=$((wait_i + 1))
   done
-  capture "post_sign_out"
+  capture "${capture_prefix}post_sign_out"
   fail "Sign-out did not return to auth page"
   return 1
 }

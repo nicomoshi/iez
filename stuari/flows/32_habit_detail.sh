@@ -34,6 +34,21 @@ fi
 go_home
 capture "32_home_before"
 
+# The centered card can be a transient fixture from an earlier flow while its
+# remote deletion is still settling. Select the durable seeded card by exact
+# id at this reconciliation boundary; a missing seeded card remains a real
+# app/harness failure and is not converted into a pass.
+if ! select_habit_card_by_id "$SEEDED_GROUP_CARD_ID"; then
+  fail "Durable seeded habit card is available for habit-detail flow"
+  print_summary; exit $FAIL
+fi
+if [ "$(current_visible_habit_card_id)" != "$SEEDED_GROUP_CARD_ID" ]; then
+  fail "Durable seeded habit card is centered before opening habit details"
+  capture "32_seeded_card_selection_failed"
+  print_summary; exit $FAIL
+fi
+pass "Selected durable seeded habit card at the local reconciliation boundary"
+
 # Open the three-dot menu on the currently-selected habit card. Prefer the
 # card-specific semantics id so duplicate off-screen menu labels cannot win.
 if tap_visible_habit_menu "Open habit card overflow menu"; then

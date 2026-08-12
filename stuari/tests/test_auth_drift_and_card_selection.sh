@@ -81,7 +81,7 @@ if (
   STUARI_AUTH_AX_READY_INTERVAL=0
   run_iez() { printf '%s\n' "$root_only_ax"; }
   sleep() { printf 'WAIT\n' >>"$READINESS_CALLS"; }
-  capture() { printf 'CAPTURE %s\n' "$1" >>"$READINESS_CALLS"; }
+  capture() { printf 'CAPTURE %s %s\n' "$1" "${2:-published}" >>"$READINESS_CALLS"; }
   terminate_app() { printf 'TERMINATE\n' >>"$READINESS_CALLS"; }
   fresh_launch() { printf 'FRESH_LAUNCH\n' >>"$READINESS_CALLS"; }
   fail() { :; }
@@ -97,6 +97,8 @@ assert_eq "2" "$(grep -c '^WAIT$' "$READINESS_CALLS")" \
   "Two bounded two-attempt waits sleep only between attempts"
 assert_eq "2" "$(grep -c '^CAPTURE ' "$READINESS_CALLS")" \
   "Failed readiness captures before and after its only recovery"
+assert_eq "2" "$(grep -c ' diagnostic$' "$READINESS_CALLS")" \
+  "Auth readiness captures are explicitly diagnostic rather than release evidence"
 pass_test "Given AX never becomes actionable When gating Then waits are bounded and recovery occurs once"
 
 _stuari_real_write_decl="$(declare -f stuari_auth_write_preferences_json_atomically)"

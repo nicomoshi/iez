@@ -133,6 +133,7 @@ run_flow_with_timeout() {
     IEZ_DEVICE_UDID="${IEZ_DEVICE_UDID:-}" \
     STUARI_BUNDLE_ID="${STUARI_BUNDLE_ID:-com.stuari.stuari.dev}" \
     STUARI_CLEANUP_STATUS_FILE="$cleanup_status" \
+    STUARI_DUE_NOW_CLEANUP_TIMEOUT_SECONDS="${STUARI_DUE_NOW_CLEANUP_TIMEOUT_SECONDS:-15}" \
     STUARI_RELEASE_LIFECYCLE_TOKEN="${STUARI_RELEASE_LIFECYCLE_TOKEN:-}" \
     STUARI_RELEASE_LIFECYCLE_LOCK_DIR="${STUARI_RELEASE_LIFECYCLE_LOCK_DIR:-}" \
     STUARI_FLOW35_FLUTTER_EVIDENCE_FILE="${STUARI_FLOW35_FLUTTER_EVIDENCE_FILE:-}" \
@@ -149,7 +150,14 @@ run_flow_with_timeout() {
     if kill -0 "$pid" 2>/dev/null; then
       printf '1\n' >"$timed_out_file"
       kill -TERM "$pid" 2>/dev/null || true
-      /usr/bin/pkill -TERM -P "$pid" 2>/dev/null || true
+      # Let the flow's signal trap publish CLEANUP_REQUIRED/CLEAN first. A
+      # plain shell waiting on a long-running child may need that child
+      # interrupted to dispatch its trap, but once cleanup has started its
+      # direct child is the bounded cleanup command and must be left alive.
+      sleep 0.2
+      if kill -0 "$pid" 2>/dev/null && [ ! -s "$cleanup_status" ]; then
+        /usr/bin/pkill -TERM -P "$pid" 2>/dev/null || true
+      fi
       sleep "$FLOW_TIMEOUT_GRACE"
       kill -KILL "$pid" 2>/dev/null || true
       /usr/bin/pkill -KILL -P "$pid" 2>/dev/null || true
@@ -159,8 +167,10 @@ run_flow_with_timeout() {
 
   wait "$pid"
   code=$?
-  kill "$watchdog" 2>/dev/null || true
-  /usr/bin/pkill -TERM -P "$watchdog" 2>/dev/null || true
+  # The watchdog may be blocked in its foreground sleep; stop our private
+  # child immediately so a fast flow does not wait for the timeout duration.
+  /usr/bin/pkill -KILL -P "$watchdog" 2>/dev/null || true
+  kill -KILL "$watchdog" 2>/dev/null || true
   wait "$watchdog" 2>/dev/null || true
 
   if [ -s "$timed_out_file" ]; then

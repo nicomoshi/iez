@@ -331,9 +331,9 @@ run_iez() {
         ;;
       delayed-video)
         if [ "$calls" -ge 3 ]; then
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Camera mode selector. Video mode selected","frame":{"x":220,"y":80,"width":150,"height":44}},{"role":"AXButton","id":"camera_capture_video_button","label":"Start video recording","frame":{"x":161,"y":728,"width":80,"height":80}}]}}'
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXGenericElement","label":"Camera mode selector. Video mode selected","frame":{"x":220,"y":80,"width":150,"height":44}},{"role":"AXButton","id":"camera_capture_video_button","label":"Start video recording","frame":{"x":161,"y":728,"width":80,"height":80}}]}}'
         else
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Camera mode selector. Photo mode selected","frame":{"x":30,"y":80,"width":150,"height":44}},{"role":"AXButton","id":"camera_capture_photo_button","label":"Take photo","frame":{"x":161,"y":728,"width":80,"height":80}}]}}'
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXGenericElement","label":"Camera mode selector. Photo mode selected","frame":{"x":30,"y":80,"width":150,"height":44}},{"role":"AXButton","id":"camera_capture_photo_button","label":"Take photo","frame":{"x":161,"y":728,"width":80,"height":80}}]}}'
         fi
         ;;
       never-compose)
@@ -353,16 +353,22 @@ run_iez() {
         ;;
       delayed-caption)
         if [ "$calls" -ge 3 ]; then
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":20,"y":617,"width":362,"height":115}},{"role":"AXStaticText","label":"271 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}}]}}'
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in","frame":{"x":80,"y":24,"width":120,"height":30}},{"role":"AXButton","label":"Go back","frame":{"x":12,"y":20,"width":44,"height":44}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":20,"y":617,"width":362,"height":115}},{"role":"AXStaticText","label":"271 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}},{"role":"AXButton","label":"Post","frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
         else
-          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":20,"y":617,"width":362,"height":115}},{"role":"AXStaticText","label":"272 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}}]}}'
+          printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in","frame":{"x":80,"y":24,"width":120,"height":30}},{"role":"AXButton","label":"Go back","frame":{"x":12,"y":20,"width":44,"height":44}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":20,"y":617,"width":362,"height":115}},{"role":"AXStaticText","label":"272 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}},{"role":"AXButton","label":"Post","frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
         fi
         ;;
       wrong-caption-count)
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":20,"y":617,"width":362,"height":115}},{"role":"AXStaticText","label":"270 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in","frame":{"x":80,"y":24,"width":120,"height":30}},{"role":"AXButton","label":"Go back","frame":{"x":12,"y":20,"width":44,"height":44}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":20,"y":617,"width":362,"height":115}},{"role":"AXStaticText","label":"270 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}},{"role":"AXButton","label":"Post","frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
         ;;
       equal-length-wrong-input)
-        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":20,"y":617,"width":362,"height":115}},{"role":"AXStaticText","label":"271 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}}]}}'
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in","frame":{"x":80,"y":24,"width":120,"height":30}},{"role":"AXButton","label":"Go back","frame":{"x":12,"y":20,"width":44,"height":44}},{"role":"AXTextField","label":"Share your progress...","value":"","frame":{"x":20,"y":617,"width":362,"height":115}},{"role":"AXStaticText","label":"271 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}},{"role":"AXButton","label":"Post","frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
+        ;;
+      compact-progress-without-textfield)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in","frame":{"x":80,"y":24,"width":120,"height":30}},{"role":"AXButton","label":"Go back","frame":{"x":12,"y":20,"width":44,"height":44}},{"role":"AXStaticText","label":"231 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}},{"role":"AXButton","label":"Post","frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
+        ;;
+      compact-progress-wrong-count)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXStaticText","label":"New Check-in","frame":{"x":80,"y":24,"width":120,"height":30}},{"role":"AXButton","label":"Go back","frame":{"x":12,"y":20,"width":44,"height":44}},{"role":"AXStaticText","label":"230 characters remaining","frame":{"x":20,"y":738,"width":180,"height":20}},{"role":"AXButton","label":"Post","frame":{"x":20,"y":764,"width":362,"height":52}}]}}'
         ;;
       exact-post-caption)
         printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"Confirmed\nday 42 ok","frame":{"x":20,"y":140,"width":362,"height":180}},{"role":"AXButton","label":"Open post by Alice","frame":{"x":20,"y":140,"width":362,"height":180}}]}}'
@@ -449,6 +455,17 @@ wait_for_camera_state "video" 5 0 || \
 [ "$(cat "$CAMERA_TREE_CALLS_FILE")" = "3" ] || \
   fail_test "video state wait must remain bounded until semantic propagation"
 
+# Given the exact selected-mode label is exposed as a button instead of the
+# observed AXGenericElement contract
+# When video-state evidence is evaluated
+# Then the wrong role is rejected rather than broadening the release contract.
+video_button_role_tree='{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Camera mode selector. Video mode selected","frame":{"x":220,"y":80,"width":150,"height":44}},{"role":"AXButton","id":"camera_capture_video_button","label":"Start video recording","frame":{"x":161,"y":728,"width":80,"height":80}}]}}'
+if camera_tree_matches_state video "$video_button_role_tree"; then
+  fail_test "video selector AXButton role must not satisfy the AXGenericElement contract"
+else
+  pass_test "video mode proof requires the observed selector role and unique capture id"
+fi
+
 CAMERA_TREE_MODE="never-compose"
 printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
 if wait_for_camera_state "compose" 2 0; then
@@ -488,6 +505,23 @@ wait_for_checkin_input_progress "day 42 ok" 5 0 || \
   fail_test "input-progress wait must accept exact value or matching character progress"
 [ "$(cat "$CAMERA_TREE_CALLS_FILE")" = "3" ] || \
   fail_test "input-progress wait must not accept a wrong remaining-character count"
+
+# Given a release compact AX tree with the exact 49-character caption already
+# typed but no AXTextField node
+# When the progress predicate runs
+# Then the exact 231-character remaining proof is accepted, while a wrong
+# progress label remains rejected.
+CAMERA_TREE_MODE="compact-progress-without-textfield"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+compact_caption="IEZ due-now post 0c0193be45524323bbd4e530c62badb0"
+wait_for_checkin_input_progress "$compact_caption" 2 0 || \
+  fail_test "compact AX without a text-field node must accept exact 231-character progress"
+CAMERA_TREE_MODE="compact-progress-wrong-count"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+if wait_for_checkin_input_progress "$compact_caption" 2 0; then
+  fail_test "compact AX with the wrong progress count must fail closed"
+fi
+pass_test "exact caption-length progress proof survives compact AX omission"
 
 CAMERA_TREE_MODE="wrong-caption-count"
 printf '0\n' > "$CAMERA_TREE_CALLS_FILE"

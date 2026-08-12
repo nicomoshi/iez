@@ -18,7 +18,7 @@ sleep 2
 # Reach auth page if we're signed in from a prior run
 if on_home_page; then
   info "Currently signed in — testing sign-out first"
-  sign_out
+  sign_out "03_"
   sleep 2
   fresh_launch
   sleep 2
@@ -57,7 +57,7 @@ section "Sign-Out"
 sleep 1
 go_home >/dev/null 2>&1 || true
 sleep 1
-sign_out
+sign_out "03_"
 
 print_summary
 exit $FAIL

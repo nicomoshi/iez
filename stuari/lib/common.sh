@@ -497,10 +497,19 @@ wait_for_ui_settle() {
 # screenshot and matching compact AX tree.
 # Args: $1=filename stem (no extension)
 capture() {
-  local stem="${1:-capture}"
+  local stem="${1:-capture}" mode="${2:-published}" diagnostic_mode=0
   local stamp screenshot_path ax_path diagnostic_screenshot
   local diagnostic_before diagnostic_after staging_ax screenshot_result
   local settled_signature before_tree before_signature after_tree after_signature
+
+  case "$mode" in
+    published) ;;
+    diagnostic) diagnostic_mode=1 ;;
+    *)
+      fail "Unknown capture mode for $stem: $mode"
+      return 1
+      ;;
+  esac
 
   if ! wait_for_ui_settle; then
     fail "UI settle timeout before capture: $stem"
@@ -514,11 +523,20 @@ capture() {
 
   CAPTURE_SEQUENCE=$((CAPTURE_SEQUENCE + 1))
   stamp="$(date +%Y%m%d_%H%M%S)_$$_$(printf '%03d' "$CAPTURE_SEQUENCE")"
-  screenshot_path="$SCREENSHOTS/${stem}_${stamp}.png"
-  ax_path="$AX_TREES/${stem}_${stamp}.json"
-  diagnostic_screenshot="$SCREENSHOTS/${stem}_${stamp}.invalid.png"
-  diagnostic_before="$AX_TREES/${stem}_${stamp}.invalid-before.json"
-  diagnostic_after="$AX_TREES/${stem}_${stamp}.invalid-after.json"
+  if [ "$diagnostic_mode" -eq 1 ]; then
+    # Readiness diagnostics are useful for recovery debugging but are not
+    # release-state evidence. The validator excludes the explicit .invalid
+    # suffix, and no event is appended below.
+    screenshot_path="$SCREENSHOTS/${stem}_${stamp}.invalid.png"
+    ax_path="$AX_TREES/${stem}_${stamp}.invalid.json"
+    diagnostic_screenshot="$SCREENSHOTS/${stem}_${stamp}.invalid.capture.png"
+  else
+    screenshot_path="$SCREENSHOTS/${stem}_${stamp}.png"
+    ax_path="$AX_TREES/${stem}_${stamp}.json"
+    diagnostic_screenshot="$SCREENSHOTS/${stem}_${stamp}.invalid.png"
+  fi
+  diagnostic_before="$AX_TREES/${stem}_${stamp}.invalid.before.json"
+  diagnostic_after="$AX_TREES/${stem}_${stamp}.invalid.after.json"
   staging_ax="$AX_TREES/${stem}_${stamp}.staging.json"
 
   before_tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
@@ -562,6 +580,12 @@ capture() {
     mv "$screenshot_path" "$diagnostic_screenshot" 2>/dev/null || true
     fail "Publish AX evidence: $stem"
     return 1
+  fi
+
+  if [ "$diagnostic_mode" -eq 1 ]; then
+    info "Diagnostic AX evidence: $ax_path"
+    info "Diagnostic screenshot: $screenshot_path"
+    return 0
   fi
 
   if [ -n "${STUARI_EVIDENCE_EVENT_FILE:-}" ] || [ -n "${STUARI_EVIDENCE_RUN_ID:-}" ]; then
@@ -1090,14 +1114,25 @@ wait_for_checkin_input_progress() {
 
   while [ "$attempts" -lt "$max_attempts" ]; do
     tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
-    if stuari_ax_tree_has_actionable_target "$tree" "" "Share your progress..." "AXTextField" \
-      && printf '%s\n' "$tree" | jq -e --arg caption "$caption" --arg remaining "$remaining_label" '
-      any(.data.elements[]?;
-        .role == "AXTextField"
-        and .label == "Share your progress..."
-        and (.value // "") == $caption)
-      or any(.data.elements[]?; .label == $remaining)
-    ' >/dev/null 2>&1; then
+    # Compact AX can omit Flutter's text-field node after typing. Keep the
+    # composer shell and exact progress label as the progress proof. Compact
+    # AX may omit the field/value, so content identity is proved by the
+    # caller's typed caption and wait_for_exact_post_caption after submit.
+    if camera_tree_matches_state compose-ready "$tree" \
+      && printf '%s\n' "$tree" | jq -e --arg remaining "$remaining_label" '
+        [(.data.elements // [])[]?] as $elements
+        | [ $elements[]
+            | select(.role == "AXStaticText" and .label == $remaining)
+            | .frame
+            | select(type == "object")
+            | select((.x | type) == "number" and (.y | type) == "number")
+            | select((.width | type) == "number" and .width > 0)
+            | select((.height | type) == "number" and .height > 0)
+          ] as $progress
+        | [ $elements[] | select(.role == "AXTextField" and .label == "Share your progress...") ] as $fields
+        | ($progress | length) == 1
+        and ($fields | length) <= 1
+      ' >/dev/null 2>&1; then
       return 0
     fi
     sleep "$interval"
@@ -1222,13 +1257,34 @@ stuari_ax_tree_has_actionable_target() {
   stuari_actionable_target_coords_from_tree "$@" >/dev/null
 }
 
+stuari_ax_tree_has_camera_video_mode_selector() {
+  local tree="$1"
+  stuari_ax_tree_has_expected_app_root "$tree" || return 1
+  printf '%s\n' "$tree" | jq -e '
+    [(.data.elements // [])[] | select(.role == "AXApplication")][0].frame as $root
+    | [(.data.elements // [])[]
+        | select(.role == "AXGenericElement"
+          and .label == "Camera mode selector. Video mode selected"
+          and .enabled != false)
+        | .frame
+        | select(type == "object")
+        | select((.x | type) == "number" and (.y | type) == "number")
+        | select((.width | type) == "number" and .width > 0)
+        | select((.height | type) == "number" and .height > 0)
+        | select(.x >= $root.x and .y >= $root.y)
+        | select((.x + .width) <= ($root.x + $root.width))
+        | select((.y + .height) <= ($root.y + $root.height))
+      ] | length == 1
+  ' >/dev/null 2>&1
+}
+
 camera_tree_matches_state() {
   local expected="$1" tree="$2"
   stuari_ax_tree_has_expected_app_root "$tree" || return 1
 
   case "$expected" in
     video)
-      stuari_ax_tree_has_actionable_target "$tree" "" "Camera mode selector. Video mode selected" "AXButton" \
+      stuari_ax_tree_has_camera_video_mode_selector "$tree" \
         && stuari_ax_tree_has_actionable_target "$tree" "camera_capture_video_button" "" "AXButton"
       ;;
     recording)

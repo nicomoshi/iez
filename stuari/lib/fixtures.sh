@@ -68,6 +68,53 @@ run_stuari_linked_sql_file() {
   return 0
 }
 
+# Run an exact remote fixture mutation with a bounded wall clock. A timeout
+# means ownership is unknown, so callers must leave cleanup required. The
+# watchdog waits for the command group to terminate before returning and then
+# force-kills any remaining descendants.
+run_stuari_linked_sql_file_bounded() {
+  local sql_file="$1" failure_message="$2"
+  local timeout_seconds="${3:-${STUARI_DUE_NOW_CLEANUP_TIMEOUT_SECONDS:-15}}"
+  local marker_dir marker pid watchdog rc
+
+  [[ "$timeout_seconds" =~ ^[1-9][0-9]*$ ]] || timeout_seconds=15
+  marker_dir="$(mktemp -d "${TMPDIR:-/tmp}/stuari_linked_sql_timeout.XXXXXX")" || return 1
+  marker="$marker_dir/timed-out"
+
+  (run_stuari_linked_sql_file "$sql_file" "$failure_message") &
+  pid=$!
+  (
+    trap 'exit 0' TERM INT
+    sleep "$timeout_seconds"
+    if kill -0 "$pid" 2>/dev/null; then
+      : >"$marker"
+      /usr/bin/pkill -TERM -P "$pid" 2>/dev/null || true
+      kill -TERM "$pid" 2>/dev/null || true
+      sleep 1
+      /usr/bin/pkill -KILL -P "$pid" 2>/dev/null || true
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
+  ) 2>/dev/null &
+  watchdog=$!
+
+  wait "$pid"
+  rc=$?
+  # The watchdog may be blocked in its foreground sleep; TERM traps are not
+  # guaranteed to run until that child returns. It is our private child, so
+  # terminate it immediately after the SQL command has been reaped.
+  /usr/bin/pkill -KILL -P "$watchdog" 2>/dev/null || true
+  kill -KILL "$watchdog" 2>/dev/null || true
+  wait "$watchdog" 2>/dev/null || true
+
+  if [ -e "$marker" ]; then
+    info "Timed out linked SQL fixture command after ${timeout_seconds}s"
+    rm -rf "$marker_dir"
+    return 124
+  fi
+  rm -rf "$marker_dir"
+  return "$rc"
+}
+
 run_stuari_linked_sql_file_json() {
   local sql_file="$1" failure_message="$2" output=""
   output="$(
@@ -685,7 +732,9 @@ end
 commit;
 SQL
 
-  run_stuari_linked_sql_file "$sql_file" "Due-now occurrence fixture cleanup failed"
+  run_stuari_linked_sql_file_bounded \
+    "$sql_file" "Due-now occurrence fixture cleanup failed" \
+    "${STUARI_DUE_NOW_CLEANUP_TIMEOUT_SECONDS:-15}"
   local rc=$?
   rm -f "$sql_file"
   if [ $rc -ne 0 ]; then
