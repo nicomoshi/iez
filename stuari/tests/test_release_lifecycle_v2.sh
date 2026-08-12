@@ -105,10 +105,10 @@ source "$RUNNER"
 # Runner partitions and explicit simulator contract.
 RELEASE_MODE=safe
 unset RELEASE_FLOWS
-assert_eq $'05\n06\n32\n33\n34\n35\n36' "$(release_flow_numbers)" \
+assert_eq $'01\n03\n05\n06\n32\n33\n35\n36' "$(release_flow_numbers)" \
   "Default release mode contains only the documented safe partition"
 RELEASE_MODE=protected
-assert_eq $'04\n15\n18\n20' "$(release_flow_numbers)" \
+assert_eq $'02\n04\n15\n18\n20\n34' "$(release_flow_numbers)" \
   "Protected mode contains every protected direct flow"
 RELEASE_MODE=full
 full_selection="$(release_flow_numbers)"
@@ -251,6 +251,7 @@ handoff="$TMP_DIR/handoff.json"
 : >"$handoff"
 chmod 600 "$handoff"
 STUARI_RELEASE_LIFECYCLE_TOKEN="$stale_token"
+export STUARI_RELEASE_LIFECYCLE_TOKEN
 fixture_token="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 fixture_name="IEZ Habit $fixture_token"
 assert_true "Disposable names bind to their full UUID token" \
@@ -265,6 +266,11 @@ STUARI_RELEASE_LIFECYCLE_TOKEN="different-lifecycle"
 assert_false "Parent rejects a handoff from another lifecycle" \
   disposable_habit_read_handoff "$handoff" "$fixture_token"
 
+# The local declaration manifest is also the allow-list for runtime evidence.
+manifest_output="$TMP_DIR/manifest.json"
+assert_true "Manifest generation succeeds from the local iEZ flow directory" \
+  bash "$MANIFEST" "$manifest_output"
+
 # Evidence validator adversarial matrix and per-flow completeness.
 if command -v magick >/dev/null 2>&1; then
   evidence="$TMP_DIR/evidence"
@@ -273,15 +279,28 @@ if command -v magick >/dev/null 2>&1; then
   LOG_DIR="$evidence/logs"
   EVIDENCE_ROOT="$evidence"
   RESULTS_FILE="$evidence/flow_results.tsv"
+  EVIDENCE_MANIFEST="$evidence/evidence-manifest.json"
+  STUARI_EVIDENCE_RUN_ID="$stale_token"
+  STUARI_EVIDENCE_EVENT_FILE="$evidence/evidence-events.jsonl"
+  export EVIDENCE_MANIFEST STUARI_EVIDENCE_RUN_ID STUARI_EVIDENCE_EVENT_FILE
   mkdir -p "$SCREENSHOTS" "$AX_TREES" "$LOG_DIR"
-  magick -size 120x120 gradient:red-blue "$SCREENSHOTS/04_state.png"
-  printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}}]}}' >"$AX_TREES/04_state.json"
+  evidence_stem=04_frequency_page_20260812_123456_123_001
+  magick -size 120x120 gradient:red-blue "$SCREENSHOTS/$evidence_stem.png"
+  printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}}]}}' >"$AX_TREES/$evidence_stem.json"
+  jq -cn --arg run_id "$STUARI_EVIDENCE_RUN_ID" --arg stem "$evidence_stem" \
+    --arg screenshot "$SCREENSHOTS/$evidence_stem.png" --arg ax "$AX_TREES/$evidence_stem.json" \
+    '{run_id:$run_id,state_id:"04_frequency_page",flow_number:"04",artifact_stem:$stem,
+      screenshot_path:$screenshot,ax_path:$ax,
+      screenshot_command:["iez","--udid","test-device","ui","screenshot","--out",$screenshot],
+      ax_command:["iez","--udid","test-device","ui","tree","--compact"],
+      device_udid:"test-device",captured_at:"20260812_123456_123_001",result:"published"}' \
+    >"$STUARI_EVIDENCE_EVENT_FILE"
   printf '%s\n' '04_habit_group' >"$evidence/selected.txt"
   printf 'flow\tresult\texit\tpass\tfail\tskip\tna\ttotal\tduration_seconds\tcleanup\n' >"$RESULTS_FILE"
   printf '04_habit_group\tPASS\t0\t1\t0\t0\t0\t1\t1\tCLEAN\n' >>"$RESULTS_FILE"
   printf 'Results: 1 passed / 0 failed / 0 skipped / 0 n/a / 1 total\n' >"$LOG_DIR/04_habit_group.log"
   assert_true "Complete decodable evidence produces a labeled contact sheet" \
-    validate_release_evidence stuari-dev "$evidence/selected.txt"
+    validate_release_evidence stuari-dev "$evidence/selected.txt" "$manifest_output"
   assert_true "Contact sheet is generated and decodable" \
     release_image_identify -quiet "$evidence/contact-sheet.png"
 
@@ -300,7 +319,7 @@ if command -v magick >/dev/null 2>&1; then
   printf '05_checkin_photo\tPASS\t0\t1\t0\t0\t0\t1\t1\tCLEAN\n' >>"$RESULTS_FILE"
   printf 'Results: 1 passed / 0 failed / 0 skipped / 0 n/a / 1 total\n' >"$LOG_DIR/05_checkin_photo.log"
   assert_false "A selected flow without evidence is rejected" \
-    validate_release_evidence stuari-dev "$evidence/selected.txt"
+    validate_release_evidence stuari-dev "$evidence/selected.txt" "$manifest_output"
   sed -i '' '$d' "$evidence/selected.txt"
   printf '99_extra\tPASS\t0\t1\t0\t0\t0\t1\t1\tN/A\n' >>"$RESULTS_FILE"
   printf 'extra\n' >"$LOG_DIR/99_extra.log"
@@ -311,9 +330,6 @@ else
 fi
 
 # The self-contained manifest enumerates every current script and visual state.
-manifest_output="$TMP_DIR/manifest.json"
-assert_true "Manifest generation succeeds from the local iEZ flow directory" \
-  bash "$MANIFEST" "$manifest_output"
 assert_eq "36" "$(jq -r '.flow_count' "$manifest_output")" \
   "Manifest reports all 36 scripts"
 assert_eq "36" "$(jq '[.flows[].number] | unique | length' "$manifest_output")" \

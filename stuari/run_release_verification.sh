@@ -10,6 +10,9 @@ SCREENSHOTS="$EVIDENCE_ROOT/screenshots"
 AX_TREES="$EVIDENCE_ROOT/ax"
 LOG_DIR="$EVIDENCE_ROOT/logs"
 RESULTS_FILE="$EVIDENCE_ROOT/flow_results.tsv"
+VISUAL_STATE_MANIFEST="$EVIDENCE_ROOT/visual-state-declarations.json"
+EVIDENCE_EVENT_FILE="$EVIDENCE_ROOT/evidence-events.jsonl"
+EVIDENCE_MANIFEST="$EVIDENCE_ROOT/evidence-manifest.json"
 FLOW_TIMEOUT="${FLOW_TIMEOUT:-300}"
 FLOW_TIMEOUT_GRACE="${FLOW_TIMEOUT_GRACE:-20}"
 RELEASE_LOCK_DIR="${RELEASE_LOCK_DIR:-$SCRIPT_DIR/artifacts/.release-verification.lock}"
@@ -20,11 +23,11 @@ source "$SCRIPT_DIR/lib/release_lifecycle.sh"
 # shellcheck source=lib/evidence_validator.sh
 source "$SCRIPT_DIR/lib/evidence_validator.sh"
 
-safe_flows=(05 06 32 33 34 35 36)
-protected_flows=(04 15 18 20)
+safe_flows=(01 03 05 06 32 33 35 36)
+protected_flows=(02 04 15 18 20 34)
 
 release_flow_is_protected() {
-  case "$1" in 04|15|18|20) return 0 ;; *) return 1 ;; esac
+  case "$1" in 02|04|15|18|20|34) return 0 ;; *) return 1 ;; esac
 }
 
 release_flow_numbers() {
@@ -133,6 +136,8 @@ run_flow_with_timeout() {
     STUARI_RELEASE_LIFECYCLE_TOKEN="${STUARI_RELEASE_LIFECYCLE_TOKEN:-}" \
     STUARI_RELEASE_LIFECYCLE_LOCK_DIR="${STUARI_RELEASE_LIFECYCLE_LOCK_DIR:-}" \
     STUARI_FLOW35_FLUTTER_EVIDENCE_FILE="${STUARI_FLOW35_FLUTTER_EVIDENCE_FILE:-}" \
+    STUARI_EVIDENCE_RUN_ID="${STUARI_EVIDENCE_RUN_ID:-}" \
+    STUARI_EVIDENCE_EVENT_FILE="${STUARI_EVIDENCE_EVENT_FILE:-}" \
     SCREENSHOTS="$SCREENSHOTS" \
     AX_TREES="$AX_TREES" \
     /bin/bash "$flow" >"$log" 2>&1 &
@@ -314,6 +319,15 @@ main() {
   trap 'exit 143' TERM
 
   mkdir -p "$SCREENSHOTS" "$AX_TREES" "$LOG_DIR"
+  STUARI_EVIDENCE_RUN_ID="$RELEASE_LOCK_TOKEN"
+  STUARI_EVIDENCE_EVENT_FILE="$EVIDENCE_EVENT_FILE"
+  export STUARI_EVIDENCE_RUN_ID STUARI_EVIDENCE_EVENT_FILE
+  : >"$EVIDENCE_EVENT_FILE"
+  if ! STUARI_VISUAL_MANIFEST_OUTPUT="$VISUAL_STATE_MANIFEST" \
+    bash "$SCRIPT_DIR/generate_visual_state_manifest.sh"; then
+    printf 'Visual-state declaration generation failed closed.\n' >&2
+    return 1
+  fi
   selected_numbers="$EVIDENCE_ROOT/selected_flows.txt"
   selected_names="$EVIDENCE_ROOT/selected_flow_names.txt"
   if ! release_flow_numbers >"$selected_numbers" || [ ! -s "$selected_numbers" ]; then
@@ -348,7 +362,8 @@ main() {
   [ "$not_green" -eq 0 ] || main_status=1
 
   expected_label="${STUARI_EXPECTED_AX_APPLICATION_LABEL:-${STUARI_AX_APPLICATION_LABEL:-stuari-dev}}"
-  if ! validate_release_evidence "$expected_label" "$selected_names"; then
+  if ! validate_release_evidence \
+    "$expected_label" "$selected_names" "$VISUAL_STATE_MANIFEST"; then
     printf 'Release evidence validation or contact-sheet generation failed.\n' >&2
     main_status=1
   fi

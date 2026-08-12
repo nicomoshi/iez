@@ -11,6 +11,7 @@ require_release_lifecycle || exit 1
 source "$SCRIPT_DIR/../lib/common.sh"
 source "$SCRIPT_DIR/../lib/auth.sh"
 source "$SCRIPT_DIR/../lib/navigation.sh"
+source "$SCRIPT_DIR/../lib/notification_fixture.sh"
 
 section "Flow 15: Notifications"
 STUARI_FLOW15_SAFE_CLASSIFICATION="local-only notification fixture with fail-closed restoration proof"
@@ -24,28 +25,23 @@ if on_onboarding_page; then complete_onboarding; fi
 
 APP_CONTAINER=$(xcrun simctl get_app_container "$DEVICE_ID" "$BUNDLE_ID" data 2>/dev/null)
 DB_PATH="$APP_CONTAINER/tmp/stuari_offline.sqlite"
-NOTIFICATION_FIXTURE_ID="iez-notification-navigation"
-NOTIFICATION_BACKUP_TABLE="notifications_iez_error_backup"
+NOTIFICATION_FIXTURE_TOKEN="${STUARI_RELEASE_LIFECYCLE_TOKEN:-}"
+notification_fixture_init_identity "$NOTIFICATION_FIXTURE_TOKEN" || {
+  fail "Notification fixture has an exact lifecycle-bound identity"
+  print_summary
+  exit $FAIL
+}
 
 restore_notification_table() {
   [ -f "$DB_PATH" ] || return 1
   xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
-  if [ "$(sqlite3 "$DB_PATH" "select count(*) from sqlite_master where type='table' and name='$NOTIFICATION_BACKUP_TABLE';")" = "1" ]; then
-    if [ "$(sqlite3 "$DB_PATH" "select count(*) from sqlite_master where type='table' and name='notifications';")" = "1" ]; then
-      sqlite3 "$DB_PATH" "insert or replace into notifications select * from $NOTIFICATION_BACKUP_TABLE; drop table $NOTIFICATION_BACKUP_TABLE;" || return 1
-    else
-      sqlite3 "$DB_PATH" "alter table $NOTIFICATION_BACKUP_TABLE rename to notifications;" || return 1
-    fi
-  fi
-  [ "$(sqlite3 "$DB_PATH" "select count(*) from sqlite_master where type='table' and name='notifications';" 2>/dev/null)" = "1" ] || return 1
-  [ "$(sqlite3 "$DB_PATH" "select count(*) from sqlite_master where type='table' and name='$NOTIFICATION_BACKUP_TABLE';" 2>/dev/null)" = "0" ] || return 1
+  notification_fixture_restore_backup "$DB_PATH" "$NOTIFICATION_FIXTURE_TOKEN" || return 1
   NOTIFICATION_RESTORATION_REQUIRED=0
 }
 
 cleanup_notification_fixture() {
   [ -f "$DB_PATH" ] || return 1
-  sqlite3 "$DB_PATH" "delete from notifications where id = '$NOTIFICATION_FIXTURE_ID';" >/dev/null 2>&1 || return 1
-  [ "$(sqlite3 "$DB_PATH" "select count(*) from notifications where id = '$NOTIFICATION_FIXTURE_ID';" 2>/dev/null)" = "0" ]
+  notification_fixture_cleanup_row "$DB_PATH" "$NOTIFICATION_FIXTURE_TOKEN"
 }
 
 cleanup_notifications_flow() {
@@ -109,21 +105,12 @@ pass "Notification fixture targets visible Home card $TARGET_CARD_ID"
 xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
 NOTIFICATION_MUTATION_STARTED=1
 mark_flow_cleanup_required
-sqlite3 "$DB_PATH" <<SQL
-insert or replace into notifications (
-  id, user_id, type, title, body, data, is_read, created_at, sync_version
-) values (
-  '$NOTIFICATION_FIXTURE_ID',
-  '$LOCAL_USER_ID',
-  'checkInReminder',
-  'IEZ check-in ready',
-  'Tap to open the matching habit',
-  '{"groupId":"$LOCAL_GROUP_ID"}',
-  0,
-  $(($(date -u +%s) * 1000)),
-  0
-);
-SQL
+if ! notification_fixture_insert_row \
+  "$DB_PATH" "$NOTIFICATION_FIXTURE_TOKEN" "$LOCAL_USER_ID" "$LOCAL_GROUP_ID"; then
+  fail "Notification fixture insertion preserves exact per-run ownership"
+  print_summary
+  exit $FAIL
+fi
 fresh_launch
 sleep 2
 
@@ -232,10 +219,19 @@ capture "15_notifications_scrolled"
 # Rename only the simulator's local cache table while the process is stopped.
 # Drift then emits its real stream error, exercising the production error page.
 xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
-cleanup_notification_fixture
+if ! cleanup_notification_fixture; then
+  fail "Notification fixture row cleanup is ownership-proven before cache error injection"
+  print_summary
+  exit $FAIL
+fi
+NOTIFICATION_MUTATION_STARTED=0
 NOTIFICATION_RESTORATION_REQUIRED=1
-sqlite3 "$DB_PATH" "pragma wal_checkpoint(full); alter table notifications rename to $NOTIFICATION_BACKUP_TABLE;" \
-  >/dev/null
+sqlite3 "$DB_PATH" "pragma wal_checkpoint(full);" >/dev/null || exit 1
+if ! notification_fixture_create_backup "$DB_PATH" "$NOTIFICATION_FIXTURE_TOKEN"; then
+  fail "Notification cache error backup preserves exact per-run ownership"
+  print_summary
+  exit $FAIL
+fi
 fresh_launch
 sleep 2
 go_notifications

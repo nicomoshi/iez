@@ -7,16 +7,10 @@
 set +e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/../lib/release_lifecycle.sh"
-require_release_lifecycle || exit 1
 source "$SCRIPT_DIR/../lib/common.sh"
 source "$SCRIPT_DIR/../lib/auth.sh"
 source "$SCRIPT_DIR/../lib/navigation.sh"
 source "$SCRIPT_DIR/../lib/fixtures.sh"
-
-section "Flow 18: Offline Degradation"
-
-FORCED_OFFLINE_ENABLED="false"
-FORCED_ONLINE_RESTORATION_PROVEN="false"
 
 prove_forced_online_restoration() {
   local tree=""
@@ -36,27 +30,30 @@ prove_forced_online_restoration() {
 }
 
 restore_forced_online() {
+  local tree="" toggle_state="" attempt=0
   [ "$FORCED_OFFLINE_ENABLED" = "true" ] || return 0
   fresh_launch || return 1
   sleep 1
-  go_home >/dev/null 2>&1 || true
-  sleep 1
-  if prove_forced_online_restoration; then
-    FORCED_OFFLINE_ENABLED="false"
-    FORCED_ONLINE_RESTORATION_PROVEN="true"
-    mark_flow_cleanup_complete
-    return 0
-  fi
   go_settings >/dev/null 2>&1 || return 1
   sleep 1
-  for _ in 1 2 3; do
-    if has_label "Force offline mode" || tree_contains "Force offline"; then break; fi
+  while [ "$attempt" -lt 4 ]; do
+    tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+    toggle_state="$(stuari_ax_forced_offline_toggle_state "$tree" 2>/dev/null || true)"
+    [ -n "$toggle_state" ] && break
     run_iez "$IEZ" ui swipe up >/dev/null 2>&1 || return 1
     sleep 0.5
+    attempt=$((attempt + 1))
   done
-  has_label "Force offline mode" || tree_contains "Force offline" || return 1
-  tap_element "Force offline mode" "label" "Restore forced online mode" || return 1
-  sleep 1.5
+  case "$toggle_state" in
+    on)
+      tap_element "Force offline mode" "label" "Restore forced online mode" || return 1
+      sleep 1.5
+      tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
+      stuari_ax_forced_offline_toggle_is_off "$tree" || return 1
+      ;;
+    off) ;;
+    *) return 1 ;;
+  esac
   go_home || return 1
   sleep 1
   prove_forced_online_restoration || return 1
@@ -64,6 +61,16 @@ restore_forced_online() {
   FORCED_ONLINE_RESTORATION_PROVEN="true"
   mark_flow_cleanup_complete
 }
+
+if [ "${STUARI_FLOW18_SOURCE_ONLY:-0}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
+
+require_release_lifecycle || exit 1
+section "Flow 18: Offline Degradation"
+
+FORCED_OFFLINE_ENABLED="false"
+FORCED_ONLINE_RESTORATION_PROVEN="false"
 
 offline_exit_cleanup() {
   local original_status=$?

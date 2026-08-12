@@ -105,15 +105,15 @@ release_results_are_complete() {
 }
 
 release_create_contact_sheet() {
-  local screenshots="$1" output="$2" file="" count=0
+  local screenshots="$1" stems="$2" output="$3" stem="" count=0
   local font="${STUARI_CONTACT_SHEET_FONT:-/System/Library/Fonts/SFNSMono.ttf}"
   local -a images=()
-  for file in "$screenshots"/*.png; do
-    [ -f "$file" ] || continue
-    case "$(basename "$file")" in *.invalid.*|*.staging.*|contact-sheet.png) continue ;; esac
-    images+=("$file")
+  while IFS= read -r stem; do
+    [ -n "$stem" ] || continue
+    [ -f "$screenshots/$stem.png" ] || return 1
+    images+=("$screenshots/$stem.png")
     count=$((count + 1))
-  done
+  done <"$stems"
   [ "$count" -gt 0 ] && [ -r "$font" ] || return 1
   release_image_montage "${images[@]}" \
     -thumbnail '240x520>' -background '#111111' -fill '#ffffff' \
@@ -123,14 +123,21 @@ release_create_contact_sheet() {
 }
 
 validate_release_evidence() {
-  local expected_label="${1:-stuari-dev}" selected_names="${2:-}"
-  local tmp="" png_stems="" ax_stems="" png="" ax="" flow_name="" flow_number=""
+  local expected_label="${1:-stuari-dev}" selected_names="${2:-}" declarations="${3:-}"
+  local tmp="" png_stems="" ax_stems="" admitted_stems="" events_array="" results_array=""
+  local event_file="${STUARI_EVIDENCE_EVENT_FILE:-$EVIDENCE_ROOT/evidence-events.jsonl}"
+  local run_id="${STUARI_EVIDENCE_RUN_ID:-}" evidence_manifest="${EVIDENCE_MANIFEST:-$EVIDENCE_ROOT/evidence-manifest.json}"
+  local png="" ax="" flow_name="" flow_number="" selected_json="" declarations_json=""
   local contact_sheet="${CONTACT_SHEET_FILE:-$EVIDENCE_ROOT/contact-sheet.png}"
   [ -d "$SCREENSHOTS" ] && [ -d "$AX_TREES" ] && [ -d "$LOG_DIR" ] || return 1
-  [ -s "$selected_names" ] || return 1
+  [ -s "$selected_names" ] && [ -s "$declarations" ] && [ -s "$event_file" ] || return 1
+  [[ "$run_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || return 1
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/stuari_evidence_validation.XXXXXX")" || return 1
   png_stems="$tmp/png-stems"
   ax_stems="$tmp/ax-stems"
+  admitted_stems="$tmp/admitted-stems"
+  events_array="$tmp/events.json"
+  results_array="$tmp/results.json"
 
   release_evidence_stems "$SCREENSHOTS" png "$png_stems" || { rm -rf "$tmp"; return 1; }
   release_evidence_stems "$AX_TREES" json "$ax_stems" || { rm -rf "$tmp"; return 1; }
@@ -139,21 +146,86 @@ validate_release_evidence() {
     return 1
   fi
 
+  selected_json="$(jq -Rsc 'split("\n") | map(select(length > 0))' "$selected_names")" \
+    || { rm -rf "$tmp"; return 1; }
+  declarations_json="$(cat "$declarations")"
+  printf '%s\n' "$declarations_json" | jq -e '
+    .schema_version == 1
+    and (.flows | type == "array" and length > 0)
+    and all(.flows[];
+      (.number | test("^[0-9][0-9]$"))
+      and (.name | test("^[0-9][0-9]_[a-z0-9_]+$"))
+      and (.states | type == "array" and length > 0)
+      and all(.states[]; test("^[0-9][0-9]_[A-Za-z0-9_]+$") and (contains("$") | not)))
+  ' >/dev/null 2>&1 || { rm -rf "$tmp"; return 1; }
+
+  jq -s '.' "$event_file" >"$events_array" 2>/dev/null \
+    || { rm -rf "$tmp"; return 1; }
+  jq -e --arg run_id "$run_id" --arg screenshots "$SCREENSHOTS" --arg ax "$AX_TREES" '
+      type == "array" and length > 0
+      and ([.[].artifact_stem] | length == (unique | length))
+      and ([.[].state_id] | length == (unique | length))
+      and all(.[]; . as $event |
+        $event.run_id == $run_id
+        and $event.result == "published"
+        and ($event.state_id | test("^[0-9][0-9]_[A-Za-z0-9_]+$"))
+        and ($event.artifact_stem | test("^[0-9][0-9]_[A-Za-z0-9_]+_[0-9]{8}_[0-9]{6}_[0-9]+_[0-9]{3}$"))
+        and $event.flow_number == ($event.state_id | split("_")[0])
+        and $event.screenshot_path == ($screenshots + "/" + $event.artifact_stem + ".png")
+        and $event.ax_path == ($ax + "/" + $event.artifact_stem + ".json")
+        and ($event.screenshot_command | type == "array" and length >= 4)
+        and ($event.ax_command | type == "array" and length >= 3)
+        and ([($event.screenshot_command + $event.ax_command)[]
+          | select((contains("$") or contains("{") or contains("}")))] | length == 0)
+      )
+    ' "$events_array" >/dev/null 2>&1 || { rm -rf "$tmp"; return 1; }
+
+  while IFS=$'\t' read -r flow_number flow_name; do
+    [ -n "$flow_number" ] && [ -n "$flow_name" ] || { rm -rf "$tmp"; return 1; }
+    grep -Fxq "$flow_name" "$selected_names" || { rm -rf "$tmp"; return 1; }
+  done < <(jq -r --argjson declarations "$declarations_json" '
+    .[] as $event
+    | [
+        $event.flow_number,
+        ([ $declarations.flows[]
+          | select(.number == $event.flow_number and (.states | index($event.state_id)) != null)
+          | .name ] | if length == 1 then .[0] else "" end)
+      ] | @tsv
+  ' "$events_array")
   while IFS= read -r flow_name; do
     [ -n "$flow_name" ] || continue
     flow_number="${flow_name%%_*}"
-    grep -Eq "^${flow_number}_" "$png_stems" || { rm -rf "$tmp"; return 1; }
+    [ "$(jq --arg flow "$flow_number" '[.[] | select(.flow_number == $flow)] | length' "$events_array")" -gt 0 ] \
+      || { rm -rf "$tmp"; return 1; }
   done <"$selected_names"
+
+  jq -r '.[].artifact_stem' "$events_array" | LC_ALL=C sort >"$admitted_stems"
+  cmp -s "$png_stems" "$admitted_stems" || { rm -rf "$tmp"; return 1; }
+  cmp -s "$ax_stems" "$admitted_stems" || { rm -rf "$tmp"; return 1; }
 
   while IFS= read -r png; do
     release_png_is_valid "$SCREENSHOTS/$png.png" || { rm -rf "$tmp"; return 1; }
     ax="$AX_TREES/$png.json"
     release_ax_json_is_valid "$ax" "$expected_label" || { rm -rf "$tmp"; return 1; }
-  done <"$png_stems"
+  done <"$admitted_stems"
 
   release_results_are_complete "$RESULTS_FILE" "$LOG_DIR" "$selected_names" \
     || { rm -rf "$tmp"; return 1; }
-  release_create_contact_sheet "$SCREENSHOTS" "$contact_sheet" \
+  release_create_contact_sheet "$SCREENSHOTS" "$admitted_stems" "$contact_sheet" \
     || { rm -rf "$tmp"; return 1; }
+  awk -F'\t' 'NR > 1 {
+    printf "{\"flow\":\"%s\",\"result\":\"%s\",\"exit\":%s,\"pass\":%s,\"fail\":%s,\"skip\":%s,\"na\":%s,\"total\":%s,\"duration_seconds\":%s,\"cleanup\":\"%s\"}\n",
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10
+  }' "$RESULTS_FILE" | jq -s '.' >"$results_array" \
+    || { rm -rf "$tmp"; return 1; }
+  jq -n --arg run_id "$run_id" --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg device_udid "${IEZ_DEVICE_UDID:-}" --arg application_label "$expected_label" \
+    --argjson selected "$selected_json" --slurpfile events "$events_array" \
+    --slurpfile results "$results_array" '
+      {schema_version:1,run_id:$run_id,generated_at:$generated_at,
+       device_udid:$device_udid,application_label:$application_label,
+       selected_flows:$selected,states:$events[0],flow_results:$results[0]}
+    ' >"$evidence_manifest.tmp.$$" && mv "$evidence_manifest.tmp.$$" "$evidence_manifest" \
+    || { rm -f "$evidence_manifest.tmp.$$"; rm -rf "$tmp"; return 1; }
   rm -rf "$tmp"
 }

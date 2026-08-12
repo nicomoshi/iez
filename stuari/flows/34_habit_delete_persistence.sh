@@ -11,6 +11,8 @@
 
 set +e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../lib/release_lifecycle.sh"
+require_release_lifecycle || exit 1
 source "$SCRIPT_DIR/../lib/common.sh"
 source "$SCRIPT_DIR/../lib/auth.sh"
 source "$SCRIPT_DIR/../lib/navigation.sh"

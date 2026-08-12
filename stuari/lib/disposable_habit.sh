@@ -98,8 +98,10 @@ disposable_habit_delete_and_prove_cleanup() {
 disposable_habit_handoff_file_is_safe() {
   local file="${1:-}" mode="" owner=""
   [ -n "$file" ] && [ -f "$file" ] && [ ! -L "$file" ] || return 1
-  mode="$(stat -f '%Lp' "$file" 2>/dev/null || true)"
-  owner="$(stat -f '%u' "$file" 2>/dev/null || true)"
+  mode="$(/usr/bin/stat -f '%Lp' "$file" 2>/dev/null \
+    || stat -c '%a' "$file" 2>/dev/null || true)"
+  owner="$(/usr/bin/stat -f '%u' "$file" 2>/dev/null \
+    || stat -c '%u' "$file" 2>/dev/null || true)"
   [ "$mode" = "600" ] && [ "$owner" = "$(id -u)" ]
 }
 

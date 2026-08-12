@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
-# ──────────────────────────────────────────────────────────────────────
-# Stuari — Smoke Test (≤ 3 minutes)
+# Stuari — compatibility smoke entry point.
 #
-# Runs the minimum-viable set: cold start + sign-in + one photo check-in.
-# Use this as the fast inner-loop while developing; use test_e2e.sh for
-# the full regression pass.
-# ──────────────────────────────────────────────────────────────────────
+# Smoke uses only non-mutating/direct-safe flows. Protected onboarding remains
+# available through the aggregate full runner with explicit fixture hooks.
+
 set +e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
-# Run three flows with a 60s budget each
+RUNNER="${STUARI_RELEASE_RUNNER:-$SCRIPT_DIR/run_release_verification.sh}"
+if [ "$#" -ne 0 ]; then
+  printf 'Usage: bash test_smoke.sh\n' >&2
+  exit 2
+fi
 export FLOW_TIMEOUT=60
-
-exec bash "$SCRIPT_DIR/test_e2e.sh" 01 02 05
+export RELEASE_MODE=safe
+export RELEASE_FLOWS='01 03 05'
+exec bash "$RUNNER"

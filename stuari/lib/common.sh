@@ -114,6 +114,29 @@ stuari_ax_tree_has_expected_app_root() {
   ' >/dev/null 2>&1
 }
 
+stuari_ax_forced_offline_toggle_state() {
+  local tree="${1:-}"
+  printf '%s\n' "$tree" | jq -er '
+    [(.data.elements // [])[]?
+      | select(.role == "AXSwitch" and .label == "Force offline mode")
+    ] as $switches
+    | select(($switches | length) == 1)
+    | ($switches[0].value) as $value
+    | if ($value == true or $value == 1 or $value == "1"
+        or (($value | type) == "string" and ($value | ascii_downcase) == "on"))
+      then "on"
+      elif ($value == false or $value == 0 or $value == "0"
+        or (($value | type) == "string" and ($value | ascii_downcase) == "off"))
+      then "off"
+      else empty
+      end
+  ' 2>/dev/null
+}
+
+stuari_ax_forced_offline_toggle_is_off() {
+  [ "$(stuari_ax_forced_offline_toggle_state "${1:-}" 2>/dev/null)" = "off" ]
+}
+
 fail_fast_stuari_foreground_app_identity() {
   local context="${1:-foreground app check}" tree=""
   tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
@@ -539,6 +562,45 @@ capture() {
     mv "$screenshot_path" "$diagnostic_screenshot" 2>/dev/null || true
     fail "Publish AX evidence: $stem"
     return 1
+  fi
+
+  if [ -n "${STUARI_EVIDENCE_EVENT_FILE:-}" ] || [ -n "${STUARI_EVIDENCE_RUN_ID:-}" ]; then
+    if [ -z "${STUARI_EVIDENCE_EVENT_FILE:-}" ] \
+      || [ -z "${STUARI_EVIDENCE_RUN_ID:-}" ] \
+      || ! [[ "$stem" =~ ^[0-9][0-9]_[A-Za-z0-9_]+$ ]] \
+      || ! jq -cn \
+        --arg run_id "$STUARI_EVIDENCE_RUN_ID" \
+        --arg state_id "$stem" \
+        --arg artifact_stem "$(basename "$screenshot_path" .png)" \
+        --arg screenshot_path "$screenshot_path" \
+        --arg ax_path "$ax_path" \
+        --arg screenshot_capture_path "$diagnostic_screenshot" \
+        --arg iez "$IEZ" \
+        --arg device_udid "${DEVICE_ID:-}" \
+        --arg captured_at "$stamp" '
+          {
+            run_id:$run_id,
+            state_id:$state_id,
+            flow_number:($state_id | split("_")[0]),
+            artifact_stem:$artifact_stem,
+            screenshot_path:$screenshot_path,
+            ax_path:$ax_path,
+            screenshot_command:([$iez]
+              + (if $device_udid == "" then [] else ["--udid",$device_udid] end)
+              + ["ui","screenshot","--out",$screenshot_capture_path]),
+            ax_command:([$iez]
+              + (if $device_udid == "" then [] else ["--udid",$device_udid] end)
+              + ["ui","tree","--compact"]),
+            device_udid:$device_udid,
+            captured_at:$captured_at,
+            result:"published"
+          }
+        ' >>"$STUARI_EVIDENCE_EVENT_FILE"; then
+      mv "$screenshot_path" "$diagnostic_screenshot" 2>/dev/null || true
+      mv "$ax_path" "$diagnostic_after" 2>/dev/null || true
+      fail "Record current-run evidence event: $stem"
+      return 1
+    fi
   fi
 
   info "Evidence: $screenshot_path"

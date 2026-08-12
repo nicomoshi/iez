@@ -51,11 +51,13 @@ export IEZ_DEVICE_UDID=A3745DB4-A886-488B-8ED7-A04DA19861B5
 bash ~/Developer/i_ez/stuari/run_release_verification.sh
 ```
 
-The default `RELEASE_MODE=safe` runs the non-protected release subset. Use
-`RELEASE_MODE=protected` for flows 04, 15, 18, and 20, or
+The default `RELEASE_MODE=safe` runs flows 01, 03, 05, 06, 32, 33, 35, and
+36. Use `RELEASE_MODE=protected` for flows 02, 04, 15, 18, 20, and 34, or
 `RELEASE_MODE=full` for the documented 36-flow partition. Protected and full
 runs also require explicit shared-fixture reseed/cleanup proof and personal
-fixture snapshot/restore proof commands:
+fixture snapshot/restore proof commands. Personal snapshot commands must be
+read-only and idempotent so an interrupted snapshot can be retried and proven
+before restoration:
 
 ```bash
 RELEASE_MODE=protected \
@@ -74,13 +76,20 @@ Flow 02 additionally requires an explicitly provisioned disposable onboarding
 principal and provision/freshness/completion/cleanup proof hooks. Seed Alice is
 never accepted as onboarding coverage.
 
+If cleanup cannot be proven, the lock remains in `recovery_required` state.
+Resume only with the exact token stored in its `recovery.json`, the same
+idempotent hook commands, and `release_lifecycle_recover_fixtures`; recovery
+also requires repeated proof that the recorded owner process is dead. Never
+delete or replace a recovery lock manually.
+
 ### Smoke test (≈ 3 minutes)
 
 ```bash
 bash ~/Developer/i_ez/stuari/test_smoke.sh
 ```
 
-Runs flows 01, 02, 05 (cold start, signup/onboarding, photo check-in).
+Runs the direct-safe flows 01, 03, and 05 (cold start, sign-in, photo
+check-in). Signup/onboarding remains protected Flow 02.
 
 ### Full E2E
 
@@ -88,14 +97,19 @@ Runs flows 01, 02, 05 (cold start, signup/onboarding, photo check-in).
 bash ~/Developer/i_ez/stuari/test_e2e.sh
 ```
 
-Runs every flow sequentially. Each flow has a 3-minute timeout; total
-budget ≈ 30 minutes.
+Runs the direct-safe release subset through the aggregate runner. Use
+`STUARI_DIRECT_RUN_MODE=full` with all fixture hooks configured to run every
+flow. Each flow has a bounded timeout.
 
 ### Specific flows
 
 ```bash
 bash ~/Developer/i_ez/stuari/test_e2e.sh 05 06 11   # photo, video, chat
 ```
+
+Specific safe selections run directly through `RELEASE_MODE=safe`. Selecting
+02, 04, 15, 18, 20, or 34 automatically uses the full aggregate lifecycle and
+fails closed unless all required hooks are configured.
 
 ### Verbose (print JSON on failure)
 
@@ -176,6 +190,9 @@ Current gaps are documented in `STUARI_AX_GAPS.md`.
 
 - **Pass/fail counters** print per flow and in aggregate at the end
 - **Screenshots** land in `screenshots/<step>_<HHMMSS>.png`
+- **Evidence manifest** records the exact current-run state IDs, expanded iEZ
+  command arrays, artifact paths, device UDID, and flow results. Contact sheets
+  admit only validated PNG/AX pairs named by this run ledger.
 - **Exit code** = number of failed flows (0 = all passed)
 
 ## Troubleshooting

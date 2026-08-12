@@ -5,7 +5,28 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FLOW_DIR="${STUARI_MANIFEST_FLOW_DIR:-$SCRIPT_DIR/flows}"
 OUTPUT="${1:-${STUARI_VISUAL_MANIFEST_OUTPUT:-$SCRIPT_DIR/visual-state-manifest.json}}"
-EXPECTED_FLOW_COUNT=36
+EXPECTED_FLOW_COUNT="${STUARI_MANIFEST_EXPECTED_FLOW_COUNT:-36}"
+
+manifest_states_for_flow() {
+  local file="$1" name="$2" literals="" dynamic=""
+  literals="$(sed -nE 's/.*capture[[:space:]]+"([a-z0-9_]+)".*/\1/p' "$file")" || return 1
+  dynamic="$(sed -nE 's/.*capture[[:space:]]+"([^"$]*\$[^"$]*)".*/\1/p' "$file")" || return 1
+
+  case "$name" in
+    04_habit_group)
+      [ "$dynamic" = '04_${step}_page' ] || return 1
+      printf '%s\n' "$literals" 04_frequency_page 04_checkins_page 04_milestone_page
+      ;;
+    17_settings)
+      [ "$dynamic" = '17_${tog// /_}' ] || return 1
+      printf '%s\n' "$literals" 17_Dark_mode 17_Theme 17_Appearance
+      ;;
+    *)
+      [ -z "$dynamic" ] || return 1
+      printf '%s\n' "$literals"
+      ;;
+  esac | awk 'NF' | LC_ALL=C sort -u
+}
 
 generate_visual_state_manifest() {
   local output="$1" tmp="" list="" jsonl="" number="" count="" file="" name="" states="" prefix=""
@@ -31,11 +52,13 @@ generate_visual_state_manifest() {
   while IFS= read -r file; do
     name="$(basename "$file" .sh)"
     number="${name%%_*}"
-    states="$(
-      sed -nE 's/.*capture[[:space:]]+"([^"]+)".*/\1/p' "$file" \
-        | LC_ALL=C sort -u \
-        | jq -Rsc 'split("\n") | map(select(length > 0))'
-    )" || { rm -rf "$tmp"; return 1; }
+    states="$(manifest_states_for_flow "$file" "$name" \
+      | jq -Rsc 'split("\n") | map(select(length > 0))')" \
+      || { rm -rf "$tmp"; return 1; }
+    printf '%s\n' "$states" | jq -e --arg prefix "${number}_" '
+      length > 0
+      and all(.[]; test("^[0-9][0-9]_[A-Za-z0-9_]+$") and startswith($prefix))
+    ' >/dev/null 2>&1 || { rm -rf "$tmp"; return 1; }
     jq -cn --arg number "$number" --arg name "$name" \
       --arg path "flows/$(basename "$file")" --argjson states "$states" \
       '{number:$number,name:$name,path:$path,states:$states}' >>"$jsonl" \

@@ -169,7 +169,7 @@ RELEASE_FLOWS=04
 assert_false "Safe mode rejects an explicitly requested protected mutation" release_flow_numbers
 RELEASE_MODE=protected
 unset RELEASE_FLOWS
-assert_eq $'04\n15\n18\n20' "$(release_flow_numbers)" \
+assert_eq $'02\n04\n15\n18\n20\n34' "$(release_flow_numbers)" \
   "Explicit protected mode selects the complete protected partition"
 RELEASE_MODE=safe
 
