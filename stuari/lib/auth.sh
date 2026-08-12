@@ -940,10 +940,11 @@ complete_onboarding() {
 
 # Resolve the confirmation AXButton after opening the sign-out dialog.
 #
-# The dialog can expose its title and confirm action with the same label, and
-# some builds use "Confirm" instead. Only consider enabled, in-bounds AXButton
-# candidates and require dialog evidence before resolving the lower action.
-# A tie at the lower edge remains ambiguous and fails closed.
+# iEZ compact AX normalizes AXUniqueId to the element's top-level `id` field.
+# New builds expose sign_out_confirm_action/sign_out_cancel_action IDs. A
+# present confirm ID is authoritative: malformed, duplicate, disabled, or
+# off-root ID elements fail closed and never reach the old label fallback.
+# Older builds without that ID retain the label-based resolver below.
 first_coords_matching_sign_out_confirmation() {
   local tree=""
   tree="$(run_iez "$IEZ" ui tree --compact 2>/dev/null || true)"
@@ -953,7 +954,25 @@ first_coords_matching_sign_out_confirmation() {
     | [ $elements[] | select(.role == "AXApplication") ] as $apps
     | select(($apps | length) == 1)
     | $apps[0].frame as $root
-    | [ $elements[]
+    | [ $elements[] | select(.id == "sign_out_confirm_action") ] as $stable_ids
+    | if ($stable_ids | length) > 0 then
+        [ $stable_ids[]
+          | select(.role == "AXButton" and .enabled != false)
+          | .frame as $frame
+          | select(($frame | type) == "object")
+          | select(($frame.x | type) == "number" and ($frame.y | type) == "number")
+          | select(($frame.width | type) == "number" and ($frame.height | type) == "number")
+          | select($frame.width > 0 and $frame.height > 0)
+          | select($frame.x >= $root.x and $frame.y >= $root.y)
+          | select(($frame.x + $frame.width) <= ($root.x + $root.width))
+          | select(($frame.y + $frame.height) <= ($root.y + $root.height))
+        ] as $stable_candidates
+        | select(($stable_ids | length) == 1)
+        | select(($stable_candidates | length) == 1)
+        | $stable_candidates[0].frame
+        | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"
+      else
+    [ $elements[]
         | select(.role == "AXButton" and .enabled != false)
         | select((.label // "") == "Sign Out"
           or (.label // "") == "Sign out"
@@ -983,6 +1002,7 @@ first_coords_matching_sign_out_confirmation() {
     | select(($lowest | length) == 1)
     | $lowest[0].frame
     | "\((.x + (.width / 2)) | floor),\((.y + (.height / 2)) | floor)"
+      end
   ' 2>/dev/null
 }
 

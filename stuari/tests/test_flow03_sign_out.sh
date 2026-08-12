@@ -87,6 +87,13 @@ valid_root='{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"w
 settings_tree="{\"ok\":true,\"data\":{\"elements\":[$valid_root,{\"role\":\"AXButton\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":16,\"y\":280,\"width\":370,\"height\":56}}]}}"
 dialog_tree="{\"ok\":true,\"data\":{\"elements\":[$valid_root,{\"role\":\"AXButton\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":16,\"y\":300,\"width\":370,\"height\":56}},{\"role\":\"AXButton\",\"label\":\"Cancel\",\"enabled\":true,\"frame\":{\"x\":120,\"y\":500,\"width\":90,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":240,\"y\":500,\"width\":78,\"height\":46}}]}}"
 ambiguous_dialog_tree="{\"ok\":true,\"data\":{\"elements\":[$valid_root,{\"role\":\"AXButton\",\"label\":\"Cancel\",\"enabled\":true,\"frame\":{\"x\":120,\"y\":500,\"width\":90,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":210,\"y\":500,\"width\":78,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":300,\"y\":500,\"width\":78,\"height\":46}}]}}"
+stable_confirm_tree="{\"ok\":true,\"data\":{\"elements\":[$valid_root,{\"role\":\"AXButton\",\"id\":\"sign_out_cancel_action\",\"label\":\"Cancel\",\"enabled\":true,\"frame\":{\"x\":120,\"y\":500,\"width\":90,\"height\":46}},{\"role\":\"AXButton\",\"id\":\"sign_out_confirm_action\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":240,\"y\":500,\"width\":78,\"height\":46}}]}}"
+stable_confirm_with_legacy_tree="{\"ok\":true,\"data\":{\"elements\":[$valid_root,{\"role\":\"AXButton\",\"id\":\"sign_out_confirm_action\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":20,\"y\":500,\"width\":78,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Cancel\",\"enabled\":true,\"frame\":{\"x\":120,\"y\":500,\"width\":90,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":240,\"y\":500,\"width\":78,\"height\":46}}]}}"
+stable_duplicate_tree="{\"ok\":true,\"data\":{\"elements\":[$valid_root,{\"role\":\"AXButton\",\"id\":\"sign_out_confirm_action\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":20,\"y\":500,\"width\":78,\"height\":46}},{\"role\":\"AXButton\",\"id\":\"sign_out_confirm_action\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":240,\"y\":500,\"width\":78,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Cancel\",\"enabled\":true,\"frame\":{\"x\":120,\"y\":500,\"width\":90,\"height\":46}}]}}"
+stable_disabled_tree="{\"ok\":true,\"data\":{\"elements\":[$valid_root,{\"role\":\"AXButton\",\"id\":\"sign_out_confirm_action\",\"label\":\"Sign Out\",\"enabled\":false,\"frame\":{\"x\":20,\"y\":500,\"width\":78,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Cancel\",\"enabled\":true,\"frame\":{\"x\":120,\"y\":500,\"width\":90,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":240,\"y\":500,\"width\":78,\"height\":46}}]}}"
+stable_off_root_tree="{\"ok\":true,\"data\":{\"elements\":[$valid_root,{\"role\":\"AXButton\",\"id\":\"sign_out_confirm_action\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":500,\"y\":500,\"width\":78,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Cancel\",\"enabled\":true,\"frame\":{\"x\":120,\"y\":500,\"width\":90,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":240,\"y\":500,\"width\":78,\"height\":46}}]}}"
+stable_zero_size_tree="{\"ok\":true,\"data\":{\"elements\":[$valid_root,{\"role\":\"AXButton\",\"id\":\"sign_out_confirm_action\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":20,\"y\":500,\"width\":0,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Cancel\",\"enabled\":true,\"frame\":{\"x\":120,\"y\":500,\"width\":90,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":240,\"y\":500,\"width\":78,\"height\":46}}]}}"
+stable_wrong_role_tree="{\"ok\":true,\"data\":{\"elements\":[$valid_root,{\"role\":\"AXStaticText\",\"id\":\"sign_out_confirm_action\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":20,\"y\":500,\"width\":78,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Cancel\",\"enabled\":true,\"frame\":{\"x\":120,\"y\":500,\"width\":90,\"height\":46}},{\"role\":\"AXButton\",\"label\":\"Sign Out\",\"enabled\":true,\"frame\":{\"x\":240,\"y\":500,\"width\":78,\"height\":46}}]}}"
 
 run_iez() {
   printf '%s\n' "$SIGN_OUT_TREE"
@@ -106,6 +113,22 @@ SIGN_OUT_TREE="$ambiguous_dialog_tree"
 assert_false \
   "Given two confirmation AXButtons tie When resolving confirmation Then the helper fails closed" \
   first_coords_matching_sign_out_confirmation
+
+SIGN_OUT_TREE="$stable_confirm_tree"
+assert_eq "279,523" "$(first_coords_matching_sign_out_confirmation 2>/dev/null || true)" \
+  "Given the stable confirm id is valid When resolving confirmation Then it selects that id"
+
+SIGN_OUT_TREE="$stable_confirm_with_legacy_tree"
+assert_eq "59,523" "$(first_coords_matching_sign_out_confirmation 2>/dev/null || true)" \
+  "Given a stable confirm id and legacy labels coexist When resolving confirmation Then the id wins"
+
+for malformed_tree in "$stable_duplicate_tree" "$stable_disabled_tree" \
+  "$stable_off_root_tree" "$stable_zero_size_tree" "$stable_wrong_role_tree"; do
+  SIGN_OUT_TREE="$malformed_tree"
+  assert_false \
+    "Given a malformed stable confirm id When resolving confirmation Then legacy fallback is forbidden" \
+    first_coords_matching_sign_out_confirmation
+done
 
 printf 'Flow 03 sign-out checks: %d passed, %d failed.\n' "$passes" "$failures"
 [ "$failures" -eq 0 ]

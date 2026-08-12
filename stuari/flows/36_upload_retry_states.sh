@@ -141,7 +141,8 @@ assert_canonical_payload() {
     where id = '$id'
       and json_type(payload_json, '$.occurrenceId') = 'text'
       and json_type(payload_json, '$.capturedAt') = 'text'
-      and json_extract(payload_json, '$.userId') = '$LOCAL_USER_ID'
+      and json_extract(payload_json, '$.userId') = '$STUARI_AUTH_ALICE_USER_ID'
+      and json_extract(payload_json, '$.occurrenceId') = '$LOCAL_OCCURRENCE_ID'
       and json_extract(payload_json, '$.groupId') = '$LOCAL_GROUP_ID'
       and (
         '$expected_checkpoint' = 'false'
@@ -165,6 +166,28 @@ assert_canonical_payload() {
   return 1
 }
 
+resolve_flow36_upload_authority() {
+  local db="$1" occurrence_row="" occurrence_user_id=""
+
+  [[ "$LOCAL_USER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
+    || return 1
+  [ "$LOCAL_USER_ID" = "$STUARI_AUTH_ALICE_USER_ID" ] || return 1
+
+  occurrence_row="$(sqlite3 -separator '|' "$db" "
+    select user_id, occurrence_id, group_id
+    from occurrence_snapshots
+    where user_id = '$STUARI_AUTH_ALICE_USER_ID'
+      and occurrence_id is not null
+      and group_id is not null
+    order by fetched_at desc
+    limit 1;")" || return 1
+  IFS='|' read -r occurrence_user_id LOCAL_OCCURRENCE_ID LOCAL_GROUP_ID <<< "$occurrence_row"
+
+  [ "$occurrence_user_id" = "$STUARI_AUTH_ALICE_USER_ID" ] || return 1
+  [[ "$LOCAL_GROUP_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || return 1
+  [[ "$LOCAL_OCCURRENCE_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]
+}
+
 if ! ensure_verified_alice_session; then
   fail "Verified Alice principal required before upload-state fixture mutation"
   print_summary
@@ -178,6 +201,9 @@ if ! persisted_session_is_verified_alice; then
   print_summary
   exit $FAIL
 fi
+# This authority is derived only after both the active-session and persisted
+# principal checks succeed. The local users row is not an authority source.
+LOCAL_USER_ID="$STUARI_AUTH_ALICE_USER_ID"
 go_home
 sleep 1.5
 capture "36_home_baseline"
@@ -197,29 +223,7 @@ if ! sqlite3 "$DB_PATH" "select count(*) from pending_mutations;" >/dev/null 2>&
   exit $FAIL
 fi
 
-LOCAL_USER_ID=$(sqlite3 "$DB_PATH" "
-  select id from users
-  where id = '$STUARI_AUTH_ALICE_USER_ID' and email = '$STUARI_AUTH_ALICE_EMAIL'
-  limit 1;")
-occurrence_row=$(sqlite3 -separator '|' "$DB_PATH" "
-  select occurrence_id, group_id
-  from occurrence_snapshots
-  where user_id = '$STUARI_AUTH_ALICE_USER_ID'
-    and occurrence_id is not null
-    and group_id is not null
-  order by fetched_at desc
-  limit 1;")
-if [ -n "$occurrence_row" ]; then
-  LOCAL_OCCURRENCE_ID=${occurrence_row%%|*}
-  LOCAL_GROUP_ID=${occurrence_row#*|}
-else
-  LOCAL_OCCURRENCE_ID=""
-  LOCAL_GROUP_ID=""
-fi
-
-if [ "$LOCAL_USER_ID" != "$STUARI_AUTH_ALICE_USER_ID" ] \
-  || ! [[ "$LOCAL_GROUP_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
-  || ! [[ "$LOCAL_OCCURRENCE_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+if ! resolve_flow36_upload_authority "$DB_PATH"; then
   fail "Canonical upload fixture has local user and group authority"
   print_summary
   exit $FAIL

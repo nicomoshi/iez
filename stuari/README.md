@@ -209,8 +209,11 @@ Current gaps are documented in `STUARI_AX_GAPS.md`.
 
 Stuari is Flutter — widgets auto-expose AX labels derived from their
 `Text` children, `hintText`, `labelText`, or explicit `Semantics`
-wrappers. There are **no** `accessibilityIdentifier`-style string IDs
-like in Swift apps; all matches are by label.
+wrappers. Most controls are matched by label because Flutter does not expose
+Swift-style identifier coverage consistently. The sign-out dialog exposes
+stable IDs for its destructive actions: `sign_out_confirm_action` and
+`sign_out_cancel_action`. The harness prefers the confirm ID and keeps the
+label resolver only for older builds that do not expose it.
 
 High-quality label coverage (works today):
 
