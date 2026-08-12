@@ -106,13 +106,13 @@ stuari_fixture_sqlite_query() {
     | sed -n "s/.*occurrence_id = '\([^']*\)'.*/\1/p" \
     | head -1)"
   if [ "$expected_id" != "$DRIFT_STORED_OCCURRENCE_ID" ]; then
-    printf '1|0\n'
+    printf '1|1|0\n'
     return 0
   fi
   if [ "$calls" -ge "$DRIFT_FRESH_AVAILABLE_AFTER" ]; then
-    printf '1|1\n'
+    printf '1|1|1\n'
   else
-    printf '1|0\n'
+    printf '1|1|0\n'
   fi
 }
 
@@ -373,11 +373,32 @@ run_iez() {
       exact-post-caption)
         printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"Confirmed\nday 42 ok","frame":{"x":20,"y":140,"width":362,"height":180}},{"role":"AXButton","label":"Open post by Alice","frame":{"x":20,"y":140,"width":362,"height":180}}]}}'
         ;;
+      exact-post-caption-lowercase)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"Confirmed\nday 42 ok","frame":{"x":20,"y":140,"width":362,"height":180}}]}}'
+        ;;
+      exact-post-caption-spacing)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"Confirmed\n day   42   ok ","frame":{"x":20,"y":140,"width":362,"height":180}}]}}'
+        ;;
       exact-optimistic-post-caption)
         printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"A\nAlice\nJust now\nRetrying...\nday 42 ok","frame":{"x":20,"y":140,"width":362,"height":180}},{"role":"AXStaticText","label":"1 check-in retrying...","frame":{"x":20,"y":330,"width":200,"height":24}}]}}'
         ;;
       unrelated-caption-static-text)
         printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"day 42 ok","frame":{"x":20,"y":100,"width":180,"height":24}},{"role":"AXStaticText","label":"Alice\nJust now\nRetrying...","frame":{"x":20,"y":140,"width":362,"height":180}},{"role":"AXButton","label":"Open post by Alice","frame":{"x":20,"y":140,"width":362,"height":180}}]}}'
+        ;;
+      partial-post-caption)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"Confirmed\nday 42","frame":{"x":20,"y":140,"width":362,"height":180}}]}}'
+        ;;
+      different-uuid-post-caption)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"Confirmed\nIEZ due-now post 11111111111111111111111111111111","frame":{"x":20,"y":140,"width":362,"height":180}}]}}'
+        ;;
+      prefix-only-post-caption)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"Confirmed\nday 42 ok trailing","frame":{"x":20,"y":140,"width":362,"height":180}}]}}'
+        ;;
+      cross-element-caption)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"Confirmed\nday 42","frame":{"x":20,"y":140,"width":362,"height":80}},{"role":"AXStaticText","label":"ok","frame":{"x":20,"y":220,"width":362,"height":40}}]}}'
+        ;;
+      duplicate-post-caption)
+        printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"Confirmed\nday 42 ok","frame":{"x":20,"y":140,"width":362,"height":180}},{"role":"AXStaticText","label":"Confirmed\nday 42 ok","frame":{"x":20,"y":340,"width":362,"height":180}}]}}'
         ;;
       equal-length-wrong-post-caption)
         printf '%s\n' '{"ok":true,"data":{"elements":[{"role":"AXApplication","label":"stuari-dev","frame":{"x":0,"y":0,"width":402,"height":874}},{"role":"AXButton","label":"Home tab, selected","frame":{"x":20,"y":810,"width":80,"height":44}},{"role":"AXStaticText","label":"Feed\nTab 1 of 3","frame":{"x":20,"y":80,"width":180,"height":44}},{"role":"AXStaticText","label":"Confirmed\nday 24 ko","frame":{"x":20,"y":140,"width":362,"height":180}},{"role":"AXButton","label":"Open post by Alice","frame":{"x":20,"y":140,"width":362,"height":180}}]}}'
@@ -554,6 +575,16 @@ printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
 wait_for_exact_post_caption "day 42 ok" 2 0 || \
   fail_test "exact unique caption inside merged post semantics must satisfy terminal proof"
 
+CAMERA_TREE_MODE="exact-post-caption-lowercase"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+wait_for_exact_post_caption "DAY 42 OK" 2 0 || \
+  fail_test "lowercase rendered caption must match an uppercase expected caption"
+
+CAMERA_TREE_MODE="exact-post-caption-spacing"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+wait_for_exact_post_caption " day   42   ok " 2 0 || \
+  fail_test "whitespace-normalized caption must satisfy exact line matching"
+
 CAMERA_TREE_MODE="exact-optimistic-post-caption"
 printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
 wait_for_exact_post_caption "day 42 ok" 2 0 || \
@@ -563,6 +594,40 @@ CAMERA_TREE_MODE="unrelated-caption-static-text"
 printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
 if wait_for_exact_post_caption "day 42 ok" 2 0; then
   fail_test "exact caption in an unrelated static text must not borrow post evidence from sibling elements"
+fi
+
+CAMERA_TREE_MODE="partial-post-caption"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+if wait_for_exact_post_caption "day 42 ok" 2 0; then
+  fail_test "partial caption lines must not satisfy exact line matching"
+fi
+
+CAMERA_TREE_MODE="different-uuid-post-caption"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+if wait_for_exact_post_caption "iez due-now post 0c0193be45524323bbd4e530c62badb0" 2 0; then
+  fail_test "different UUID captions must fail exact line matching"
+fi
+
+CAMERA_TREE_MODE="prefix-only-post-caption"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+if wait_for_exact_post_caption "day 42 ok" 2 0; then
+  fail_test "prefix-only caption lines must fail exact line matching"
+fi
+
+CAMERA_TREE_MODE="cross-element-caption"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+if wait_for_exact_post_caption "day 42 ok" 2 0; then
+  fail_test "cross-element caption assembly must fail closed"
+fi
+
+CAMERA_TREE_MODE="duplicate-post-caption"
+printf '0\n' > "$CAMERA_TREE_CALLS_FILE"
+if wait_for_exact_post_caption "day 42 ok" 2 0; then
+  fail_test "duplicate exact caption matches must fail closed"
+fi
+
+if wait_for_exact_post_caption "" 1 0; then
+  fail_test "empty expected captions must fail closed"
 fi
 
 CAMERA_TREE_MODE="compose-ready"

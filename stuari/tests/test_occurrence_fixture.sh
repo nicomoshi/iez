@@ -218,7 +218,7 @@ assert_file_contains "group_members" "$MALFORMED_CLEANUP_SQL" "malformed cleanup
 assert_file_not_contains "occurrence_mismatch" "$MALFORMED_CLEANUP_SQL" "malformed cleanup skips unknown occurrence verification"
 pass_test "malformed reseed output still invokes safe exact dynamic cleanup"
 
-# Drift authority remains an exact group + occurrence probe.
+# Drift authority remains an exact group + snapshot + authority probe.
 new_due_now_occurrence_fixture_identity
 record_due_now_fixture_occurrence_ownership "$FIXTURE_OCCURRENCE_ID" ||   fail_test "drift test occurrence ownership should validate"
 DRIFT_DB_PATH="$TMP_DIR/stuari_offline.sqlite"
@@ -247,13 +247,13 @@ stuari_fixture_sqlite_query() {
   probe_calls=$((probe_calls + 1))
   printf '%s\n' "$probe_calls" >"$DRIFT_PROBE_CALLS_FILE"
   if [ "$DRIFT_PROBE_MODE" = "timeout" ]; then
-    printf '1|0\n'
+    printf '1|1|0\n'
   elif [ "$probe_calls" -eq 1 ]; then
     return 1
   elif [ "$probe_calls" -eq 2 ]; then
     printf '\n'
   else
-    printf '1|1\n'
+    printf '1|1|1\n'
   fi
 }
 
@@ -284,7 +284,14 @@ assert_file_contains "and created_by = '$STUARI_AUTH_ALICE_USER_ID'" "$DRIFT_QUE
 assert_file_contains "where group_id = '$DUE_NOW_HABIT_GROUP_ID'" "$DRIFT_QUERY_CAPTURE" "Drift occurrence authority uses exact group"
 assert_file_contains "and user_id = '$STUARI_AUTH_ALICE_USER_ID'" "$DRIFT_QUERY_CAPTURE" "Drift occurrence authority uses Alice"
 assert_file_contains "and occurrence_id = '$FIXTURE_OCCURRENCE_ID'" "$DRIFT_QUERY_CAPTURE" "Drift occurrence authority uses exact occurrence"
-pass_test "eventual Drift authority requires exact dynamic group and occurrence"
+assert_file_contains "from habit_occurrence_authorities hoa" "$DRIFT_QUERY_CAPTURE" "Drift authority reads habit_occurrence_authorities"
+assert_file_contains "on os.user_id = hoa.user_id" "$DRIFT_QUERY_CAPTURE" "Drift authority correlates snapshot by user"
+assert_file_contains "and os.habit_id = hoa.habit_id" "$DRIFT_QUERY_CAPTURE" "Drift authority correlates snapshot by habit"
+assert_file_contains "and hoa.authority_state = 'fresh'" "$DRIFT_QUERY_CAPTURE" "Drift authority requires fresh authority state"
+assert_file_contains "and cast(hoa.should_retry as integer) = 0" "$DRIFT_QUERY_CAPTURE" "Drift authority rejects retryable authority"
+assert_file_contains "and coalesce(hoa.diagnostic_text, '') = ''" "$DRIFT_QUERY_CAPTURE" "Drift authority requires empty diagnostics"
+assert_file_contains "and cast(hoa.fetched_at as integer) >= cast(os.fetched_at as integer)" "$DRIFT_QUERY_CAPTURE" "Drift authority requires authority freshness ordering"
+pass_test "eventual Drift authority requires exact dynamic group, snapshot, and correlated authority"
 
 DRIFT_PROBE_MODE="timeout"
 printf '0\n' >"$DRIFT_PROBE_CALLS_FILE"

@@ -864,8 +864,17 @@ create table occurrence_snapshots (
   user_id text,
   status text,
   post_id text,
+  fetched_at integer,
   opens_at integer,
   submission_closes_at integer
+);
+create table habit_occurrence_authorities (
+  user_id text,
+  habit_id text,
+  authority_state text,
+  fetched_at integer,
+  should_retry integer,
+  diagnostic_text text
 );
 SQL
 
@@ -875,30 +884,149 @@ close_ms="$((now_ms + 60000))"
 STUARI_DUE_NOW_OCCURRENCE_ID="11111111-2222-4333-8444-555555555555"
 export STUARI_DUE_NOW_OCCURRENCE_ID
 
+seed_exact_drift_authority_rows() {
+  local snapshot_user_id="${1:-$STUARI_AUTH_ALICE_USER_ID}"
+  local snapshot_habit_id="${2:-$DUE_NOW_HABIT_GROUP_ID}"
+  local authority_user_id="${3:-$STUARI_AUTH_ALICE_USER_ID}"
+  local authority_habit_id="${4:-$DUE_NOW_HABIT_GROUP_ID}"
+  local authority_state="${5:-fresh}"
+  local snapshot_fetched_at="${6:-$((now_ms - 1000))}"
+  local authority_fetched_at="${7:-$now_ms}"
+  local should_retry="${8:-0}"
+  local diagnostic_text="${9:-}"
+
+  sqlite3 "$FAKE_DB_PATH" <<SQL
+delete from occurrence_snapshots;
+delete from habit_occurrence_authorities;
+insert into occurrence_snapshots (
+  occurrence_id, habit_id, group_id, user_id, status, post_id, fetched_at, opens_at, submission_closes_at
+) values (
+  '$STUARI_DUE_NOW_OCCURRENCE_ID', '$snapshot_habit_id', '$DUE_NOW_HABIT_GROUP_ID', '$snapshot_user_id', 'open', null, $snapshot_fetched_at, $open_ms, $close_ms
+);
+insert into habit_occurrence_authorities (
+  user_id, habit_id, authority_state, fetched_at, should_retry, diagnostic_text
+) values (
+  '$authority_user_id', '$authority_habit_id', '$authority_state', $authority_fetched_at, $should_retry, '$diagnostic_text'
+);
+SQL
+}
+
 sqlite3 "$FAKE_DB_PATH" <<SQL
 insert into groups (id, created_by, name, deleted_at)
 values ('$DUE_NOW_HABIT_GROUP_ID', '$STUARI_AUTH_ALICE_USER_ID', '$DUE_NOW_HABIT_NAME', null);
-insert into occurrence_snapshots (
-  occurrence_id, habit_id, group_id, user_id, status, post_id, opens_at, submission_closes_at
-) values (
-  '$STUARI_DUE_NOW_OCCURRENCE_ID', '$DUE_NOW_HABIT_GROUP_ID', '$DUE_NOW_HABIT_GROUP_ID', '$STUARI_AUTH_ALICE_USER_ID', 'open', null, $open_ms, $close_ms
-);
 SQL
+
+seed_exact_drift_authority_rows
 
 wait_for_due_now_occurrence_drift_authority 1 0 || \
   fail_test "Given exact Alice Drift authority When waiting for due-now occurrence Then it succeeds"
 pass_test "Given exact Alice Drift authority When waiting for due-now occurrence Then it succeeds"
 
 sqlite3 "$FAKE_DB_PATH" <<SQL
-update occurrence_snapshots
-   set habit_id = 'bbbb0000-0000-0000-0000-000000000099'
- where group_id = '$DUE_NOW_HABIT_GROUP_ID';
+delete from habit_occurrence_authorities;
 SQL
+if wait_for_due_now_occurrence_drift_authority 2 0; then
+  fail_test "Given a matching snapshot without authority When waiting for due-now occurrence Then it fails closed"
+fi
+pass_test "Given a matching snapshot without authority When waiting for due-now occurrence Then it fails closed"
 
+seed_exact_drift_authority_rows \
+  "$STUARI_AUTH_BOB_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID" \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID"
+if wait_for_due_now_occurrence_drift_authority 2 0; then
+  fail_test "Given a wrong snapshot user When waiting for due-now occurrence Then it fails closed"
+fi
+pass_test "Given a wrong snapshot user When waiting for due-now occurrence Then it fails closed"
+
+seed_exact_drift_authority_rows \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "bbbb0000-0000-0000-0000-000000000099" \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID"
 if wait_for_due_now_occurrence_drift_authority 2 0; then
   fail_test "Given mismatched Drift habit_id When waiting for due-now occurrence Then it times out and rejects"
 fi
 pass_test "Given mismatched Drift habit_id When waiting for due-now occurrence Then it times out and rejects"
+
+seed_exact_drift_authority_rows \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID" \
+  "$STUARI_AUTH_BOB_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID"
+if wait_for_due_now_occurrence_drift_authority 2 0; then
+  fail_test "Given a wrong authority user When waiting for due-now occurrence Then it fails closed"
+fi
+pass_test "Given a wrong authority user When waiting for due-now occurrence Then it fails closed"
+
+seed_exact_drift_authority_rows \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID" \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "bbbb0000-0000-0000-0000-000000000099"
+if wait_for_due_now_occurrence_drift_authority 2 0; then
+  fail_test "Given a wrong authority habit When waiting for due-now occurrence Then it fails closed"
+fi
+pass_test "Given a wrong authority habit When waiting for due-now occurrence Then it fails closed"
+
+seed_exact_drift_authority_rows \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID" \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID" \
+  "stale"
+if wait_for_due_now_occurrence_drift_authority 2 0; then
+  fail_test "Given a stale authority state When waiting for due-now occurrence Then it fails closed"
+fi
+pass_test "Given a stale authority state When waiting for due-now occurrence Then it fails closed"
+
+seed_exact_drift_authority_rows \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID" \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID" \
+  "fresh" \
+  "$now_ms" \
+  "$((now_ms - 1000))"
+if wait_for_due_now_occurrence_drift_authority 2 0; then
+  fail_test "Given authority fetched before the snapshot When waiting for due-now occurrence Then it fails closed"
+fi
+pass_test "Given authority fetched before the snapshot When waiting for due-now occurrence Then it fails closed"
+
+seed_exact_drift_authority_rows \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID" \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID" \
+  "fresh" \
+  "$((now_ms - 1000))" \
+  "$now_ms" \
+  "1"
+if wait_for_due_now_occurrence_drift_authority 2 0; then
+  fail_test "Given retryable authority When waiting for due-now occurrence Then it fails closed"
+fi
+pass_test "Given retryable authority When waiting for due-now occurrence Then it fails closed"
+
+seed_exact_drift_authority_rows \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID" \
+  "$STUARI_AUTH_ALICE_USER_ID" \
+  "$DUE_NOW_HABIT_GROUP_ID" \
+  "fresh" \
+  "$((now_ms - 1000))" \
+  "$now_ms" \
+  "0" \
+  "remote mismatch"
+if wait_for_due_now_occurrence_drift_authority 2 0; then
+  fail_test "Given diagnostic authority text When waiting for due-now occurrence Then it fails closed"
+fi
+pass_test "Given diagnostic authority text When waiting for due-now occurrence Then it fails closed"
+
+seed_exact_drift_authority_rows
+wait_for_due_now_occurrence_drift_authority 2 0 || \
+  fail_test "Given exact fresh correlated authority When waiting for due-now occurrence Then it succeeds again"
+pass_test "Given exact fresh correlated authority When waiting for due-now occurrence Then it succeeds again"
 
 flow04_file="$ROOT_DIR/stuari/flows/04_habit_group.sh"
 flow04_created_checks=$(sed -n '/if \[ "$CREATE_SUBMITTED" = "1" \]; then/,/^# Invite flow:/p' "$flow04_file")

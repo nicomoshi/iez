@@ -1146,49 +1146,54 @@ post_tree_has_exact_caption() {
   local tree="$1" caption="$2"
   stuari_ax_tree_has_expected_app_root "$tree" || return 1
   printf '%s\n' "$tree" | jq -e --arg caption "$caption" '
+    def normalize_line:
+      tostring
+      | gsub("[[:space:]]+"; " ")
+      | gsub("^ | $"; "")
+      | ascii_downcase;
+    def label_lines:
+      ((.label // "") | tostring | split("\n") | map(normalize_line));
+    def exact_line_count($lines; $expected):
+      [ $lines[] | select(. == $expected) ] | length;
     [(.data.elements // [])[] | select(.role == "AXApplication")] as $apps
     | $apps[0].frame as $root
-    | any((.data.elements // [])[]?;
-        .role == "AXStaticText"
-        and .enabled != false
-        and (((.label // "") | split("\n")) | any(. == $caption))
-        and (
-          (.frame // null) as $frame
-          | ($frame | type) == "object"
-          and ($frame.x | type) == "number"
-          and ($frame.y | type) == "number"
-          and ($frame.width | type) == "number" and $frame.width > 0
-          and ($frame.height | type) == "number" and $frame.height > 0
-          and $frame.x >= $root.x and $frame.y >= $root.y
-          and ($frame.x + $frame.width) <= ($root.x + $root.width)
-          and ($frame.y + $frame.height) <= ($root.y + $root.height)
-        ))
-  ' >/dev/null 2>&1 || return 1
-  printf '%s\n' "$tree" | jq -e --arg caption "$caption" '
-    [(.data.elements // [])[]
-      | select(
-          .role == "AXStaticText"
-          and ((.label // "") | split("\n") | any(. == $caption))
-        )] as $captionMatches
-    | [(.data.elements // [])[]
+    | ($caption | normalize_line) as $expected
+    | select($expected != "")
+    | [(.data.elements // [])[]?
+        | select(.role == "AXStaticText")
+        | . as $element
+        | select(.enabled != false)
+        | ($element.frame // null) as $frame
+        | select(($frame | type) == "object")
+        | select(($frame.x | type) == "number" and ($frame.y | type) == "number")
+        | select(($frame.width | type) == "number" and $frame.width > 0)
+        | select(($frame.height | type) == "number" and $frame.height > 0)
+        | select($frame.x >= $root.x and $frame.y >= $root.y)
+        | select(($frame.x + $frame.width) <= ($root.x + $root.width))
+        | select(($frame.y + $frame.height) <= ($root.y + $root.height))
+        | $element
+      ] as $visibleStaticTexts
+    | [ $visibleStaticTexts[]
+        | select((label_lines) as $lines | exact_line_count($lines; $expected) == 1)
+      ] as $captionMatches
+    | [ $visibleStaticTexts[]
         | select(
-            .role == "AXStaticText"
-            and (((.label // "") | split("\n")) as $lines
-              | any($lines[]; . == "Feed")
-              and any($lines[]; . == "Tab 1 of 3"))
-          )] as $selectedFeed
+            (label_lines) as $lines
+            | any($lines[]; . == "feed")
+            and any($lines[]; . == "tab 1 of 3")
+          )
+      ] as $selectedFeed
     | ($captionMatches | length) == 1
       and ($selectedFeed | length) == 1
-      and ((($captionMatches[0].label // "") | split("\n")) as $captionLines
-        | any($captionLines[]; . == "Confirmed")
+      and (($captionMatches[0] | label_lines) as $captionLines
+        | any($captionLines[]; . == "confirmed")
           or (
-            any($captionLines[]; . == "Just now")
+            any($captionLines[]; . == "just now")
             and any($captionLines[];
-              . == "Posting..."
-              or . == "Syncing..."
-              or . == "Retrying...")
-          )
-      )
+              . == "posting..."
+              or . == "syncing..."
+              or . == "retrying...")
+          ))
   ' >/dev/null 2>&1
 }
 

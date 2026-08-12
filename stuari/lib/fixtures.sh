@@ -749,7 +749,7 @@ SQL
 
 wait_for_due_now_occurrence_drift_authority() {
   local timeout="${1:-20}" interval="${2:-1}" attempt=0
-  local db_path drift_probe now_ms group_count=0 occurrence_count=0
+  local db_path drift_probe now_ms group_count=0 occurrence_count=0 authority_count=0
   local expected_occurrence_id="${STUARI_DUE_NOW_OCCURRENCE_ID:-}"
 
   if ! validate_due_now_fixture_identity; then
@@ -800,21 +800,47 @@ wait_for_due_now_occurrence_drift_authority() {
             and occurrence_id = '$expected_occurrence_id'
             and status = 'open'
             and post_id is null
+            and cast(fetched_at as integer) > 0
+            and cast(fetched_at as integer) <= $now_ms
             and cast(opens_at as integer) <= $now_ms
             and cast(submission_closes_at as integer) >= $now_ms
-            and cast(submission_closes_at as integer) >= cast(opens_at as integer));
+            and cast(submission_closes_at as integer) >= cast(opens_at as integer)),
+        (select count(*)
+           from habit_occurrence_authorities hoa
+           join occurrence_snapshots os
+             on os.user_id = hoa.user_id
+            and os.habit_id = hoa.habit_id
+          where hoa.user_id = '$STUARI_AUTH_ALICE_USER_ID'
+            and hoa.habit_id = '$DUE_NOW_HABIT_GROUP_ID'
+            and hoa.authority_state = 'fresh'
+            and cast(hoa.should_retry as integer) = 0
+            and coalesce(hoa.diagnostic_text, '') = ''
+            and cast(hoa.fetched_at as integer) > 0
+            and cast(hoa.fetched_at as integer) <= $now_ms
+            and os.user_id = hoa.user_id
+            and os.habit_id = hoa.habit_id
+            and os.group_id = '$DUE_NOW_HABIT_GROUP_ID'
+            and os.occurrence_id = '$expected_occurrence_id'
+            and os.status = 'open'
+            and os.post_id is null
+            and cast(os.fetched_at as integer) > 0
+            and cast(os.fetched_at as integer) <= $now_ms
+            and cast(hoa.fetched_at as integer) >= cast(os.fetched_at as integer));
     " 2>/dev/null)"; then
       drift_probe=""
     fi
-    if [[ "$drift_probe" =~ ^[0-9]+\|[0-9]+$ ]]; then
+    if [[ "$drift_probe" =~ ^[0-9]+\|[0-9]+\|[0-9]+$ ]]; then
       group_count="${drift_probe%%|*}"
       occurrence_count="${drift_probe#*|}"
+      occurrence_count="${occurrence_count%%|*}"
+      authority_count="${drift_probe##*|}"
     else
       group_count=0
       occurrence_count=0
+      authority_count=0
     fi
 
-    if [ "$group_count" = "1" ] && [ "$occurrence_count" = "1" ]; then
+    if [ "$group_count" = "1" ] && [ "$occurrence_count" = "1" ] && [ "$authority_count" = "1" ]; then
       pass "Local Drift authority ready for reserved due-now occurrence fixture"
       return 0
     fi
@@ -823,7 +849,7 @@ wait_for_due_now_occurrence_drift_authority() {
     attempt=$((attempt + 1))
   done
 
-  info "Timed out waiting for exact Drift authority (group=$group_count, occurrences=$occurrence_count)"
+  info "Timed out waiting for exact Drift authority (group=$group_count, occurrences=$occurrence_count, authority=$authority_count)"
   return 1
 }
 
